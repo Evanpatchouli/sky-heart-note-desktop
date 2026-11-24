@@ -49,8 +49,10 @@
       demo.members.filter(name => name !== demo.member).map(name => `<option>${esc(name)}</option>`).join("");
   }
   function feeField(value = 5) {
-    return `<div class="m-form-pair"><label>派抽（元/颗）<input type="number" step="0.01" min="0" inputmode="decimal" name="dispatchFee" value="${(value / 100).toFixed(2)}"></label>
-      <div class="m-locked"><span>团抽 · 后台设定</span><strong>${money(5)} / 颗</strong></div></div>`;
+    const {basis, clubFee} = demo.state.rules;
+    const unit = basis === "到账颗数" ? "颗" : "次";
+    return `<div class="m-form-pair"><label>派抽（元/${unit}）<input type="number" step="0.01" min="0" inputmode="decimal" name="dispatchFee" value="${(value / 100).toFixed(2)}"></label>
+      <div class="m-locked"><span>团抽 · 后台设定</span><strong>${money(clubFee)} / ${unit}</strong></div></div>`;
   }
   function parseCents(raw, message) {
     const value = Math.round(Number(raw) * 100);
@@ -155,8 +157,9 @@
       tile("爱心单价", `${money(o.unit)} / 颗`) + tile("派发对象", o.status === "pending" ? "待选择" : o.assignee || "全团公开") +
       tile("原报价时段", o.period === "double" ? "双倍期" : "普通期") + tile("本次到账口径", `每次 ${demo.multiplier(o)} 颗`) +
       (own || myShare(o) ? tile("老板",o.customer) + (o.gameAccount ? tile("接收游戏账号",o.gameAccount) : "") : "");
-    const unitLabel = o.basis === "到账颗数" ? "颗" : "次";
-    const feeNote = `派抽 ${money(o.dispatchFee)}/${unitLabel} · 团抽 ${money(o.clubFee)}/${unitLabel} · 按${o.basis}`;
+    const feeRule = o.status === "pending" ? demo.state.rules : o;
+    const unitLabel = feeRule.basis === "到账颗数" ? "颗" : "次";
+    const feeNote = `派抽 ${money(o.dispatchFee)}/${unitLabel} · 团抽 ${money(feeRule.clubFee)}/${unitLabel} · 按${feeRule.basis}`;
     const statusTag = personalStatus
       ? `<span class="mrs-tag" data-tone="${esc(personalStatus.tone)}"><i></i>${esc(personalStatus.label)}</span>`
       : badge(o,mode);
@@ -175,6 +178,7 @@
   }
 
   function dispatchForm() {
+    const shownVersion = demo.state.rules.version;
     ClubUI.dialog({
       title: "直接派单",
       body: `<div class="m-form" data-m-new-order>
@@ -191,6 +195,7 @@
       </div>`,
       confirmText: "确认收款并派发",
       onConfirm(dialog) {
+        if (shownVersion !== demo.state.rules.version) throw Error("抽成规则已更新，请关闭弹窗并重新核对");
         const get = key => dialog.querySelector(`[name="${key}"]`);
         const title = get("title").value.trim(), customer = get("customer").value.trim(), gameAccount = get("gameAccount").value.trim();
         const total = get("total").valueAsNumber;
@@ -199,7 +204,6 @@
         if (!title || !customer || !gameAccount) throw new Error("请填写订单名称、老板昵称和接收游戏账号");
         if (!Number.isSafeInteger(total) || total < 1) throw new Error("订购颗数应为正整数");
         if (unit < 1 || !Number.isSafeInteger(total * unit)) throw new Error("请确认单价和订购量");
-        if (dispatchFee + 5 > unit) throw new Error("本例的派抽与团抽合计须在爱心单价以内");
         if (!get("received").checked) throw new Error("请先核对收款");
         const id = demo.create({ source:"直接派单", title, customer, gameAccount, dispatcher: demo.member, total, unit, period:get("period").value, dispatchFee, assignee:get("assignee").value || null });
         filters.dispatch = "all";
@@ -257,6 +261,7 @@
         dialog.querySelector("[data-m-report-preview]").textContent = Number.isSafeInteger(count) && count>0 && count<=state.limit ? `${count * state.factor} 颗` : "—";
       };
     } else if (actionName === "publish") {
+      const shownVersion = demo.state.rules.version;
       ClubUI.dialog({
         title: "确认正式派发",
         body: `<div class="m-form"><p class="m-dialog-title">${esc(o.title)}</p>
@@ -267,6 +272,7 @@
           <p class="m-form-note">发布后将向全团发送一条新派单通知。</p></div>`,
         confirmText:"确认派发",
         onConfirm(dialog) {
+          if (shownVersion !== demo.state.rules.version) throw Error("抽成规则已更新，请关闭弹窗并重新核对");
           if (!dialog.querySelector('[name="received"]').checked) throw new Error("请先核对收款");
           const fee = parseCents(dialog.querySelector('[name="dispatchFee"]').value, "请填写非负的派抽金额，最多两位小数");
           demo.publish(o.id, dialog.querySelector('[name="assignee"]').value || null, fee);

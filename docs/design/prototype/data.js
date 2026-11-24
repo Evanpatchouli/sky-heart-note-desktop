@@ -3,17 +3,21 @@
   "use strict";
   const lead = "青禾";
   const customer = "知夏";
-  const dispatchers = ["青禾", "鹿鸣"];
-  const members = [...dispatchers, "云岫", "阿澄", "禾川"];
+  const defaultDispatchers = ["青禾", "鹿鸣"];
+  const members = [...defaultDispatchers, "云岫", "阿澄", "禾川"];
   const storageKey = "sky-heart.design-review.p1.v1";
-  const fixtureVersion = 2;
+  const fixtureVersion = 3;
+  const initialRules = () => ({basis: "到账颗数", clubFee: 5, version: 1});
+  function ruleSnapshot(rules) {
+    return {basis: rules.basis, clubFee: rules.clubFee, ruleVersion: rules.version};
+  }
   const sampleId = "HX-1124-07";
   function example(values) {
     return {
       source: "直接派单", dispatcher: "鹿鸣", assignee: null,
       delivered: 0, times: 0, claims: [], status: "published", change: "none", period: "normal",
       reason: "", date: "11月24日", scheduleStart: null, scheduleEnd: null,
-      dispatchFee: 5, clubFee: 5, basis: "到账颗数",
+      dispatchFee: 5, ...ruleSnapshot(initialRules()),
       ...values,
     };
   }
@@ -56,10 +60,11 @@
         reason: scenario === "before-change" ? "" : "双倍活动已结束，剩余 10 颗需按普通期单价继续送达。",
       }),
       example({ id: "HX-1124-05", title: "常规送心 · 60 颗", source: "客户端下单", customer,
-        dispatcher: lead, total: 60, unit: 50, paid: 0, status: "pending" }),
+        dispatcher: lead, total: 60, unit: 50, paid: 0, status: "pending", ruleVersion: null }),
       ...assignmentExamples(),
     ];
-    return { fixtureVersion, orders, notices: [notice(orders[0])], serial: 13, memberName: lead };
+    return { fixtureVersion, orders, notices: [notice(orders[0])], serial: 13, memberName: lead,
+      rules: initialRules(), dispatchers: [...defaultDispatchers] };
   }
   function notice(order) {
     return { id: "pub-" + order.id, orderId: order.id, title: "有新派单", readBy: [], recipients: [...members] };
@@ -69,9 +74,14 @@
       const value = JSON.parse(localStorage.getItem(storageKey) || "null");
       if (Array.isArray(value?.orders) && Array.isArray(value?.notices) && Number.isInteger(value.serial)) {
         if ((value.fixtureVersion ?? 1) < fixtureVersion) {
-          const existing = new Set(value.orders.map(order => order.id));
-          value.orders = value.orders.map(order => ({ scheduleStart: null, scheduleEnd: null, ...order }));
-          value.orders.push(...assignmentExamples().filter(order => !existing.has(order.id)));
+          if ((value.fixtureVersion ?? 1) < 2) {
+            const existing = new Set(value.orders.map(order => order.id));
+            value.orders = value.orders.map(order => ({ scheduleStart: null, scheduleEnd: null, ...order }));
+            value.orders.push(...assignmentExamples().filter(order => !existing.has(order.id)));
+          }
+          value.rules ??= initialRules();
+          value.dispatchers ??= [...defaultDispatchers];
+          for (const o of value.orders) o.ruleVersion ??= o.status === "pending" ? null : 1;
           value.fixtureVersion = fixtureVersion;
           save(value);
         }
@@ -83,6 +93,7 @@
   let state = read();
   function save(value = state) {
     try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* 保留内存中的演示。 */ }
+    window.dispatchEvent(new Event("club-demo-change"));
   }
   const find = id => {
     const order = state.orders.find(item => item.id === id);
@@ -91,8 +102,9 @@
   };
   const available = o => o.total - o.claims.reduce((sum, claim) => sum + claim.qty, 0);
   const text = (v, max) => String(v ?? "").trim().slice(0, max);
-  function checkedFee(fee, unit) {
-    if (!Number.isSafeInteger(fee) || fee < 0 || fee + 5 > unit) throw Error("派抽与团抽合计须在本例单价范围内");
+  function checkedFee(fee, unit, period) {
+    const perUnitRevenue = unit * (state.rules.basis === "赠送次数" && period === "double" ? 2 : 1);
+    if (!Number.isSafeInteger(fee) || fee < 0 || fee + state.rules.clubFee > perUnitRevenue) throw Error("本例的派抽、团抽合计超过每计量单位收入，或派抽金额无效");
     return fee;
   }
   function create(input) {
@@ -102,14 +114,17 @@
       !Number.isSafeInteger(input.total * input.unit)) throw Error("请填写有效的数量和单价");
     const title = text(input.title, 70), owner = direct ? text(input.customer, 32) : customer;
     if (!owner || !title) throw Error("请填写客户和订单信息");
-    const dispatcher = direct ? state.memberName : input.dispatcher || dispatchers[Math.floor(Math.random() * dispatchers.length)];
-    if (!direct && !dispatchers.includes(dispatcher)) throw Error("请选择本例的派单人");
+    const pool = state.dispatchers;
+    const dispatcher = direct ? state.memberName : input.dispatcher || pool[Math.floor(Math.random() * pool.length)];
+    if (!direct && !dispatcher) throw Error("当前演示没有带派单标记的团员，请先在管理端设置候选人");
+    if (!direct && !pool.includes(dispatcher)) throw Error("请选择本例的派单人");
     const assignee = direct ? input.assignee || null : null;
     if (assignee && !members.includes(assignee)) throw Error("请选择有效的定向团员");
-    const dispatchFee = direct ? checkedFee(input.dispatchFee ?? 5, input.unit) : 5;
+    const dispatchFee = direct ? checkedFee(input.dispatchFee ?? 5, input.unit, input.period) : 5;
     const id = "HX-1124-" + state.serial++;
     const order = example({ id, title, customer: owner, gameAccount: text(input.gameAccount, 32), source: input.source,
       total: input.total, unit: input.unit, period: input.period === "double" ? "double" : "normal", dispatcher, dispatchFee, assignee,
+      ...ruleSnapshot(state.rules), ruleVersion: direct ? state.rules.version : null,
       paid: direct ? input.total * input.unit : 0, status: direct ? "published" : "pending" });
     state.orders.unshift(order);
     if (direct) state.notices.unshift(notice(order));
@@ -120,7 +135,8 @@
     const order = find(id);
     if (order.dispatcher !== state.memberName || order.status !== "pending") throw Error("仅本单派单人可发布待派订单");
     if (assignee && !members.includes(assignee)) throw Error("请选择有效的定向团员");
-    Object.assign(order, { status: "published", assignee, dispatchFee: checkedFee(dispatchFee ?? order.dispatchFee, order.unit), paid: order.total * order.unit });
+    Object.assign(order, { ...ruleSnapshot(state.rules), status: "published", assignee,
+      dispatchFee: checkedFee(dispatchFee ?? order.dispatchFee, order.unit, order.period), paid: order.total * order.unit });
     state.notices.unshift(notice(order)); save();
   }
   function claim(id, qty) {
@@ -178,7 +194,18 @@
   function receive(id) { const order = change(id,"agreed","paid","member"); order.paid += 150; save(); }
   function refund(id) { change(id,"refundDue","refunded","member"); save(); }
   window.ClubDemo = {
-    get member() { return state.memberName; }, customer, dispatchers, members, sampleId, get state() { return state; },
+    get member() { return state.memberName; }, customer, get dispatchers() { return state.dispatchers; }, members, sampleId, get state() { return state; },
+    setDispatcher(name, enabled) {
+      if (!members.includes(name)) throw Error("团员不存在");
+      state.dispatchers = members.filter(n => n === name ? enabled : state.dispatchers.includes(n));
+      save();
+    },
+    saveRules(basis, clubFee) {
+      if (!["到账颗数","赠送次数"].includes(basis) || !Number.isSafeInteger(clubFee) || clubFee < 0) throw Error("请检查计量口径和团抽金额");
+      if (basis === state.rules.basis && clubFee === state.rules.clubFee) return;
+      state.rules = {basis, clubFee, version: state.rules.version + 1};
+      save();
+    },
     available, multiplier, create, publish, claim, report, propose, receive, refund, setSchedule,
     agree(id) { change(id,"proposed","agreed","client"); save(); },
     decline(id) { change(id,"proposed","refundDue","client"); save(); },
@@ -188,6 +215,6 @@
   };
   addEventListener("storage", event => {
     if (event.key !== storageKey) return;
-    state=read(); window.ClubUI?.refresh();
+    state=read(); window.dispatchEvent(new Event("club-demo-change")); window.ClubUI?.refresh();
   });
 })();

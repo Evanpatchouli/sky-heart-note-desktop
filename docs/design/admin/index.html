@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <title>打开管理端设计原型</title>
+</head>
+<body>
+  <main id="setup" hidden>
+    <h1>管理端设计原型</h1>
+    <p>原型使用仓库中 admin 的 React 和 Ant Design 依赖。首次预览请在仓库根目录执行：</p>
+    <pre>pnpm install --frozen-lockfile
+pnpm --dir common build
+pnpm --dir admin build:prototype
+python -m http.server 5190 --bind 127.0.0.1 --directory docs/design</pre>
+    <p><a id="launch" href="http://localhost:5190/admin/dist/#/club/orders">打开本地管理端原型</a> · <a href="../previews/admin-orders-desktop.png">查看订单监管预览图</a></p>
+  </main>
+  <noscript>请启用 JavaScript。也可查看<a href="../previews/admin-orders-desktop.png">静态预览图</a>。</noscript>
+  <script>
+    async function start() {
+      const target = "./dist/" + (location.hash || "#/club/orders");
+      if (location.protocol !== "file:") {
+        document.getElementById("launch").href = target;
+        try {
+          const response = await fetch("./dist/index.html", { method: "HEAD", cache: "no-store" });
+          if (response.ok) { location.replace(target); return; }
+        } catch { /* Show the local setup instructions. */ }
+      }
+      document.getElementById("setup").hidden = false;
+    }
+    start();
+  </script>
+</body>
+</html>

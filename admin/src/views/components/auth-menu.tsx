@@ -4,7 +4,10 @@ import { useMemo } from "react";
 import React from "react";
 import { DashboardOutlined, UserOutlined } from "@ant-design/icons";
 
-export const AuthMenu: React.FC = () => {
+type MenuItems = NonNullable<MenuProps["items"]>;
+const noAdditionalItems: MenuItems = [];
+
+export const AuthMenu: React.FC<{ additionalItems?: MenuItems }> = ({ additionalItems = noAdditionalItems }) => {
   const nav = useNavigate();
   const location = useLocation();
   // const { hasPermission, hasRole } = usePermissionChecker();
@@ -16,6 +19,7 @@ export const AuthMenu: React.FC = () => {
         icon: React.createElement(DashboardOutlined),
         label: "仪表盘",
       },
+      ...additionalItems,
       {
         key: "/system",
         icon: React.createElement(DashboardOutlined),
@@ -44,7 +48,7 @@ export const AuthMenu: React.FC = () => {
   const items = useMemo(
     () =>
       createItems(),
-    [],
+    [additionalItems],
   );
 
   const handleClick = ({ key }: { key: string }) => {

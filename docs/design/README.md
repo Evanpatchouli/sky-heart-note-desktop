@@ -1,10 +1,12 @@
-# 团员端与客户端设计评审稿
+# 俱乐部三端设计评审稿
 
-范围为 P1 送心。团员端采用飞书工作台式的任务队列，客户端采用微信服务页式的订单和收支摘要。两端共用样单，切换视角可以接着操作。设计稿用于评审已确认的业务流程，正式应用的开发进度仍由[任务清单](../todo.md)追踪。
+范围为 P1 送心。管理端沿用已有 Ant Design 后台，团员端采用飞书工作台式的任务队列，客户端采用微信服务页式的订单和收支摘要。三端可围绕同一笔样单走查，正式应用的开发进度由[任务清单](../todo.md)追踪。
 
-[打开团员端 · 接单区](prototype/index.html#member/board) ｜ [打开团员端 · 我的承接](prototype/index.html#member/mine?view=timeline) ｜ [打开客户端 · 我的订单](prototype/index.html#client/orders) ｜ [视觉与交互规范](style-guide.md)
+[管理端 · 订单监管](admin/index.html#/club/orders) ｜ [团员端 · 接单区](prototype/index.html#member/board) ｜ [团员端 · 我的承接](prototype/index.html#member/mine?view=timeline) ｜ [客户端 · 我的订单](prototype/index.html#client/orders) ｜ [视觉与交互规范](style-guide.md)
 
 将仓库下载到本地，直接用浏览器打开 `prototype/index.html` 即可。也可在仓库根目录运行以下命令，通过 `http://localhost:5190/prototype/index.html` 访问。图标、脚本和样单都在本地。使用同一浏览器、同一个地址打开两个视角可以联动。禁用本地存储时，可在同一个页面内切换视角继续操作。
+
+管理端使用真正的 Ant Design 构建产物，首次需要执行 `pnpm --dir admin build:prototype`。三个原型在同一个 HTTP 服务中可联动。[管理端构建步骤、原后台对照及四个评审流程](admin/README.md)
 
 ```sh
 python -m http.server 5190 --bind 127.0.0.1 --directory docs/design
@@ -14,6 +16,7 @@ python -m http.server 5190 --bind 127.0.0.1 --directory docs/design
 
 | 端 | 手机 · 390 × 844 | Pad · 820 × 1180 | 桌面 · 1440 × 900 |
 | --- | --- | --- | --- |
+| 管理端 | [订单摘要](previews/admin-orders-mobile.png) | [折叠导航和订单表](previews/admin-orders-pad.png) | [订单监管](previews/admin-orders-desktop.png) |
 | 团员端 | [接单队列与底部 Tab](previews/member-mobile.png) | [队列与选中订单](previews/member-pad.png) | [接单工作台](previews/member-desktop.png) |
 | 客户端 | [订单进度与补差入口](previews/client-mobile.png) | [触屏订单页](previews/client-pad.png) | [订单与待办](previews/client-desktop.png) |
 
@@ -51,7 +54,7 @@ python -m http.server 5190 --bind 127.0.0.1 --directory docs/design
 ## 评审边界
 
 - 样单使用虚构成员、固定业务日和本地金额记录。切换身份、重置场景属于评审工具。审核正式页面时，重点看导航、信息顺序、确认前后金额和可执行动作。
-- 原型包含两种来源、正式发布与站内通知、公开/定向领取、分时段日报和跨期收退款。普通期示例单价 0.50 元、双倍期 0.35 元。直接派单可改报价。本版以按到账颗数抽成展示团员信息，另一种计抽口径及买赠对账已有[独立算例](../heart-delivery.md)。
+- 原型包含两种来源、正式发布与站内通知、公开/定向领取、分时段日报和跨期收退款。普通期示例单价 0.50 元、双倍期 0.35 元。初始样单按到账颗数计抽，管理端可为新派发的订单切换为按赠送次数计抽。买赠活动的团费支出与普通单分账可在管理端的财务样单中核对。[业务算例](../heart-delivery.md)
 - 为走查发布与领取的分工，原型让另一名团员领取派单人发布的样单。同单自派自接的正式规则仍见业务问题 Q4。样单可演示剩余份额和超额提示，多设备争抢最后一个份额时的原子校验需要在业务服务中验证。
 - 团费、个人余额的正式入账、PWA 安装更新与系统推送按开发任务单独验收。旧个人库已有导入工具，归属到未来俱乐部订单的迁移按 P1-03 验证。代跑、陪玩的专属表单待各自实际样单确认后扩展。正式登录的验证码弹窗及跨端借用沿用现有流程。
 - 反馈时请注明端、设备宽度、订单号、当前身份以及点了哪个动作。涉及改价、退款或接单权限的意见，同时对照[订单和通知规则](../club-business.md)记录。

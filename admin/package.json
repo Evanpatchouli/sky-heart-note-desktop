@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:prototype": "tsc -p prototype/tsconfig.json && vite build --config vite.prototype.config.ts",
+    "dev:prototype": "vite --config vite.prototype.config.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

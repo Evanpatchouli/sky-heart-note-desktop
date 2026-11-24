@@ -1,0 +1,48 @@
+# 管理端原型
+
+[进入订单监管](index.html#/club/orders) ｜ [团员管理](index.html#/club/members) ｜ [抽成规则](index.html#/club/rules) ｜ [财务对账](index.html#/club/finance)
+
+本原型直接使用 `admin` 工作区安装的 React、Ant Design 6 与 Ant Design Icons。打开即以虚构管理员身份评审，头像菜单可进入团员与客户端原型。样单操作保存在浏览器本地。正式管理端登录和发布构建继续使用原有入口。
+
+## 现有页面与新增页面如何保持一致
+
+| 参照 | 原型的做法 |
+| --- | --- |
+| 整体布局 | 与正式后台共用 `AdminShell` 和菜单组件。宽屏沿用 200px 深色侧栏、64px 白色页头、右侧蓝色头像、灰色页面背景及页脚 |
+| 主内容 | 沿用桌面 24px 内容内边距、8px 内容区圆角，使用默认主题 token。新增业务通过侧栏的「俱乐部管理」进入 |
+| 系统页面 | 仪表盘、系统用户、系统角色和权限示例直接引用现有页面源码。原型构建将用户、角色及登录统计接口映射为本地样例 |
+| 俱乐部列表与操作 | 使用实际的 Ant Design `Table`、`Tag`、`Select`、`Form` 和 `Button`。编辑用 `Modal`，长明细用 `Drawer`，对账入账保留二次确认 |
+| 手机和 Pad | 沿用 `lg` 断点折叠侧栏。窄屏展开导航覆盖内容，选页即收起。订单表在窄屏保留摘要和详情入口，团员和规则页可展开行查看额外属性，手机明细抽屉占满可用宽度 |
+
+源文件可与正式后台直接核对。[共用布局](../../../admin/src/components/layouts/AdminShell.tsx) · [共用菜单](../../../admin/src/views/components/auth-menu.tsx) · [原用户管理页](../../../admin/src/views/system/user/index.tsx) · [独立构建配置](../../../admin/vite.prototype.config.ts)
+
+## 可以走查的四个业务流程
+
+1. **订单监管**。按来源、状态、单号或姓名筛选，点「详情」核对派单人、分配份额、实际到账、规则版本和收退款记录。`HX-1124-07` 的原单实收 70.00 元，10 颗跨期产生 1.50 元拟补差。团员端登记实补或实退后，再回这里核对净实收。
+2. **团员管理**。编辑团员的“派单”标记。在同一浏览器、同一预览地址的客户端重新下单，未指定派单人时使用更新后的随机候选名单。未标记团员仍能直接派单和接单。本地演示在候选为空时显示提示，正式业务处理见 Q7。
+3. **抽成规则**。打开「编辑规则」，选择派抽与团抽共用的到账颗数或赠送次数，输入每单位团抽。双倍期的试算会随输入更新。确认后使用团员端发布一笔新单，再对照历史订单：新发布的订单使用新版本，历史订单保留原版本。
+4. **财务对账**。核对两笔独立的结算样单。普通单实收 51.00 元，派单人和团费各 5.00 元，两名送心员各 20.50 元。买 100 送 5 样单实收 50.00 元，派抽 5.25 元，送心员收入 42.00 元，团费收入 5.25 元、活动支出 2.50 元。确认入账后可查流水，重复打开同单仅显示原有入账结果。「重置财务样例」可重新走查。
+
+订单监管、派单标记和规则设置与团员端、客户端共用演示业务数据。财务对账有独立的可重置账簿，系统管理页也使用独立的样例账号。进入原型无需输入真实账号和密码。真实通知、数据库入账与权限校验按[业务任务清单](../../todo.md)另行验收。
+
+## 启动与复现
+
+初次使用在仓库根目录安装锁定依赖并构建共用包。随后执行以下命令，Vite 会输出相对路径的静态资源到本目录的 `dist/`。原型程序和构建配置纳入版本管理，`dist/` 由构建生成。
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --dir common build
+pnpm --dir admin build:prototype
+python -m http.server 5190 --bind 127.0.0.1 --directory docs/design
+```
+
+打开 `http://localhost:5190/admin/`。要与另外两端联动，请也通过 `http://localhost:5190/prototype/` 打开它们，使用相同主机名和端口。仅开发管理原型时可运行 `pnpm --dir admin dev:prototype`，默认端口为 5191，其浏览器存储独立。正式后台仍通过 `pnpm dev:admin` 或已有 Docker 服务运行。
+
+## 预览图
+
+| 画面 | 截图 |
+| --- | --- |
+| 订单监管 | [桌面 1440 × 900](../previews/admin-orders-desktop.png) · [Pad 820 × 1180](../previews/admin-orders-pad.png) · [手机 390 × 844](../previews/admin-orders-mobile.png) |
+| 团员管理 | [派单标记和派接单记录](../previews/admin-members.png) |
+| 抽成规则 | [当前规则和历史快照](../previews/admin-rules.png) · [编辑与试算](../previews/admin-rules-edit.png) |
+| 财务对账 | [财务样单](../previews/admin-finance.png) · [买赠结算核对](../previews/admin-finance-detail.png) |

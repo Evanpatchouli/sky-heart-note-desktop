@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "tsBuildInfoFile": "../node_modules/.tmp/admin-prototype.tsbuildinfo"
+  },
+  "include": ["./**/*.ts", "./**/*.tsx"]
+}
