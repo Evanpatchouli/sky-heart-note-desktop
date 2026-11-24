@@ -4,6 +4,8 @@
 
 俱乐部平台的需求与计划见[业务说明](docs/club-business.md)、[送心业务细则](docs/heart-delivery.md)、[路线图](docs/roadmap.md)和[开发任务清单](docs/todo.md)。
 
+团员端与客户端的[设计评审入口](docs/design/README.md)包含视觉规范、可联动的 P1 交互原型及手机、Pad 和桌面预览。
+
 | 包 | 用途 | 开发地址 | 准入角色 |
 | --- | --- | --- | --- |
 | admin | 管理用户与角色、查看登录记录 | http://localhost:5173 | admin |

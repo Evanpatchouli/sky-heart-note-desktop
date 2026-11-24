@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="member.css">
+  <link rel="stylesheet" href="client.css">
+  <title>送心手记 · 设计原型</title>
+  <script defer src="data.js"></script>
+  <script defer src="ui.js"></script>
+  <script defer src="member.js"></script>
+  <script defer src="client.js"></script>
+</head>
+<body>
+  <a class="skip" href="#screen">跳到主内容</a>
+  <div id="shell">
+    <aside id="rail" aria-label="团员工作台导航"></aside>
+    <div class="workspace">
+      <header id="bar"></header>
+      <main id="screen" tabindex="-1"></main>
+    </div>
+    <nav id="bottom-tabs" aria-label="移动端主导航"></nav>
+  </div>
+  <dialog id="prototype-dialog" aria-labelledby="dialog-title">
+    <header class="dialog-head"><h2 id="dialog-title"></h2><button id="dialog-x" class="icon-button" aria-label="关闭弹窗"></button></header>
+    <div id="dialog-body"></div>
+    <p id="dialog-error" role="alert" hidden></p>
+    <footer id="dialog-actions"></footer>
+  </dialog>
+  <div id="prototype-toast" role="status" aria-live="polite" hidden></div>
+  <noscript>请启用 JavaScript 使用交互原型，也可在设计说明中查看静态预览图。</noscript>
+</body>
+</html>
