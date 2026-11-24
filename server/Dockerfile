@@ -24,5 +24,7 @@ COPY --from=build /app/common/package.json /app/common/package.json
 COPY --from=build /app/common/dist /app/common/dist
 COPY --from=build /app/server/package.json ./
 COPY --from=build /app/server/dist ./dist
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=${GIT_SHA}
 EXPOSE 8793
 CMD ["node", "dist/src/main.js"]

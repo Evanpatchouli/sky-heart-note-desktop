@@ -1,0 +1,31 @@
+# On an Eotion host, the edge proxy and MongoDB already own these two networks.
+services:
+  server:
+    networks:
+      mongo: {}
+      public_web:
+        aliases: [sky-heart-api]
+  admin:
+    networks:
+      public_web:
+        aliases: [sky-heart-admin]
+  employee:
+    networks:
+      public_web:
+        aliases: [sky-heart-employee]
+  client:
+    networks:
+      public_web:
+        aliases: [sky-heart-client]
+  site:
+    networks:
+      public_web:
+        aliases: [sky-heart-site]
+
+networks:
+  mongo:
+    name: ${MONGO_NETWORK:-mongo}
+    external: true
+  public_web:
+    name: ${PUBLIC_WEB_NETWORK:-public-web}
+    external: true

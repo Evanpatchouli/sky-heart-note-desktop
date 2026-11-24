@@ -32,6 +32,55 @@ pnpm dev:client
 pnpm dev:site
 ```
 
+## Docker 部署与重新部署
+
+在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，员工的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。
+
+**首次启动**时复制配置文件，填写四个独立的随机值，再运行全量脚本。已部署的主机日常更新只需运行 `./deploy-all.sh`。
+
+```sh
+cp .env.example .env
+chmod 600 .env
+# 在 .env 中填写 SESSION_SECRET、BOOTSTRAP_ADMIN_PASSWORD、MONGO_ROOT_PASSWORD、DB_MONGO_PASSWORD
+./deploy-all.sh
+```
+
+示例配置通过 `COMPOSE_PROFILES=mongo` 启用内置 MongoDB。首次初始化时会为 API 创建仅对业务数据库有读写权限的账号。后续部署沿用现有数据库账号和数据卷；修改数据库密码时也要同步更新 MongoDB 中的凭据。MongoDB 仅在容器网络提供服务。
+
+| 部署范围 | 仓库根目录命令 | 默认宿主机地址 |
+| --- | --- | --- |
+| 所有已启用的服务 | `./deploy-all.sh` | |
+| 管理端 | `./deploy-admin.sh` | `http://localhost:5173` |
+| 员工端 | `./deploy-employee.sh` | `http://localhost:5174` |
+| 客户端 | `./deploy-client.sh` | `http://localhost:5175` |
+| 官网 | `./deploy-site.sh` | `http://localhost:5176` |
+| API | `./deploy-server.sh` | `http://localhost:8793/api` |
+| 内置 MongoDB | `./deploy-mongo.sh` | 仅启用 `mongo` profile 时适用 |
+
+脚本从当前分支配置的上游执行 `git pull --ff-only`，构建镜像并等待所选服务健康。尚未配置上游的分支直接部署当前检出，固定版本或离线重部署可使用 `DEPLOY_SKIP_PULL=1 ./deploy-all.sh`（镜像及构建依赖需已缓存）。独立脚本仅重建所选服务；例如重新部署员工端时，其余三个前端、API 和数据库继续运行。部署失败时脚本返回非零状态并打印容器状态及日志。
+
+默认端口均绑定宿主机回环地址，可在根 `.env` 中用 `ADMIN_PORT`、`EMPLOYEE_PORT`、`CLIENT_PORT`、`SITE_PORT`、`SERVER_PORT` 调整。四个前端在构建时读取 `VITE_APP_API_BASE_URL`。更换公共 API 地址后，请运行全量部署以更新四个静态站点。
+
+### 接入 Eotion 使用的生产网络
+
+已有边缘 Nginx 和 MongoDB 的 Linux 主机可以在根 `.env` 中采用以下配置。将域名、连接串和凭据替换为实际部署值。
+
+```dotenv
+COMPOSE_PROFILES=
+COMPOSE_FILE=docker-compose.yml:docker-compose.eotion.yml
+DB_MONGO_CONNECTION=mongodb://mongodb:27017/sky-heart-note
+DB_MONGO_USERNAME=sky_heart
+VITE_APP_API_BASE_URL=https://api.example.com/api
+ADMIN_ORIGIN=https://admin.example.com
+EMPLOYEE_ORIGIN=https://employee.example.com
+CLIENT_ORIGIN=https://client.example.com
+SITE_ORIGIN=https://www.example.com
+```
+
+服务端会加入已有的 `mongo` 网络，API 与四个前端会加入已有的 `public-web` 网络。这两个外部网络可通过 `MONGO_NETWORK`、`PUBLIC_WEB_NETWORK` 更名。边缘 Nginx 终止 HTTPS，并将上述五个域名分别转发到 `sky-heart-api:8793`、`sky-heart-admin:80`、`sky-heart-employee:80`、`sky-heart-client:80`、`sky-heart-site:80`。三个登录端共享同一个 HTTPS API 主机及其授权 Cookie。
+
+**从旧的 server 单服务 Compose 切换**时，先用 `docker inspect webapp-template-server --format '{{range .Mounts}}{{println .Name .Destination}}{{end}}'` 确认挂载在 `/app/server/data/employee` 的卷名，将根 `.env` 的 `EMPLOYEE_VOLUME_NAME` 设为该值（通常是 `server_employee-data`），并沿用原 MongoDB、`SESSION_SECRET` 与应用域名。停止旧 API 容器后再执行根目录的部署脚本，避免端口冲突。若继续使用旧的独立部署，原 `server/redeploy.sh` 仍可使用。
+
 ## 跨端登录与部署
 
 1. 三端使用 `POST /api/user/login?type=account`，提交 `app`、`username`、`password` 和 `captcha`。图形验证码来自 `GET /api/captcha/login?app=目标端`。管理端原有的邮箱验证码登录需要配置 SMTP。
