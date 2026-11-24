@@ -6,7 +6,7 @@ import { employeeDbPath, withEmployeeDb } from './database';
 import { EmployeeService } from './employee.service';
 import { importDesktopDb } from './import-desktop';
 
-describe('员工数据', () => {
+describe('团员数据', () => {
   const first = '0123456789abcdef00000001';
   const second = '0123456789abcdef00000002';
   const service = new EmployeeService();
@@ -26,10 +26,10 @@ describe('员工数据', () => {
 
   it('按账号隔离数字 ID，局部更新保留未修改列', () => {
     const id = service.create(first, 'booking', { title: '初稿', remark: '原备注' });
-    expect(service.create(second, 'booking', { title: '其他员工' })).toBe(id);
+    expect(service.create(second, 'booking', { title: '其他团员' })).toBe(id);
     expect(service.update(first, 'booking', id, { title: '更新', yichu: 3 })).toBe(true);
     expect(service.list(first, 'booking')).toMatchObject([{ id, title: '更新', remark: '原备注', yichu: 3 }]);
-    expect(service.list(second, 'booking')).toMatchObject([{ id, title: '其他员工' }]);
+    expect(service.list(second, 'booking')).toMatchObject([{ id, title: '其他团员' }]);
     expect(service.update(first, 'booking', id + 1, { remark: '' })).toBe(false);
     expect(service.remove(first, 'booking', id)).toBe(true);
     expect(service.remove(first, 'booking', id)).toBe(false);

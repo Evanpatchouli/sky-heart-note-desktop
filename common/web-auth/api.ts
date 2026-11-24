@@ -1,5 +1,5 @@
 export type WebApp = "admin" | "employee" | "client";
-export const appNames = { admin: "管理端", employee: "员工端", client: "客户端" };
+export const appNames = { admin: "管理端", employee: "团员端", client: "客户端" };
 
 export interface AppSession {
   id: string;

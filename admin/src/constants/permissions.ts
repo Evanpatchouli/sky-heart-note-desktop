@@ -112,8 +112,8 @@ export const PERMISSION_TAGS = {
 // 6. 角色权限映射（用于前端展示和权限说明）
 // =====================================================
 export const ROLE_PERMISSIONS_MAP = {
-  [ROLES.ADMIN]: { label: '管理员', description: '登录管理、员工和客户端', scope: '管理端、员工端、客户端', color: '#0958d9' },
-  [ROLES.EMPLOYEE]: { label: '员工', description: '处理送心订单', scope: '员工端、客户端', color: '#1677ff' },
+  [ROLES.ADMIN]: { label: '管理员', description: '登录管理、团员和客户端', scope: '管理端、团员端、客户端', color: '#0958d9' },
+  [ROLES.EMPLOYEE]: { label: '团员', description: '处理送心订单', scope: '团员端、客户端', color: '#1677ff' },
   [ROLES.COMMON]: { label: '普通用户', description: '使用客户端', scope: '客户端', color: '#666666' },
   [ROLES.SUPER_ADMIN]: {
     label: '超级管理员',

@@ -13,7 +13,7 @@ export async function v3() {
   const roleIds = new Map<string, mongoose.Types.ObjectId>();
   for (const [code, name] of [
     ['admin', '管理员'],
-    ['employee', '员工'],
+    ['employee', '团员'],
     ['common', '普通用户'],
   ]) {
     const role = await roles.findOneAndUpdate(

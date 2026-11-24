@@ -2,6 +2,7 @@ import { MigrationManager } from '../src/migrator/migration-manager';
 import config from '../src/migrator/config';
 import { v1 } from '../src/migrator/v1';
 import { v3 } from '../src/migrator/v3';
+import { v4 } from '../src/migrator/v4';
 
 // 解析命令行参数
 const args = process.argv.slice(2);
@@ -29,6 +30,8 @@ async function runMigration() {
       name: '初始化 Web 应用登录角色',
       up: v3,
     });
+
+    manager.register({ version: 'v4', name: '更新团员角色名称', up: v4 });
 
     // 运行迁移
     await manager.run({ force });

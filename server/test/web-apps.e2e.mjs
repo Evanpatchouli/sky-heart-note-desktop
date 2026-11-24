@@ -154,6 +154,7 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
   const { db, base, password } = await startSystem(directory, cleanup);
   const roles = await db.collection('roles').find({ role_code: { $in: ['admin', 'employee', 'common'] } }).toArray();
   assert.equal(roles.length, 3, '启动迁移应提供三个内置角色');
+  assert.equal(roles.find(role => role.role_code === 'employee')?.role_name, '团员');
   const manager = browser(base);
   const bootstrap = await manager.login('admin', 'test_admin', password);
   for (const roleCode of ['employee', 'common']) {
@@ -169,7 +170,7 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
     }
   }
 
-  await t.test('官网匿名可读，员工工作区、设置和共享变量需要员工端授权', async () => {
+  await t.test('官网匿名可读，团员工作区、设置和共享变量需要团员端授权', async () => {
     const response = await fetch(base + '/site', { headers: { origin: 'https://site.sky.test' } });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).name, '送心手记');
@@ -239,7 +240,7 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
     await b.borrow('client', 'employee', session.id, 401);
   });
 
-  await t.test('员工数据读写、账号隔离、撤权后现有授权立即失效', async () => {
+  await t.test('团员数据读写、账号隔离、撤权后现有授权立即失效', async () => {
     const a = browser(base), b = browser(base);
     const worker = await a.login('employee', 'test_employee', password);
     const admin = await b.login('admin', 'test_admin', password);

@@ -3,6 +3,7 @@ import AppConfig from '../app.config';
 import { logger } from '@/common/logger';
 import { v1 } from './v1';
 import { v3 } from './v3';
+import { v4 } from './v4';
 
 const MigratorConfig = AppConfig.Migrator;
 
@@ -31,6 +32,8 @@ export const migrate = async () => {
       name: '初始化 Web 应用登录角色',
       up: v3,
     });
+
+    manager.register({ version: 'v4', name: '更新团员角色名称', up: v4 });
 
     await manager.connect();
 

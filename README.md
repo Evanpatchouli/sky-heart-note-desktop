@@ -1,11 +1,11 @@
 # 送心手记
 
-本仓库以 [webapp-template 的 main 提交 a6b1583](https://github.com/Evanpatchouli/webapp-template/tree/a6b158331a55a3c474f5ef7657522547b7d5f2c2) 为骨架，将原桌面员工端迁移为 Web 应用。四个前端共用 NestJS 服务。
+本仓库以 [webapp-template 的 main 提交 a6b1583](https://github.com/Evanpatchouli/webapp-template/tree/a6b158331a55a3c474f5ef7657522547b7d5f2c2) 为骨架，将原桌面团员端迁移为 Web 应用。四个前端共用 NestJS 服务。
 
 | 包 | 用途 | 开发地址 | 准入角色 |
 | --- | --- | --- | --- |
 | admin | 管理用户与角色、查看登录记录 | http://localhost:5173 | admin |
-| employee | 原员工端的送心订单、时间轴与分析 | http://localhost:5174 | employee、admin |
+| employee | 原团员端的送心订单、时间轴与分析 | http://localhost:5174 | employee、admin |
 | client | Vite + React 客户端基础页 | http://localhost:5175 | common、employee、admin |
 | site | Vite + React 官网基础页 | http://localhost:5176 | 公开 |
 | server | 身份、授权和业务 API | http://localhost:8793/api | 各接口按端校验 |
@@ -34,7 +34,7 @@ pnpm dev:site
 
 ## Docker 部署与重新部署
 
-在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，员工的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。
+在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，团员的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。
 
 **首次启动**时复制配置文件，填写四个独立的随机值，再运行全量脚本。已部署的主机日常更新只需运行 `./deploy-all.sh`。
 
@@ -51,13 +51,13 @@ chmod 600 .env
 | --- | --- | --- |
 | 所有已启用的服务 | `./deploy-all.sh` | |
 | 管理端 | `./deploy-admin.sh` | `http://localhost:5173` |
-| 员工端 | `./deploy-employee.sh` | `http://localhost:5174` |
+| 团员端 | `./deploy-employee.sh` | `http://localhost:5174` |
 | 客户端 | `./deploy-client.sh` | `http://localhost:5175` |
 | 官网 | `./deploy-site.sh` | `http://localhost:5176` |
 | API | `./deploy-server.sh` | `http://localhost:8793/api` |
 | 内置 MongoDB | `./deploy-mongo.sh` | 仅启用 `mongo` profile 时适用 |
 
-脚本从当前分支配置的上游执行 `git pull --ff-only`，构建镜像并等待所选服务健康。尚未配置上游的分支直接部署当前检出，固定版本或离线重部署可使用 `DEPLOY_SKIP_PULL=1 ./deploy-all.sh`（镜像及构建依赖需已缓存）。独立脚本仅重建所选服务；例如重新部署员工端时，其余三个前端、API 和数据库继续运行。部署失败时脚本返回非零状态并打印容器状态及日志。
+脚本从当前分支配置的上游执行 `git pull --ff-only`，构建镜像并等待所选服务健康。尚未配置上游的分支直接部署当前检出，固定版本或离线重部署可使用 `DEPLOY_SKIP_PULL=1 ./deploy-all.sh`（镜像及构建依赖需已缓存）。独立脚本仅重建所选服务；例如重新部署团员端时，其余三个前端、API 和数据库继续运行。部署失败时脚本返回非零状态并打印容器状态及日志。
 
 默认端口均绑定宿主机回环地址，可在根 `.env` 中用 `ADMIN_PORT`、`EMPLOYEE_PORT`、`CLIENT_PORT`、`SITE_PORT`、`SERVER_PORT` 调整。四个前端在构建时读取 `VITE_APP_API_BASE_URL`。更换公共 API 地址后，请运行全量部署以更新四个静态站点。
 
@@ -89,9 +89,9 @@ SITE_ORIGIN=https://www.example.com
 
 生产环境使用同站点下各自独立的 HTTPS 前端域名，例如 `admin.example.com`、`employee.example.com`、`client.example.com` 和 `www.example.com`。将各包构建时的 `VITE_APP_API_BASE_URL` 设为同一个完整地址，例如 `https://api.example.com/api`。在服务端将 `ADMIN_ORIGIN`、`EMPLOYEE_ORIGIN`、`CLIENT_ORIGIN` 和 `SITE_ORIGIN` 设为对应前端的完整 Origin，并设置 `NODE_ENV=production`。浏览器的借用凭据属于 API 主机，四个端的跨域请求通过显式来源列表校验。官网读取公开接口 `GET /api/site`。
 
-## 员工数据与旧库导入
+## 团员数据与旧库导入
 
-账户、授权与会话保存在 MongoDB。员工业务保留 SQLite 的记录 ID、送心号与预约关联、时间戳以及设置。服务端按 MongoDB 用户 ID 隔离数据，默认写入 `server/data/employee/`，可用 `EMPLOYEE_DATA_DIR` 指定持久卷。服务端与导入工具应使用相同配置和数据卷。
+账户、授权与会话保存在 MongoDB。团员业务保留 SQLite 的记录 ID、送心号与预约关联、时间戳以及设置。服务端按 MongoDB 用户 ID 隔离数据，默认写入 `server/data/employee/`，可用 `EMPLOYEE_DATA_DIR` 指定持久卷。服务端与导入工具应使用相同配置和数据卷。
 
 关闭旧桌面端，将其应用数据目录中的 `data.db` 备份至服务端可读的位置，再指定记录所属的 **MongoDB 用户 ID** 导入。
 
@@ -101,7 +101,7 @@ pnpm --dir server exec ts-node scripts/import-employee-db.ts <MongoDB用户ID> "
 
 工具以只读方式打开源文件，并在目标库内用一个事务导入 `booking`、`songxinhao` 和 `kv`。重复导入内容相同的记录会跳过，发现相同 ID 或键对应不同内容会回滚本次导入。
 
-员工端通过受保护的 `/api/employee/bookings` 和 `/api/employee/songxinhao` 操作业务数据。`/api/employee/workspace` 返回 Web 工作区入口，`/api/employee/settings` 提供旧 KV 设置的读取、写入与删除。`/api/employee/share` 提供共享状态，浏览器标签页通过 BroadcastChannel 收取更新通知。外链使用浏览器的链接导航。
+团员端通过受保护的 `/api/employee/bookings` 和 `/api/employee/songxinhao` 操作业务数据。`/api/employee/workspace` 返回 Web 工作区入口，`/api/employee/settings` 提供旧 KV 设置的读取、写入与删除。`/api/employee/share` 提供共享状态，浏览器标签页通过 BroadcastChannel 收取更新通知。外链使用浏览器的链接导航。
 
 ## 验证
 

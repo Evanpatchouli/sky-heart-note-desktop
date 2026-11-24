@@ -16,8 +16,8 @@ export const ROLES = {
 export type RoleCode = typeof ROLES[keyof typeof ROLES];
 
 export const ROLE_METADATA = {
-  [ROLES.ADMIN]: { label: '管理员', description: '管理、员工和客户端', color: '#0958d9', level: 0 },
-  [ROLES.EMPLOYEE]: { label: '员工', description: '员工和客户端', color: '#1677ff', level: 1 },
+  [ROLES.ADMIN]: { label: '管理员', description: '管理、团员和客户端', color: '#0958d9', level: 0 },
+  [ROLES.EMPLOYEE]: { label: '团员', description: '团员和客户端', color: '#1677ff', level: 1 },
   [ROLES.COMMON]: { label: '普通用户', description: '客户端', color: '#666666', level: 2 },
   [ROLES.SUPER_ADMIN]: {
     label: '超级管理员',
