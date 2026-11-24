@@ -1,37 +1,19 @@
 import { useEffect, useState } from "react";
 
-const useCurrentTime = () => {
-  const [time, setTime] = useState(new Date());
-
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      setTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(intervalId);
-  }, []);
-
-  const formatter = new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  return formatter.format(time);
-};
+const dateFormatter = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+const timeFormatter = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
 export default function Timenow() {
-  const currentTime = useCurrentTime();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   return (
-    <div
-      style={{
-        paddingRight: "10px",
-      }}
-    >
-      <span>{currentTime}</span>
-    </div>
+    <time className="member-clock" dateTime={now.toISOString()} title={now.toLocaleString("zh-CN")}>
+      <span className="member-clock__date">{dateFormatter.format(now)}</span>
+      <span className="member-clock__time">{timeFormatter.format(now)}</span>
+    </time>
   );
 }

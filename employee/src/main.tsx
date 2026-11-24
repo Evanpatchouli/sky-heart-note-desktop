@@ -4,9 +4,12 @@ import { AuthGate } from "@webapp-template/common/web-auth";
 import "./index.css";
 
 const App = lazy(() => import("./App"));
+const MemberLogin = lazy(() => import("./views/login"));
 
 createRoot(document.getElementById("root")!).render(
-  <AuthGate app="employee">
-    <Suspense fallback={<p role="status">正在加载工作台…</p>}><App /></Suspense>
-  </AuthGate>
+  <Suspense fallback={<p className="member-pending" role="status">加载中…</p>}>
+    <AuthGate app="employee" signInView={props => <MemberLogin {...props} />} showSessionBar={false}>
+      <App />
+    </AuthGate>
+  </Suspense>
 );

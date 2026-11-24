@@ -1,0 +1,22 @@
+.onArt, .compact {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.onArt { font-size: 1.45rem; color: white; }
+.compact { font-size: 1.13rem; color: #173950; }
+.mark { display: inline-grid; place-items: center; }
+.onArt .mark { font-size: 1.75rem; }
+.compact .mark {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9px;
+  color: white;
+  background: #275779;
+  font-size: 1.13rem;
+}
