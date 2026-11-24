@@ -1,0 +1,92 @@
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+
+.card {
+  width: min(680px, 100%);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgb(0 0 0 / 10%);
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: 7fr 17fr;
+}
+
+.brand, .panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.brand {
+  padding-block: 20px;
+  background: linear-gradient(90deg, #0958d9, #4096ff);
+}
+
+.brand h3 { margin: 0; color: white; }
+.brand span { color: rgb(255 255 255 / 80%); }
+
+.panel {
+  position: relative;
+  min-height: 480px;
+  padding-inline: 50px;
+  background: white;
+}
+
+.content { width: 100%; max-width: 360px; }
+.content :global(.sky-accounts) { margin: 28px 0 0; }
+.content :global(.sky-accounts button) {
+  color: #0958d9;
+  border: 1px solid #91caff;
+  border-radius: 6px;
+  background: #e6f4ff;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.corner {
+  position: absolute;
+  inset: 0 0 auto auto;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  width: 68px;
+  height: 68px;
+  padding: 6px 10px;
+  border: 0;
+  background: #1677ffac;
+  color: white;
+  font-size: 32px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  cursor: pointer;
+}
+.corner:focus-visible { background: #0958d9; }
+.corner > span { align-self: flex-start; }
+.qrStatus { text-align: center; }
+.welcome { margin-bottom: 32px; }
+.fieldIcon { color: rgb(0 0 0 / 25%); }
+.captcha {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #f5f5f5;
+  cursor: pointer;
+}
+
+@media (max-width: 575px) {
+  .page { box-sizing: border-box; padding: 12px; }
+  .panels { grid-template-columns: 1fr; }
+  .brand { justify-content: flex-start; padding: 16px 24px; }
+  .panel { padding-inline: 24px; }
+}
