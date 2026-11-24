@@ -6,14 +6,42 @@
   const dispatchers = ["青禾", "鹿鸣"];
   const members = [...dispatchers, "云岫", "阿澄", "禾川"];
   const storageKey = "sky-heart.design-review.p1.v1";
+  const fixtureVersion = 2;
   const sampleId = "HX-1124-07";
   function example(values) {
     return {
       source: "直接派单", dispatcher: "鹿鸣", assignee: null,
       delivered: 0, times: 0, claims: [], status: "published", change: "none", period: "normal",
-      reason: "", date: "11月24日", dispatchFee: 5, clubFee: 5, basis: "到账颗数",
+      reason: "", date: "11月24日", scheduleStart: null, scheduleEnd: null,
+      dispatchFee: 5, clubFee: 5, basis: "到账颗数",
       ...values,
     };
+  }
+  // 已派发并分完份额的历史样单。从个人承接和派发记录仍能查看。
+  function assignmentExamples() {
+    const orders = [
+      { id: "HX-1119-A", title: "山岚 · 十日送心", customer: "山岚", date: "11月19日",
+        scheduleStart: "2026-11-20", scheduleEnd: "2026-11-29", total: 100, unit: 50,
+        delivered: 35, times: 35, claims: [{name: lead, qty: 50, delivered: 20}, {name: "云岫", qty: 50, delivered: 15}] },
+      { id: "HX-1123-A", title: "溪月 · 跨月送心", customer: "溪月", date: "11月23日",
+        scheduleStart: "2026-11-27", scheduleEnd: "2026-12-03", total: 42, unit: 50,
+        assignee: lead, claims: [{name: lead, qty: 42}] },
+      { id: "HX-1117-A", title: "浮光 · 三日送心", customer: "浮光", date: "11月17日",
+        scheduleStart: "2026-11-18", scheduleEnd: "2026-11-20", total: 24, unit: 50,
+        delivered: 16, times: 16, claims: [{name: lead, qty: 12, delivered: 12}, {name: "阿澄", qty: 12, delivered: 4}] },
+      { id: "HX-1115-A", title: "雨禾 · 双倍送心", customer: "雨禾", date: "11月15日",
+        scheduleStart: "2026-11-16", scheduleEnd: "2026-11-27", total: 40, unit: 35,
+        period: "double", change: "refunded", changeQty: 10, reason: "老板拒绝补差，剩余 10 颗已停送并退款。",
+        delivered: 30, times: 15, claims: [{name: lead, qty: 40, delivered: 30}] },
+      { id: "HX-1123-B", title: "晚星 · 单日送心", customer: "晚星", date: "11月23日",
+        scheduleStart: "2026-11-24", scheduleEnd: "2026-11-24", total: 8, unit: 50,
+        delivered: 2, times: 2, claims: [{name: lead, qty: 8, delivered: 2}] },
+      { id: "HX-1123-C", title: "栀白 · 常规送心", customer: "栀白", date: "11月23日",
+        total: 24, unit: 50, claims: [{name: lead, qty: 24}] },
+    ];
+    return orders.map(order => example({
+      ...order, boardArchived: true, status: "active", paid: order.total * order.unit,
+    }));
   }
   function initial(scenario = "review") {
     const orders = [
@@ -29,8 +57,9 @@
       }),
       example({ id: "HX-1124-05", title: "常规送心 · 60 颗", source: "客户端下单", customer,
         dispatcher: lead, total: 60, unit: 50, paid: 0, status: "pending" }),
+      ...assignmentExamples(),
     ];
-    return { orders, notices: [notice(orders[0])], serial: 13, memberName: lead };
+    return { fixtureVersion, orders, notices: [notice(orders[0])], serial: 13, memberName: lead };
   }
   function notice(order) {
     return { id: "pub-" + order.id, orderId: order.id, title: "有新派单", readBy: [], recipients: [...members] };
@@ -38,13 +67,22 @@
   function read() {
     try {
       const value = JSON.parse(localStorage.getItem(storageKey) || "null");
-      if (Array.isArray(value?.orders) && Array.isArray(value?.notices) && Number.isInteger(value.serial)) return value;
+      if (Array.isArray(value?.orders) && Array.isArray(value?.notices) && Number.isInteger(value.serial)) {
+        if ((value.fixtureVersion ?? 1) < fixtureVersion) {
+          const existing = new Set(value.orders.map(order => order.id));
+          value.orders = value.orders.map(order => ({ scheduleStart: null, scheduleEnd: null, ...order }));
+          value.orders.push(...assignmentExamples().filter(order => !existing.has(order.id)));
+          value.fixtureVersion = fixtureVersion;
+          save(value);
+        }
+        return value;
+      }
     } catch { /* 本地文件可能关闭存储，仍可在当前页联动。 */ }
     return initial();
   }
   let state = read();
-  function save() {
-    try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* 保留内存中的演示。 */ }
+  function save(value = state) {
+    try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* 保留内存中的演示。 */ }
   }
   const find = id => {
     const order = state.orders.find(item => item.id === id);
@@ -96,6 +134,20 @@
     save();
   }
   const multiplier = order => order.period === "double" && order.change !== "paid" ? 2 : 1;
+  function isDate(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(value + "T00:00:00Z");
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }
+  function setSchedule(id, start, end) {
+    const shares = find(id).claims.filter(share => share.name === state.memberName);
+    if (!shares.length) throw Error("仅能调整本人的承接排期");
+    if (!(start === null && end === null) && (!isDate(start) || !isDate(end) || end < start)) {
+      throw Error("请填写完整排期，结束日期应在开始日期当天或之后");
+    }
+    for (const share of shares) share.schedule = { start, end };
+    save();
+  }
   function report(id, count) {
     const order = find(id);
     const share = order.claims.find(c => c.name === state.memberName);
@@ -127,7 +179,7 @@
   function refund(id) { change(id,"refundDue","refunded","member"); save(); }
   window.ClubDemo = {
     get member() { return state.memberName; }, customer, dispatchers, members, sampleId, get state() { return state; },
-    available, multiplier, create, publish, claim, report, propose, receive, refund,
+    available, multiplier, create, publish, claim, report, propose, receive, refund, setSchedule,
     agree(id) { change(id,"proposed","agreed","client"); save(); },
     decline(id) { change(id,"proposed","refundDue","client"); save(); },
     markRead(id) { const n=state.notices.find(n=>n.id===id); if(n && !n.readBy.includes(state.memberName)){n.readBy.push(state.memberName); save();} },

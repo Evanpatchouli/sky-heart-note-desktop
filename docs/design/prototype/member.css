@@ -153,9 +153,6 @@
 .m-estimate { display:flex; justify-content:space-between; align-items:center; padding:12px; border-radius:7px; background:#eef3fc; font-size:14px; }
 .m-estimate strong { color:var(--primary); font-size:18px; }
 .m-dialog-title { font-weight: 600; }
-.m-mine-line { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; padding-bottom:18px; font-size:13px; color:var(--muted); }
-.m-mine-line strong { color:var(--ink); font-size:20px; }
-.m-mine-line > span { width:1px; height:13px; margin:0 8px; align-self:center; background:var(--line); }
 .m-empty { display: grid; justify-items: center; align-content: center; gap: 12px; padding: 44px 16px; text-align: center; }
 .m-empty h3 { color: var(--muted); font-size: 14px; font-weight: 550; }
 .m-empty-icon { display: grid; place-items:center; width: 42px; height: 42px; border-radius: 12px; background:#eff3fa; color:var(--muted); }

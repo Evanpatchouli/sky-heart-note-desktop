@@ -60,8 +60,7 @@
 
   function row(o, mode, selected) {
     const open = available(o);
-    const tail = mode === "board" ? (o.status === "withdrawn" ? "订单已撤回" : `${isClaimable(o) ? "可领" : "余量"} ${open} 颗`) :
-      mode === "mine" ? `我已领 ${myShare(o)} 颗` : `已到账 ${o.delivered} / ${o.total} 颗`;
+    const tail = mode === "board" ? (o.status === "withdrawn" ? "订单已撤回" : `${isClaimable(o) ? "可领" : "余量"} ${open} 颗`) : `已到账 ${o.delivered} / ${o.total} 颗`;
     const sub = mode === "board" ? `${o.dispatcher} 派发 · ${o.date}` : `${o.source} · ${o.customer}`;
     return `<button type="button" class="m-row${selected ? " is-current" : ""}" data-m-order="${esc(o.id)}" ${selected ? 'aria-current="true"' : ""}>
       <span class="m-row-top"><span class="m-order-no">${esc(o.id)}</span>${badge(o,mode)}</span>
@@ -149,7 +148,7 @@
     </section>`;
   }
 
-  function detail(o, mode, unavailable) {
+  function detail(o, mode, unavailable, personalStatus) {
     if (!o) return `<div class="m-empty"><h3>${unavailable ? "这笔订单当前不可查看" : "暂无可查看的订单"}</h3>${unavailable ? '<button type="button" data-m-back class="btn">返回订单列表</button>' : ""}</div>`;
     const own = o.dispatcher === demo.member;
     const details = tile("订单来源", o.source) + tile("派单人", o.dispatcher) +
@@ -158,9 +157,12 @@
       (own || myShare(o) ? tile("老板",o.customer) + (o.gameAccount ? tile("接收游戏账号",o.gameAccount) : "") : "");
     const unitLabel = o.basis === "到账颗数" ? "颗" : "次";
     const feeNote = `派抽 ${money(o.dispatchFee)}/${unitLabel} · 团抽 ${money(o.clubFee)}/${unitLabel} · 按${o.basis}`;
+    const statusTag = personalStatus
+      ? `<span class="mrs-tag" data-tone="${esc(personalStatus.tone)}"><i></i>${esc(personalStatus.label)}</span>`
+      : badge(o,mode);
     return `<div class="m-detail">
       <div class="m-detail-heading"><div class="m-detail-id">${icon("orders")} <span>${esc(o.id)}</span></div>
-      <div class="m-title-status"><h2>${esc(o.title)}</h2>${badge(o,mode)}</div></div>
+      <div class="m-title-status"><h2>${esc(o.title)}</h2>${statusTag}</div></div>
       ${mode === "board" ? claimSection(o) : delivery(o)}
       ${mode === "mine" && myShare(o) ? dailySection(o) : ""}
       ${mode === "dispatch" && own && o.status === "pending" ? `<section class="m-section"><div class="m-section-heading"><h3>派单处理</h3></div><p class="m-explain">核对收款后正式派发。发布成功后，全团收到接单提醒。</p><div class="m-action-row">${action("publish","正式派发")}</div></section>` : ""}
@@ -307,11 +309,15 @@
     ],
   };
 
-  window.renderMember = function renderMember(view = "board", id) {
-    const mode = view === "dispatch" || view === "mine" ? view : "board";
+  window.renderMember = function renderMember(view = "board", id, params = new URLSearchParams()) {
     const all = demo.state.orders;
-    const entries = mode === "board" ? all.filter(o=> o.status !== "pending") :
-      mode === "dispatch" ? all.filter(o=>o.dispatcher===demo.member) : all.filter(o=>myShare(o)>0);
+    if (view === "mine") {
+      window.MineDatabase.render(all.filter(o => myShare(o) > 0), id, params,
+        (order, status) => detail(order, "mine", !order, status), (code, order) => run(code, order, "mine"));
+      return;
+    }
+    const mode = view === "dispatch" ? view : "board";
+    const entries = mode === "board" ? all.filter(o=> o.status !== "pending" && !o.boardArchived) : all.filter(o=>o.dispatcher===demo.member);
     const explicit = entries.find(o=>o.id===id);
     const defs = filterDefs[mode] || [];
     let filter = defs.find(([key])=>key===filters[mode]);
@@ -320,18 +326,17 @@
     }
     const shown = filter ? entries.filter(filter[2]) : entries;
     const current = id ? explicit : (mode==="board" ? shown.find(isClaimable) : null) || shown[0];
-    const pageTitle = {board:"接单区",dispatch:"我的派单",mine:"我的承接"}[mode];
-    const queueTitle = {board:"已发布派单",dispatch:"派发记录",mine:"承接订单"}[mode];
-    const titleAction = mode==="mine" ? `<span class="m-member-name">${icon("user")}${esc(demo.member)}</span>` : action("direct", "直接派单");
+    const pageTitle = mode === "board" ? "接单区" : "我的派单";
+    const queueTitle = mode === "board" ? "已发布派单" : "派发记录";
+    const titleAction = action("direct", "直接派单");
     const counts = defs.map(([key,label,fn])=>`<button type="button" aria-pressed="${filters[mode]===key}" data-m-filter="${key}" class="${filters[mode]===key ? "on" : ""}">${esc(label)} <span>${entries.filter(fn).length}</span></button>`).join("");
     const screen = document.querySelector("#screen");
     screen.innerHTML = `<div class="m-workspace${id ? " m-detail-open" : ""}">
       <div class="m-head"><h1>${pageTitle}</h1>${titleAction}</div>
-      ${mode === "mine" ? `<div class="m-mine-line"><strong>${entries.length}</strong> 笔承接订单<span></span><strong>${entries.reduce((s,o)=>s+myShare(o),0)}</strong> 颗已领取</div>` : ""}
       <div class="m-master-detail">
         <section class="m-queue panel" aria-label="${queueTitle}"><div class="m-queue-header"><h2>${queueTitle}</h2><span>${entries.length} 单</span></div>
           ${counts ? `<div class="m-filters" role="group" aria-label="筛选订单">${counts}</div>` : ""}
-          <div class="m-rows">${shown.map(o=>row(o,mode,current?.id===o.id)).join("") || `<div class="m-empty"><span class="m-empty-icon">${icon("inbox")}</span><h3>${mode==="mine" ? "还没有承接订单" : "暂无符合条件的订单"}</h3>${mode==="mine" ? '<button type="button" class="btn" data-m-to-board>进入接单区</button>' : ""}</div>`}</div>
+          <div class="m-rows">${shown.map(o=>row(o,mode,current?.id===o.id)).join("") || `<div class="m-empty"><span class="m-empty-icon">${icon("inbox")}</span><h3>暂无符合条件的订单</h3></div>`}</div>
         </section>
         <section class="m-pane panel" aria-label="订单详情">
           <button class="m-back" type="button" data-m-back>${icon("back")}返回${pageTitle}</button>
@@ -353,7 +358,6 @@
         }
       }
       if (el.hasAttribute("data-m-back")) ClubUI.go("member",mode);
-      if (el.hasAttribute("data-m-to-board")) ClubUI.go("member","board");
       if (el.hasAttribute("data-m-action")) run(el.dataset.mAction,current,mode);
     });
   };

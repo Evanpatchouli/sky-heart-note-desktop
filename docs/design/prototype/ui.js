@@ -2,6 +2,9 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const icons = {
+    timeline: "M3 5h8v3H3zm5 6h10v3H8zm6 6h7v3h-7z",
+    table: "M3 4h18v16H3zM3 9h18M3 14h18M10 4v16",
+    kanban: "M3 4h18v16H3zM9 4v16M15 4v16M5 8h2m4 0h2m4 0h2",
     plane: "M21 3 3 10l7 2 2 8 9-17ZM10 12l11-9",
     home: "m3 10 9-7 9 7v10h-6v-6H9v6H3z",
     orders: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6m-6 4h6",
@@ -33,17 +36,19 @@
     client: [["orders","订单","orders"],["create","下单","plus"],["mine","我的","user"]],
   };
   function route() {
-    const [side, page, id] = location.hash.slice(1).split("/");
+    const [path, query] = location.hash.slice(1).split("?");
+    const [side, page, id] = path.split("/");
     const app = side === "client" ? "client" : "member";
     const view = nav[app].some(n => n[0] === page) ? page : nav[app][0][0];
-    return { app, view, id: id || "" };
+    return { app, view, id: id || "", params: new URLSearchParams(query) };
   }
   function navLinks(app,view) {
     return nav[app].map(([key,label,glyph]) => '<a class="shell-link" href="#'+app+'/'+key+'"'+(key===view?' aria-current="page"':'')+'>'+icon(glyph)+'<span>'+label+'</span></a>').join("");
   }
   function brand() { return '<span class="brand"><span class="brand-mark">'+icon("plane")+'</span>送心手记</span>'; }
-  function go(app,view,id) {
-    const hash = "#" + [app,view,id].filter(Boolean).map(encodeURIComponent).join("/");
+  function go(app,view,id,params) {
+    const search = new URLSearchParams(params).toString();
+    const hash = "#" + [app,view,id].filter(Boolean).map(encodeURIComponent).join("/") + (search ? "?" + search : "");
     if (location.hash === hash) refresh(); else location.hash = hash;
   }
   let timer;
@@ -104,7 +109,7 @@
     };});
   }
   function refresh() {
-    const {app,view,id}=route(), team=app==="member";
+    const {app,view,id,params}=route(), team=app==="member";
     const links=navLinks(app,view);
     document.body.dataset.app=app;
     document.title=(team?"团员端":"客户端")+" · "+nav[app].find(n=>n[0]===view)[1]+" · 送心手记原型";
@@ -117,7 +122,7 @@
     $("bottom-tabs").innerHTML=links;
     $("open-review").onclick=openReview;
     if (team) $("open-notices").onclick=openNotices;
-    (team ? window.renderMember : window.renderClient)(view,id);
+    (team ? window.renderMember : window.renderClient)(view,id,params);
   }
   window.ClubUI = {icon,esc,money,go,refresh,toast,dialog};
   addEventListener("DOMContentLoaded",()=>{

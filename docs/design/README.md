@@ -2,7 +2,7 @@
 
 范围为 P1 送心。团员端采用飞书工作台式的任务队列，客户端采用微信服务页式的订单和收支摘要。两端共用样单，切换视角可以接着操作。设计稿用于评审已确认的业务流程，正式应用的开发进度仍由[任务清单](../todo.md)追踪。
 
-[打开团员端 · 接单区](prototype/index.html#member/board) ｜ [打开客户端 · 我的订单](prototype/index.html#client/orders) ｜ [视觉与交互规范](style-guide.md)
+[打开团员端 · 接单区](prototype/index.html#member/board) ｜ [打开团员端 · 我的承接](prototype/index.html#member/mine?view=timeline) ｜ [打开客户端 · 我的订单](prototype/index.html#client/orders) ｜ [视觉与交互规范](style-guide.md)
 
 将仓库下载到本地，直接用浏览器打开 `prototype/index.html` 即可。也可在仓库根目录运行以下命令，通过 `http://localhost:5190/prototype/index.html` 访问。图标、脚本和样单都在本地。使用同一浏览器、同一个地址打开两个视角可以联动。禁用本地存储时，可在同一个页面内切换视角继续操作。
 
@@ -18,6 +18,20 @@ python -m http.server 5190 --bind 127.0.0.1 --directory docs/design
 | 客户端 | [订单进度与补差入口](previews/client-mobile.png) | [触屏订单页](previews/client-pad.png) | [订单与待办](previews/client-desktop.png) |
 
 两项关键操作另有[领取份额确认图](previews/member-claim.png)和[老板补差确认图](previews/client-adjustment.png)。以上图片从同一套可点击原型导出。
+
+### 我的承接 · 五种数据库视图
+
+在团员端进入「我的 → 我的承接」。首次进入默认显示时间轴，之后在当前标签页记住该团员上次使用的模式。五个标签展示同一份本人承接记录，搜索和状态筛选随视图切换保留。默认身份青禾有 6 笔示例，合计领取 176 颗，本人已到账 64 颗。演示业务日为 2026 年 11 月 24 日。
+
+| 模式 | 可以试什么 | 预览图 |
+| --- | --- | --- |
+| [时间轴](prototype/index.html#member/mine?view=timeline) | 横向滚动逐日刻度，点选日期或回到演示今天。观察「溪月」从 11 月 27 日跨到 12 月 3 日的任务条 | [桌面](previews/mine-timeline.png) · [手机](previews/mine-timeline-mobile.png) |
+| [列表](prototype/index.html#member/mine?view=list) | 扫读订单名称、状态、本人到账和排期，点整行进入详情 | [列表预览](previews/mine-list.png) |
+| [日历](prototype/index.html#member/mine?view=calendar) | 翻月观察跨周、跨月订单。点日期核对当天的承接清单，手机用每天的笔数和当天清单呈现重叠排期 | [月历预览](previews/mine-calendar.png) |
+| [表格](prototype/index.html#member/mine?view=table) | 点击「我的份额」「本人已到账」或「本人排期」表头排序，再点一次反向排列 | [属性表预览](previews/mine-table.png) |
+| [看板](prototype/index.html#member/mine?view=kanban) | 按本人承接状态分组。查看「浮光」的本人份额已完成，打开订单仍可见全单的其他团员尚在履约 | [看板预览](previews/mine-kanban.png) |
+
+试着从时间轴或日历的「未排期」打开「栀白」，点「调整本人排期」并保存起止日期。返回后它会出现在对应日期，另外四种视图也会反映这次修改。桌面亦可在时间轴上拖动任务条或其端点调整排期。领取数量、日报和财务状态分别由相应业务动作更新。
 
 ## 建议这样评审
 
