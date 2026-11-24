@@ -13,7 +13,7 @@ import "@/index.css";
 import "@/App.css";
 import "./review.css";
 
-const Dashboard = lazy(() => import("@/views/dashboard"));
+const Dashboard = lazy(() => import("./Dashboard"));
 const Users = lazy(() => import("@/views/system/user"));
 const Roles = lazy(() => import("@/views/system/role"));
 const Permissions = lazy(() => import("@/views/permission-demo"));
@@ -54,7 +54,7 @@ function ReviewHome() {
 
 const router = createHashRouter([{
   path:"/",element:<ReviewHome />,children:[
-    {index:true,element:<Navigate to="/club/orders" replace />},
+    {index:true,element:<Navigate to="/dashboard" replace />},
     {path:"dashboard",element:<Dashboard />},
     {path:"system/user",element:<Users />},
     {path:"system/role",element:<Roles />},

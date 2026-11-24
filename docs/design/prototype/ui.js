@@ -83,7 +83,7 @@
     const d=dialog({title:"演示设置",body:
       '<p>当前使用本地样单。操作只影响这个浏览器的演示记录。</p><div class="mode-list">'+
       '<button type="button" class="btn" id="review-switch">切换到'+esc(other)+icon("arrow")+'</button>'+
-      '<a class="btn" href="../admin/index.html#/club/orders">查看管理端原型'+icon("arrow")+'</a></div>'+
+      '<a class="btn" href="../admin/index.html#/dashboard">查看管理端原型'+icon("arrow")+'</a></div>'+
       '<p class="mode-section"><label for="review-member">团员端体验身份</label></p><select id="review-member">'+options+'</select>'+
       '<p class="mode-section">重新开始场景会替换当前演示记录</p><div class="mode-list">'+
       '<button class="btn" data-reset="review">恢复初始样单'+icon("refresh")+'</button>'+

@@ -2,7 +2,7 @@
 
 范围为 P1 送心。管理端沿用已有 Ant Design 后台，团员端采用飞书工作台式的任务队列，客户端采用微信服务页式的订单和收支摘要。三端可围绕同一笔样单走查，正式应用的开发进度由[任务清单](../todo.md)追踪。
 
-[管理端 · 订单监管](admin/index.html#/club/orders) ｜ [团员端 · 接单区](prototype/index.html#member/board) ｜ [团员端 · 我的承接](prototype/index.html#member/mine?view=timeline) ｜ [客户端 · 我的订单](prototype/index.html#client/orders) ｜ [视觉与交互规范](style-guide.md)
+[管理端 · 运营仪表盘](admin/index.html#/dashboard) ｜ [团员端 · 接单区](prototype/index.html#member/board) ｜ [团员端 · 我的承接](prototype/index.html#member/mine?view=timeline) ｜ [客户端 · 我的订单](prototype/index.html#client/orders) ｜ [视觉与交互规范](style-guide.md)
 
 将仓库下载到本地，直接用浏览器打开 `prototype/index.html` 即可。也可在仓库根目录运行以下命令，通过 `http://localhost:5190/prototype/index.html` 访问。图标、脚本和样单都在本地。使用同一浏览器、同一个地址打开两个视角可以联动。禁用本地存储时，可在同一个页面内切换视角继续操作。
 
@@ -16,7 +16,7 @@ python -m http.server 5190 --bind 127.0.0.1 --directory docs/design
 
 | 端 | 手机 · 390 × 844 | Pad · 820 × 1180 | 桌面 · 1440 × 900 |
 | --- | --- | --- | --- |
-| 管理端 | [订单摘要](previews/admin-orders-mobile.png) | [折叠导航和订单表](previews/admin-orders-pad.png) | [订单监管](previews/admin-orders-desktop.png) |
+| 管理端 | [运营待办](previews/admin-dashboard-mobile.png) | [运营仪表盘](previews/admin-dashboard-pad.png) | [运营仪表盘](previews/admin-dashboard-desktop.png) |
 | 团员端 | [接单队列与底部 Tab](previews/member-mobile.png) | [队列与选中订单](previews/member-pad.png) | [接单工作台](previews/member-desktop.png) |
 | 客户端 | [订单进度与补差入口](previews/client-mobile.png) | [触屏订单页](previews/client-pad.png) | [订单与待办](previews/client-desktop.png) |
 

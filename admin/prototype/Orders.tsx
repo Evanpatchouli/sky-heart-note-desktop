@@ -1,29 +1,15 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import {
   Button, Descriptions, Drawer, Flex, Grid, Input, Progress, Select, Space,
   Table, Tag, Typography, type TableColumnsType,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { money, useClub } from "./club";
+import { inQueue, orderQueues, statusColors, statusOf, type Queue } from "./order-overview";
 
 type Order = ReturnType<typeof useClub>["orders"][number];
 
-const statusColors: Record<string, string> = {
-  待派单: "gold", 已派发: "blue", 履约中: "processing", 待结算: "cyan",
-  待提交改价: "orange", 待老板答复: "orange", 待登记补款: "gold",
-  停送待退款: "volcano", 已退款: "default", 已撤回: "default",
-};
-function statusOf(order: Order) {
-  const changes: Record<string, string> = {
-    draft: "待提交改价", proposed: "待老板答复", agreed: "待登记补款",
-    refundDue: "停送待退款", refunded: "已退款",
-  };
-  if (changes[order.change]) return changes[order.change];
-  if (order.status === "withdrawn") return "已撤回";
-  if (order.status === "pending") return "待派单";
-  if (order.delivered >= order.total) return "待结算";
-  return order.status === "active" || order.delivered > 0 ? "履约中" : "已派发";
-}
 function orderStatus(order: Order) {
   const label = statusOf(order);
   return <Tag color={statusColors[label]}>{label}</Tag>;
@@ -103,14 +89,24 @@ function OrderDetail({ order, mobile }: { order: Order; mobile: boolean }) {
 export default function Orders() {
   const { orders } = useClub();
   const mobile = !Grid.useBreakpoint().md;
-  const [source, setSource] = useState<string>();
+  const [params, setParams] = useSearchParams();
+  const source = params.get("source") || undefined;
+  const rawQueue = params.get("queue");
+  const queue = rawQueue && Object.hasOwn(orderQueues, rawQueue) ? rawQueue as Queue : undefined;
+  function setFilter(key: string, value?: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value); else next.delete(key);
+    setParams(next, { replace: true });
+  }
   const [status, setStatus] = useState<string>();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<string>();
+  const selectedId = params.get("order");
+  const setSelectedId = (id?: string) => setFilter("order", id);
   const selected = orders.find(order => order.id === selectedId);
   const keyword = search.trim().toLowerCase();
   const filtered = orders.filter(order =>
+    (!queue || inQueue(order, queue)) &&
     (!source || order.source === source) && (!status || statusOf(order) === status) &&
     [order.id, order.title, order.customer, order.dispatcher].some(value => value.toLowerCase().includes(keyword)));
   const actionColumn: TableColumnsType<Order>[number] = {
@@ -134,16 +130,19 @@ export default function Orders() {
   ];
   return <section className="review-page">
     <Typography.Title level={4}>订单监管</Typography.Title>
+    {queue && <div style={{marginBottom: 12}}><Tag color="blue" closable onClose={() => { setFilter("queue"); setPage(1); }}>
+      {orderQueues[queue]}
+    </Tag></div>}
     <Flex className="review-toolbar" wrap gap={8} style={{ marginBottom: 16 }}>
       <Input allowClear prefix={<SearchOutlined />} placeholder="订单号、订单名称或成员" aria-label="搜索订单"
         style={{ width: mobile ? "100%" : 240 }} value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
       <Select allowClear aria-label="订单来源" placeholder="订单来源" style={{ minWidth: 112 }} value={source}
-        onChange={value => { setSource(value); setPage(1); }}
+        onChange={value => { setFilter("source",value); setPage(1); }}
         options={["直接派单", "客户端下单"].map(value => ({ value, label: value }))} />
       <Select allowClear aria-label="订单状态" placeholder="订单状态" style={{ minWidth: 120 }} value={status}
         onChange={value => { setStatus(value); setPage(1); }}
         options={Object.keys(statusColors).map(value => ({ value, label: value }))} />
-      <Button onClick={() => { setSearch(""); setSource(undefined); setStatus(undefined); setPage(1); }}>重置</Button>
+      <Button onClick={() => { setSearch(""); setParams({}, {replace:true}); setStatus(undefined); setPage(1); }}>重置</Button>
     </Flex>
     <Table<Order> rowKey="id" columns={columns} dataSource={filtered} scroll={mobile ? undefined : { x: 940 }}
       locale={{ emptyText: "暂无符合条件的订单" }} pagination={{

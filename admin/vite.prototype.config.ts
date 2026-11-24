@@ -11,7 +11,7 @@ export default defineConfig({
   define: { __CLUB_ADMIN_PREVIEW__: "true" },
   resolve: {
     alias: [
-      { find: /^@\/api\/(login-log|role|user-manage)\.api$/, replacement: resolve(__dirname, "prototype/system-api.ts") },
+      { find: /^@\/api\/(role|user-manage)\.api$/, replacement: resolve(__dirname, "prototype/system-api.ts") },
       { find: "@", replacement: resolve(__dirname, "src") },
     ],
     dedupe: ["react", "react-dom"],

@@ -1,7 +1,6 @@
 import { ADMIN_USER_ID } from "@webapp-template/common";
 import Resp from "@/models/Resp";
 import { SUCCESS_CODE } from "@/constants";
-import type * as LoginLog from "../src/api/login-log.api";
 import type * as Roles from "../src/api/role.api";
 import type * as Users from "../src/api/user-manage.api";
 
@@ -57,8 +56,3 @@ export const deleteUser: typeof Users.deleteUser = async id => ok(changeUser(id,
 export const restoreUser: typeof Users.restoreUser = async id => ok(changeUser(id,u=>{u.deleted=false;}));
 export const queryAllRoles: typeof Roles.queryAllRoles = async () => ok(roleList);
 export const queryRolePage: typeof Roles.queryRolePage = async ({page,size}) => ok(paginate(roleList,page,size));
-const counts = [3,4,3,6,4,5,3];
-export const count: typeof LoginLog.count = async range => ok(({daily:3,weekly:28,monthly:86,yearly:425})[range]);
-export const getTrendData: typeof LoginLog.getTrendData = async () => ok(counts.map((n,i)=>({
-  date:"2026-11-"+(18+i),count:n,growth:i ? Math.round((n/counts[i-1]-1)*100) : null,
-})));

@@ -15,12 +15,12 @@
 pnpm --dir common build
 pnpm --dir admin build:prototype
 python -m http.server 5190 --bind 127.0.0.1 --directory docs/design</pre>
-    <p><a id="launch" href="http://localhost:5190/admin/dist/#/club/orders">打开本地管理端原型</a> · <a href="../previews/admin-orders-desktop.png">查看订单监管预览图</a></p>
+    <p><a id="launch" href="http://localhost:5190/admin/dist/#/dashboard">打开本地管理端原型</a> · <a href="../previews/admin-dashboard-desktop.png">查看运营仪表盘预览图</a></p>
   </main>
   <noscript>请启用 JavaScript。也可查看<a href="../previews/admin-orders-desktop.png">静态预览图</a>。</noscript>
   <script>
     async function start() {
-      const target = "./dist/" + (location.hash || "#/club/orders");
+      const target = "./dist/" + (location.hash || "#/dashboard");
       if (location.protocol !== "file:") {
         document.getElementById("launch").href = target;
         try {
