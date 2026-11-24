@@ -2,6 +2,8 @@
 
 本仓库以 [webapp-template 的 main 提交 a6b1583](https://github.com/Evanpatchouli/webapp-template/tree/a6b158331a55a3c474f5ef7657522547b7d5f2c2) 为骨架，将原桌面团员端迁移为 Web 应用。四个前端共用 NestJS 服务。
 
+俱乐部平台的需求与计划见[业务说明](docs/club-business.md)、[送心业务细则](docs/heart-delivery.md)、[路线图](docs/roadmap.md)和[开发任务清单](docs/todo.md)。
+
 | 包 | 用途 | 开发地址 | 准入角色 |
 | --- | --- | --- | --- |
 | admin | 管理用户与角色、查看登录记录 | http://localhost:5173 | admin |
