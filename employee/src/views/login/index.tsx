@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Alert, Button, ConfigProvider, Form, Input } from "antd";
-import { ArrowRightOutlined, LockOutlined, PictureOutlined, ReloadOutlined, UserOutlined } from "@ant-design/icons";
-import { postLogin, SharedAccounts, useAuthCaptcha, type SignInProps } from "@webapp-template/common/web-auth";
+import { ArrowRightOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
+import { SharedAccounts, type SignInProps } from "@webapp-template/common/web-auth";
 import MemberBrand from "#/components/MemberBrand";
 import landscape from "#/assets/member-sky.webp";
 import styles from "./login.module.css";
+import CaptchaDialog, { type Credentials } from "./CaptchaDialog";
 
-type Credentials = { username: string; password: string; captcha: string };
 const theme = {
   token: {
     colorPrimary: "#204b72",
@@ -14,33 +14,14 @@ const theme = {
     colorTextSecondary: "#52677c",
     colorBorder: "#bdcad6",
     borderRadius: 8,
-    controlHeightLG: 46,
+    controlHeightLG: 40,
     fontFamily: '"Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
   },
 };
 
 export default function MemberLogin({ app, onLogin }: SignInProps) {
-  const [form] = Form.useForm<Credentials>();
-  const captcha = useAuthCaptcha(app);
-  const [busy, setBusy] = useState(false);
+  const [pendingLogin, setPendingLogin] = useState<Credentials | null>(null);
   const [error, setError] = useState("");
-
-  function refreshCaptcha() {
-    form.setFieldValue("captcha", "");
-    captcha.refresh();
-  }
-
-  async function submit(values: Credentials) {
-    if (busy || !captcha.image) return;
-    setBusy(true);
-    setError("");
-    try {
-      onLogin(await postLogin(app, "account", values));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败，请重试");
-      refreshCaptcha();
-    } finally { setBusy(false); }
-  }
 
   return (
     <ConfigProvider theme={theme}>
@@ -58,34 +39,24 @@ export default function MemberLogin({ app, onLogin }: SignInProps) {
             <div className={styles.panelBody}>
               <h1 id="member-login-title">团员端登录</h1>
               <SharedAccounts app={app} onLogin={onLogin} />
-              <Form form={form} name="member_login" layout="vertical" requiredMark={false} size="large" onFinish={submit}>
-                <Form.Item label="账号" name="username" rules={[{ required: true, message: "请输入账号" }]}>
-                  <Input prefix={<UserOutlined />} autoComplete="username" />
+              <Form<Credentials> name="member_login" className={styles.credentials} size="large"
+                onValuesChange={() => setError("")} onFinish={values => { setError(""); setPendingLogin(values); }}>
+                <Form.Item name="username" rules={[{ required: true, whitespace: true, message: "请输入账号" }]}>
+                  <Input prefix={<UserOutlined />} placeholder="账号" aria-label="账号" autoComplete="username" />
                 </Form.Item>
-                <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
-                  <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
+                <Form.Item name="password" rules={[{ required: true, message: "请输入密码" }]}>
+                  <Input.Password prefix={<LockOutlined />} placeholder="密码" aria-label="密码" autoComplete="current-password" />
                 </Form.Item>
-                <Form.Item label="图形验证码" htmlFor="member_login_captcha">
-                  <div className={styles.challenge}>
-                    <Form.Item name="captcha" noStyle rules={[{ required: true, message: "请输入图形验证码" }]}>
-                      <Input prefix={<PictureOutlined />} placeholder="4 位验证码" autoComplete="off" maxLength={4} />
-                    </Form.Item>
-                    <button className={styles.captcha} type="button" onClick={refreshCaptcha}
-                      aria-label="刷新验证码" title="刷新验证码" disabled={busy || (!captcha.image && !captcha.error)}>
-                      {captcha.image
-                        ? <img src={`data:image/svg+xml;base64,${captcha.image}`} alt="图形验证码" />
-                        : <ReloadOutlined spin={!captcha.error} />}
-                    </button>
-                  </div>
-                </Form.Item>
-                {(error || captcha.error) && <Alert type="error" showIcon role="alert" title={error || captcha.error} className={styles.error} />}
-                <Button type="primary" block className={styles.submit} htmlType="submit" loading={busy}
-                  disabled={!captcha.image} icon={<ArrowRightOutlined />} iconPlacement="end">登录</Button>
+                {error && <Alert type="error" showIcon role="alert" title={error} className={styles.error} />}
+                <Button type="primary" block className={styles.submit} htmlType="submit"
+                  icon={<ArrowRightOutlined />} iconPlacement="end">登录</Button>
               </Form>
             </div>
           </section>
         </div>
       </main>
+      {pendingLogin && <CaptchaDialog app={app} credentials={pendingLogin} onLogin={onLogin}
+        onAccountError={setError} onClose={() => setPendingLogin(null)} />}
     </ConfigProvider>
   );
 }

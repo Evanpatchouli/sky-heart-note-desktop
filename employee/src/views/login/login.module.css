@@ -14,7 +14,7 @@
   display: grid;
   grid-template-columns: 47.5% 1fr;
   width: min(100%, 1040px);
-  min-height: 600px;
+  min-height: 480px;
   overflow: hidden;
   border-radius: 22px;
   background: #fff;
@@ -40,16 +40,16 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 55% center;
+  object-position: 55% bottom;
 }
 
 .caption h2 { margin: 0; font-size: clamp(28px, 2.7vw, 40px); font-weight: 650; line-height: 1.25; }
 .caption p { margin: 8px 0 0; font-size: 16px; letter-spacing: .05em; }
 
 .panel { display: grid; align-items: center; min-width: 0; padding: 56px clamp(32px, 4.4vw, 60px); }
-.panelBody { width: 100%; max-width: 400px; margin-inline: auto; }
+.panelBody { width: 100%; max-width: 360px; margin-inline: auto; }
 .panel h1 {
-  margin: 0 0 36px;
+  margin: 0 0 24px;
   color: #172c40;
   font-size: clamp(30px, 2.8vw, 38px);
   font-weight: 680;
@@ -57,7 +57,7 @@
   line-height: 1.25;
 }
 
-.panel :global(.ant-form-item-label > label) { font-size: 14px; font-weight: 600; }
+.credentials :global(.ant-form-item) { margin-bottom: 16px; }
 .panel :global(.ant-input-prefix) { color: #647b90; margin-inline-end: 10px; }
 .panel :global(.sky-accounts) { margin: 0 0 24px; }
 .panel :global(.sky-accounts p) { color: #405970; font-size: 14px; font-weight: 600; }
@@ -73,13 +73,14 @@
   cursor: pointer;
 }
 .panel :global(.sky-accounts button:hover) { background: #e7eff6; }
-.challenge { display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, 31%); gap: 10px; }
+.challenge { display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, 31%); gap: 8px; padding: 12px 0; }
+.challenge :global(.ant-form-item) { min-width: 0; margin: 0; }
 .captcha {
   box-sizing: border-box;
   display: grid;
   place-items: center;
   width: 100%;
-  height: 46px;
+  height: 40px;
   padding: 2px;
   overflow: hidden;
   border: 1px solid #bdcad6;
@@ -92,7 +93,7 @@
 .captcha:focus-visible, .panel :global(.sky-accounts button:focus-visible) { outline: 2px solid #326991; outline-offset: 2px; }
 .captcha img { width: 100%; height: 100%; object-fit: contain; }
 .error { margin-bottom: 16px; }
-.submit { margin-top: 8px; font-weight: 600; }
+.submit { font-weight: 600; }
 
 @media (max-width: 720px) {
   .page { padding: 20px; }
@@ -102,8 +103,6 @@
   .caption { display: none; }
   .panel { padding: 30px 26px 32px; }
   .panel h1 { margin-bottom: 24px; font-size: 28px; }
-  .panel :global(.ant-form-item) { margin-bottom: 18px; }
-  .submit { margin-top: 4px; }
 }
 
 @media (max-width: 360px) {
