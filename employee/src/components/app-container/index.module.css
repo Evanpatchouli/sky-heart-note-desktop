@@ -1,0 +1,10 @@
+.app-container {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}

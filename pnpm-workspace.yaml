@@ -1,0 +1,7 @@
+packages:
+  - 'common'
+  - 'admin'
+  - 'server'
+  - 'employee'
+  - 'client'
+  - 'site'

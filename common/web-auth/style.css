@@ -1,0 +1,16 @@
+.sky-signin {
+  width: min(22rem, calc(100% - 3rem));
+  margin: 10vh auto;
+  font: 1rem/1.5 system-ui, sans-serif;
+  color: #213547;
+  text-align: start;
+}
+.sky-signin h1 { font-size: 1.65rem; }
+.sky-signin form, .sky-signin label, .sky-accounts { display: grid; gap: .5rem; }
+.sky-signin form { gap: .9rem; }
+.sky-signin input, .sky-signin button, .sky-accounts button { padding: .55rem .75rem; font: inherit; }
+.sky-signin img { height: 2rem; vertical-align: middle; }
+.sky-accounts { margin-bottom: 1rem; }
+.sky-accounts p { margin: 0; }
+.sky-signin [role=alert], .sky-session [role=alert] { color: #a12427; }
+.sky-session { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; padding: .25rem .75rem; font: .875rem/1.5 system-ui, sans-serif; }

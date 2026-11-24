@@ -1,0 +1,28 @@
+services:
+  # NestJS 应用服务
+  webapp-template-server:
+    build:
+      context: ../
+      dockerfile: server/Dockerfile
+    image: webapp-template-server:latest
+    container_name: webapp-template-server
+    restart: always
+    ports:
+      - "8793:8793"
+    environment:
+      NODE_ENV: production
+      APP_HOST: 0.0.0.0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mongo # 加入同一网络
+    volumes:
+      - employee-data:/app/server/data/employee
+      - .env.production:/app/server/.env.production:ro # 只读挂载
+
+volumes:
+  employee-data:
+
+networks:
+  mongo:
+    external: true # 引用 mongo 网络
