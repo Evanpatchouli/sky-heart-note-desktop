@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument } from 'mongoose';
+import { USER_ID_PATTERN } from '@webapp-template/common';
 
 export type LoginLogDocument = HydratedDocument<LoginLog>;
 
@@ -25,11 +26,12 @@ export class LoginLog {
   login_ip: string;
 
   @Prop({
-    type: Types.ObjectId,
+    type: String,
     ref: 'User',
     required: [true, 'user_id不能为空'],
+    match: USER_ID_PATTERN,
   })
-  user_id: Types.ObjectId;
+  user_id: string;
 
   // 自动生成字段
   id: string; // MongoDB 的 _id 会映射为 id

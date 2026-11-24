@@ -1,13 +1,13 @@
 import { AppAccess } from '@/auth/auth.decorator';
 import { Controller, Get, Inject, Query, Req, Param, Put, Delete, Body } from '@nestjs/common';
 import Resp from '../../common/models/Resp';
-import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { RoleService } from '../role-module/role.service';
 import { ToBoolean, ToNumber } from '../../decorators/transform.decorator';
 import { Tag } from '../../decorators/tag.decorator';
 import { Todo } from '../../decorators/todo.decorator';
 import { UserManageService } from '../user-module/user.service.manage';
-import { PaginatedResult } from '@webapp-template/common';
+import { PaginatedResult, USER_ID_PATTERN } from '@webapp-template/common';
 import { User } from '../user-module/user.schema';
 import { vofy } from '@/utils/vofy';
 
@@ -18,6 +18,10 @@ class QueryUserPageParams {
   @IsNotEmpty()
   @ToNumber()
   size: number;
+
+  @IsOptional()
+  @Matches(USER_ID_PATTERN, { message: '用户 ID 必须由四位数字或大写字母组成' })
+  id?: string;
 }
 
 class UpdatePhoneDto {
@@ -63,6 +67,7 @@ export class UserManageController {
     const { list, ...result } = await this.userManageService.findPage(
       params.page,
       params.size,
+      params.id === undefined ? undefined : { _id: params.id },
     );
     return Resp.success({
       // list: list.map((i) => vofy(i)),

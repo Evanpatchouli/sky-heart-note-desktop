@@ -4,7 +4,7 @@ import { createHashRouter, Navigate, Outlet, RouterProvider, useLocation, useNav
 import { App as AntApp, Avatar, ConfigProvider, Dropdown, Result, Spin, Button, type MenuProps } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { AuditOutlined, DollarOutlined, ProfileOutlined, SettingOutlined, TeamOutlined } from "@ant-design/icons";
-import { ADMIN_USER_ID } from "@webapp-template/common";
+import { REVIEW_ADMIN_ID } from "./system-api";
 import AdminShell from "@/components/layouts/AdminShell";
 import { AuthMenu } from "@/views/components/auth-menu";
 import { acceptSession } from "@/auth/store";
@@ -70,7 +70,7 @@ declare const __CLUB_ADMIN_PREVIEW__: boolean;
 const root = createRoot(document.getElementById("root")!);
 if (typeof __CLUB_ADMIN_PREVIEW__ !== "undefined" && __CLUB_ADMIN_PREVIEW__) {
   // A display identity for the existing permission components; never written as an access token.
-  acceptSession({id:ADMIN_USER_ID, username:"review_admin",nickname:"管理员",roles:["admin"],permissions:Object.values(PERMISSIONS),token:""});
+  acceptSession({id:REVIEW_ADMIN_ID, username:"review_admin",nickname:"管理员",roles:["admin"],permissions:Object.values(PERMISSIONS),token:""});
   root.render(<ConfigProvider locale={zhCN}><AntApp><RouterProvider router={router}/></AntApp></ConfigProvider>);
 } else {
   root.render(<Result title="请从设计原型入口进入" subTitle="在仓库根目录运行 pnpm --dir admin dev:prototype，然后打开终端显示的地址。" />);

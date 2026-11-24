@@ -20,8 +20,7 @@ export class UserManageService {
     pageSize: number,
     filter?: QueryFilter<User>,
   ): Promise<PaginatedResult<User>> {
-    const result = await this.userModel.findPage(page, pageSize);
-    return result;
+    return this.userModel.findPage(page, pageSize, filter);
   }
 
   async getUserDetail(user_id: string): Promise<User> {

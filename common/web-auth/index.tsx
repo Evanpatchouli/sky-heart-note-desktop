@@ -28,10 +28,7 @@ export function useSessionActions() {
 const errorText = (error: unknown) => error instanceof Error ? error.message : "请求失败，请重试";
 
 function accountName(account: Pick<Candidate, "id" | "username" | "nickname">) {
-  if (account.username && account.nickname && account.username !== account.nickname) {
-    return `${account.nickname}（${account.username}）`;
-  }
-  return account.username || account.nickname || account.id;
+  return `${account.nickname || account.username || "账号"}（${account.id}）`;
 }
 
 export function SharedAccounts({ app, onLogin }: { app: WebApp; onLogin: (user: AppSession) => void }) {

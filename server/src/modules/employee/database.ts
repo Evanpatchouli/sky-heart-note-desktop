@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { USER_ID_PATTERN } from '@webapp-template/common';
 
 // Match the desktop schema, including SQLite type affinity for existing rows.
 export const recordColumns = {
@@ -45,10 +46,10 @@ const createRecordTables = Object.entries(recordColumns).map(([table, fields]) =
 }).join('\n');
 
 export function employeeDbPath(owner: string, directory: string) {
-  if (!/^[\da-f]{24}$/i.test(owner)) {
-    throw new Error('需要提供有效的 MongoDB 用户 ID');
+  if (!USER_ID_PATTERN.test(owner)) {
+    throw new Error('需要提供四位用户 ID（数字或大写字母）');
   }
-  return resolve(directory, owner.toLowerCase() + '.db');
+  return resolve(directory, `user-${owner}.db`);
 }
 
 export function withEmployeeDb<T>(

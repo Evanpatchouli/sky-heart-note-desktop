@@ -13,6 +13,7 @@ import {
   Space,
   Table,
   Tag,
+  Typography,
   type MenuProps,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -30,7 +31,7 @@ import type { PaginatedResult } from "@webapp-template/common";
 import { ifFalsy } from "@/utils/value";
 import USpan from "@/components/unimportant/uspan";
 import UA from "@/components/unimportant/ua";
-import { ADMIN_USER_ID } from "@webapp-template/common";
+import { USER_ID_PATTERN } from "@webapp-template/common";
 import { useTitle } from "@evanpatchouli/react-hooks-kit";
 
 export default function UserManageView() {
@@ -44,6 +45,7 @@ export default function UserManageView() {
     size: 10,
     totalPages: 1,
   });
+  const [userQuery, setUserQuery] = useState({ page: 1, size: 10, id: "" });
   const [phoneModal, setPhoneModal] = useState({ open: false, userId: "" });
   const [emailModal, setEmailModal] = useState({ open: false, userId: "" });
   const [roleModal, setRoleModal] = useState({ open: false, userId: "" });
@@ -53,18 +55,22 @@ export default function UserManageView() {
 
   const [roles, setRoles] = useState<Array<Record<string, any>>>([]);
 
-  const loadData = async (page = userPage.page, size = userPage.size) => {
-    const resp = await UserManageAPI.queryUserPage({ page, size });
-    setUserPage(
-      resp.getData() || {
-        list: [],
-        total: 0,
-        page: 1,
-        size: 10,
-        totalPages: 1,
-      },
-    );
+  const loadData = (page?: number, size?: number, id?: string) => {
+    setUserQuery((current) => ({
+      page: page ?? current.page,
+      size: size ?? current.size,
+      id: id ?? current.id,
+    }));
   };
+
+  function searchById(value: string) {
+    const id = value.trim().toUpperCase();
+    if (id && !USER_ID_PATTERN.test(id)) {
+      message.warning("用户 ID 必须由四位数字或字母组成");
+      return;
+    }
+    loadData(1, undefined, id);
+  }
 
   const handleMenuClick =
     (record: Record<string, any>): MenuProps["onClick"] =>
@@ -140,19 +146,19 @@ export default function UserManageView() {
         label: "变更角色",
         key: "update_roles",
         icon: <UserOutlined />,
-        disabled: record.id === ADMIN_USER_ID, // 管理员账号不允许变更角色
+        disabled: record.is_bootstrap_admin,
       },
       {
         label: "重置密码",
         key: "reset_password",
         icon: <RedoOutlined />,
-        disabled: record.id === ADMIN_USER_ID, // 管理员账号不允许重置密码
+        disabled: record.is_bootstrap_admin,
       },
       {
         label: "删除",
         key: "delete",
         icon: <DeleteOutlined />,
-        disabled: record.id === ADMIN_USER_ID, // 管理员账号不允许删除
+        disabled: record.is_bootstrap_admin,
         danger: true,
       },
     ];
@@ -160,11 +166,16 @@ export default function UserManageView() {
 
   const columns: ColumnsType<Record<string, any>> = [
     {
-      title: "昵称",
+      title: "昵称与用户 ID",
       dataIndex: "nickname",
       fixed: "left",
       width: 200,
-      render: (text) => (text ? <a>{text}</a> : <UA>未设置昵称</UA>),
+      render: (nickname, record) => (
+        <Space size="small">
+          {nickname || <UA>未设置昵称</UA>}
+          <Typography.Text code>{record.id}</Typography.Text>
+        </Space>
+      ),
     },
     {
       title: "账号",
@@ -231,7 +242,7 @@ export default function UserManageView() {
               详情
             </Button>
             <Button
-              disabled={record.id === ADMIN_USER_ID}
+              disabled={record.is_bootstrap_admin}
               onClick={async () => {
                 await UserManageAPI.toggleUserStatus(record.id);
                 message.success(record.status ? "已禁用" : "已启用");
@@ -260,23 +271,38 @@ export default function UserManageView() {
   ];
 
   useEffect(() => {
-    UserManageAPI.queryUserPage({ page: 1, size: 10 }).then((resp) => {
+    let cancelled = false;
+    const { page, size, id } = userQuery;
+    UserManageAPI.queryUserPage({ page, size, id: id || undefined }).then((resp) => {
+      if (cancelled) return;
       setUserPage(
         resp.getData() || {
           list: [],
           total: 0,
-          page: 1,
-          size: 10,
+          page,
+          size,
           totalPages: 1,
         },
       );
     });
+    return () => { cancelled = true; };
+  }, [userQuery]);
+
+  useEffect(() => {
     RoleAPI.queryAllRoles({ withPermission: false }).then((resp) => {
       setRoles(resp.getData() || []);
     });
   }, []);
   return (
     <div>
+      <Input.Search
+        aria-label="按用户 ID 查询"
+        placeholder="输入四位用户 ID"
+        enterButton="查询"
+        allowClear
+        onSearch={searchById}
+        style={{ width: 260, maxWidth: "100%", marginBottom: 16 }}
+      />
       <Table
         dataSource={userPage.list}
         rowKey={"id"}
@@ -285,7 +311,7 @@ export default function UserManageView() {
           pageSize: userPage.size,
           total: userPage.total,
           current: userPage.page,
-          onChange: (page, size) => { void loadData(page, size); },
+          onChange: (page, size) => loadData(page, size),
         }}
       />
       <Modal

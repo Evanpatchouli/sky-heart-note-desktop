@@ -24,7 +24,7 @@ pnpm --dir common build
 Copy-Item server/.env.example server/.env
 ```
 
-在 `server/.env` 中设置 MongoDB 连接、随机生成的 `SESSION_SECRET` 和首次创建管理员使用的 `BOOTSTRAP_ADMIN_PASSWORD`。保持 `MIGRATE_ON_START=true`，首次启动将创建角色与管理员，默认管理员账号是 `root`。已有模板数据库中的超级管理员会获得 `admin` 角色，其他旧账号保留原角色并按需补充 `common`。在客户端注册的账号初始角色为 `common`，管理员可在「系统管理 → 用户管理 → 更多 → 变更角色」中授权。
+在 `server/.env` 中设置 MongoDB 连接、随机生成的 `SESSION_SECRET` 和首次创建管理员使用的 `BOOTSTRAP_ADMIN_PASSWORD`。保持 `MIGRATE_ON_START=true`，使用空数据库启动，系统将创建角色与管理员，默认管理员账号是 `root`。服务端为管理员和其他新账号随机分配四位用户 ID，每位取自数字 0–9 和大写字母 A–Z，保留前导零。在客户端注册的账号初始角色为 `common`，管理员可在「系统管理 → 用户管理 → 更多 → 变更角色」中授权。用户列表展示昵称和短 ID，也可直接按短 ID 查询。
 
 在独立终端分别运行需要的服务。开发时各前端通过 Vite 将 `/api` 代理到 `http://127.0.0.1:8793`，请使用表中的 localhost 地址访问。
 
@@ -83,7 +83,7 @@ SITE_ORIGIN=https://www.example.com
 
 服务端会加入已有的 `mongo` 网络，API 与四个前端会加入已有的 `public-web` 网络。这两个外部网络可通过 `MONGO_NETWORK`、`PUBLIC_WEB_NETWORK` 更名。边缘 Nginx 终止 HTTPS，并将上述五个域名分别转发到 `sky-heart-api:8793`、`sky-heart-admin:80`、`sky-heart-employee:80`、`sky-heart-client:80`、`sky-heart-site:80`。三个登录端共享同一个 HTTPS API 主机及其授权 Cookie。
 
-**从旧的 server 单服务 Compose 切换**时，先用 `docker inspect webapp-template-server --format '{{range .Mounts}}{{println .Name .Destination}}{{end}}'` 确认挂载在 `/app/server/data/employee` 的卷名，将根 `.env` 的 `EMPLOYEE_VOLUME_NAME` 设为该值（通常是 `server_employee-data`），并沿用原 MongoDB、`SESSION_SECRET` 与应用域名。停止旧 API 容器后再执行根目录的部署脚本，避免端口冲突。若继续使用旧的独立部署，原 `server/redeploy.sh` 仍可使用。
+**从已使用四位用户 ID 的 server 单服务 Compose 切换**时，先用 `docker inspect webapp-template-server --format '{{range .Mounts}}{{println .Name .Destination}}{{end}}'` 确认挂载在 `/app/server/data/employee` 的卷名，将根 `.env` 的 `EMPLOYEE_VOLUME_NAME` 设为该值（通常是 `server_employee-data`），并沿用原 MongoDB、`SESSION_SECRET` 与应用域名。停止旧 API 容器后再执行根目录的部署脚本，避免端口冲突。若继续使用旧的独立部署，原 `server/redeploy.sh` 仍可使用。
 
 ## 跨端登录与部署
 
@@ -95,12 +95,12 @@ SITE_ORIGIN=https://www.example.com
 
 ## 团员数据与旧库导入
 
-账户、授权与会话保存在 MongoDB。团员业务保留 SQLite 的记录 ID、送心号与预约关联、时间戳以及设置。服务端按 MongoDB 用户 ID 隔离数据，默认写入 `server/data/employee/`，可用 `EMPLOYEE_DATA_DIR` 指定持久卷。服务端与导入工具应使用相同配置和数据卷。
+账户、授权与会话保存在 MongoDB。团员业务保留 SQLite 的记录 ID、送心号与预约关联、时间戳以及设置。服务端按四位用户 ID 隔离数据，例如账号 `00A1` 对应 `server/data/employee/user-00A1.db`，可用 `EMPLOYEE_DATA_DIR` 指定持久卷。服务端与导入工具应使用相同配置和数据卷。
 
-关闭旧桌面端，将其应用数据目录中的 `data.db` 备份至服务端可读的位置，再指定记录所属的 **MongoDB 用户 ID** 导入。
+关闭旧桌面端，将其应用数据目录中的 `data.db` 备份至服务端可读的位置，再指定记录所属的 **四位用户 ID** 导入。
 
 ```sh
-pnpm --dir server exec ts-node scripts/import-employee-db.ts <MongoDB用户ID> "<旧data.db的绝对路径>"
+pnpm --dir server exec ts-node scripts/import-employee-db.ts <四位用户ID> "<旧data.db的绝对路径>"
 ```
 
 工具以只读方式打开源文件，并在目标库内用一个事务导入 `booking`、`songxinhao` 和 `kv`。重复导入内容相同的记录会跳过，发现相同 ID 或键对应不同内容会回滚本次导入。

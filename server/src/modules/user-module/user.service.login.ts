@@ -9,6 +9,7 @@ import { hashPassword, matchesPassword } from '@/auth/password';
 import { EVENTS } from '@/constants/events';
 import UserCreatedEvent from '@/events/user.created.event';
 import { UserModel } from './user.model';
+import { isDuplicateKey, withNewUserId } from './user-id';
 import { RoleService } from '../role-module/role.service';
 
 @Injectable()
@@ -49,34 +50,53 @@ export class UserLoginService {
       throw new BadRequestException('用户名或密码无效');
     const record = await this.users.findByUsername(username);
     if (record) throw new ConflictException('用户名已被注册');
+    const [hashedPassword, role] = await Promise.all([
+      hashPassword(password),
+      this.commonRole(),
+    ]);
     try {
-      const user = await this.users.getModel().create({
-        username,
-        password: await hashPassword(password),
-        role_ids: [await this.commonRole()],
-        register_at: Date.now(),
-      });
+      const user = await withNewUserId((_id) =>
+        this.users.getModel().create({
+          _id,
+          username,
+          password: hashedPassword,
+          role_ids: [role],
+          register_at: Date.now(),
+        }),
+      );
       this.events.emit(EVENTS.USER_CREATED, new UserCreatedEvent(user.id));
       return user.id;
     } catch (error) {
-      if (error?.code === 11000) throw new ConflictException('用户名已被注册');
+      if (isDuplicateKey(error, 'username'))
+        throw new ConflictException('用户名已被注册');
       throw error;
     }
   }
 
   async verifiedContact(field: 'phone' | 'email', value: string) {
     const filter = { [field]: value };
-    const existing = await this.users.getModel().findOne(filter);
+    const users = this.users.getModel();
+    const existing = await users.findOne(filter);
     if (existing) return existing.id;
     const role = await this.commonRole();
-    const user = await this.users.getModel().findOneAndUpdate(
-      filter,
-      {
-        $setOnInsert: { ...filter, role_ids: [role], register_at: Date.now() },
-      },
-      { upsert: true, returnDocument: 'after' },
-    );
-    this.events.emit(EVENTS.USER_CREATED, new UserCreatedEvent(user.id));
-    return user.id;
+    try {
+      const result = await withNewUserId((_id) =>
+        users.findOneAndUpdate(
+          filter,
+          { $setOnInsert: { _id, ...filter, role_ids: [role], register_at: Date.now() } },
+          { upsert: true, returnDocument: 'after', includeResultMetadata: true },
+        ).exec(),
+      );
+      const id = result.value!.id;
+      if (result.lastErrorObject?.upserted)
+        this.events.emit(EVENTS.USER_CREATED, new UserCreatedEvent(id));
+      return id;
+    } catch (error) {
+      if (isDuplicateKey(error, field)) {
+        const user = await users.findOne(filter);
+        if (user) return user.id;
+      }
+      throw error;
+    }
   }
 }

@@ -1,4 +1,3 @@
-import { ADMIN_USER_ID } from "@webapp-template/common";
 import Resp from "@/models/Resp";
 import { SUCCESS_CODE } from "@/constants";
 import type * as Roles from "../src/api/role.api";
@@ -14,16 +13,18 @@ const roleList = [
 interface ReviewUser {
   id: string; nickname: string; username: string; status: number;
   register_at: number; phone: string; email: string; roleIds: string[]; deleted?: boolean;
+  is_bootstrap_admin: boolean;
 }
-const key = "sky-heart.admin-review.system.v1";
+export const REVIEW_ADMIN_ID = "00A0";
+const key = "sky-heart.admin-review.system.v2";
 function initialUsers(): ReviewUser[] {
   return [
-    [ADMIN_USER_ID,"管理员","review_admin","role-admin"],
-    ["member-1","青禾","qinghe","role-employee"],["member-2","鹿鸣","luming","role-employee"],
-    ["member-3","云岫","yunxiu","role-employee"],["member-4","阿澄","acheng","role-employee"],
-    ["member-5","禾川","hechuan","role-employee"],["client-1","知夏","zhixia","role-common"],
+    [REVIEW_ADMIN_ID,"管理员","review_admin","role-admin"],
+    ["00A1","青禾","qinghe","role-employee"],["00A2","鹿鸣","luming","role-employee"],
+    ["00A3","云岫","yunxiu","role-employee"],["00A4","阿澄","acheng","role-employee"],
+    ["00A5","禾川","hechuan","role-employee"],["00A6","知夏","zhixia","role-common"],
   ].map(([id,nickname,username,role], index) => ({id,nickname,username,roleIds:[role],status:1,
-    phone:"",email:"",register_at:Date.UTC(2026,10,18 + index,2)}));
+    is_bootstrap_admin: id === REVIEW_ADMIN_ID, phone:"",email:"",register_at:Date.UTC(2026,10,18 + index,2)}));
 }
 function readUsers(): ReviewUser[] {
   try { const saved = JSON.parse(localStorage.getItem(key) || "null"); if (Array.isArray(saved)) return saved; } catch { /* Private windows keep in-memory fixtures. */ }
@@ -41,7 +42,8 @@ const hydrate = (u: ReviewUser) => ({...u,roles:roleList.filter(r=>u.roleIds.inc
 function paginate<T>(list: T[], page: number, size: number) {
   return {list:list.slice((page-1)*size,page*size), page,size,total:list.length,totalPages:Math.ceil(list.length/size)};
 }
-export const queryUserPage: typeof Users.queryUserPage = async ({page,size}) => ok(paginate(users.filter(u=>!u.deleted).map(hydrate),page,size));
+export const queryUserPage: typeof Users.queryUserPage = async ({page,size,id}) =>
+  ok(paginate(users.filter(u=>!u.deleted && (id === undefined || u.id === id)).map(hydrate),page,size));
 export const getUserDetail: typeof Users.getUserDetail = async id => {
   const user=users.find(u=>u.id===id);
   if (!user) throw new Error("演示用户不存在");

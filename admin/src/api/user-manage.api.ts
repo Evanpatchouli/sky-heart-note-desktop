@@ -7,6 +7,7 @@ const appRequest = createAppRequest("/admin/user-manage");
 export const queryUserPage = (params: {
   page: number;
   size: number;
+  id?: string;
 }): Promise<Resp<PaginatedResult<Record<string, any>>>> =>
   appRequest.get("/", { params });
 

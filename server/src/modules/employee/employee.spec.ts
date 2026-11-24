@@ -7,8 +7,8 @@ import { EmployeeService } from './employee.service';
 import { importDesktopDb } from './import-desktop';
 
 describe('团员数据', () => {
-  const first = '0123456789abcdef00000001';
-  const second = '0123456789abcdef00000002';
+  const first = '00A1';
+  const second = 'COM1';
   const service = new EmployeeService();
   const previousDir = process.env.EMPLOYEE_DATA_DIR;
   let directory: string;
@@ -25,6 +25,8 @@ describe('团员数据', () => {
   });
 
   it('按账号隔离数字 ID，局部更新保留未修改列', () => {
+    expect(employeeDbPath(first, directory)).toBe(join(directory, 'user-00A1.db'));
+    expect(employeeDbPath(second, directory)).toBe(join(directory, 'user-COM1.db'));
     const id = service.create(first, 'booking', { title: '初稿', remark: '原备注' });
     expect(service.create(second, 'booking', { title: '其他团员' })).toBe(id);
     expect(service.update(first, 'booking', id, { title: '更新', yichu: 3 })).toBe(true);
@@ -87,5 +89,6 @@ describe('团员数据', () => {
     expect(service.list(first, 'booking').map(row => row.id)).toEqual([8, 9]);
     expect(service.list(first, 'songxinhao')).toMatchObject([{ id: 17, name: '旧账号' }]);
     expect(() => employeeDbPath('../other', directory)).toThrow();
+    expect(() => employeeDbPath('00a1', directory)).toThrow();
   });
 });

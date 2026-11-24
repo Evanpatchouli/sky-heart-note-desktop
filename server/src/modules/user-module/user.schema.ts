@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { Transform } from 'class-transformer';
+import { USER_ID_PATTERN } from '@webapp-template/common';
 import { Role } from '../role-module/role.schema';
 
 export type UserDocument = HydratedDocument<User>;
@@ -16,8 +16,8 @@ export type UserDocument = HydratedDocument<User>;
   toObject: { virtuals: true },
 })
 export class User {
-  @Transform(({ value }) => value?.toString())
-  _id?: Types.ObjectId;
+  @Prop({ type: String, required: true, match: USER_ID_PATTERN })
+  _id: string;
 
   @Prop({
     type: String,
@@ -71,6 +71,9 @@ export class User {
     comment: '状态：0-禁用，1-启用',
   })
   status: number;
+
+  @Prop({ type: Boolean, default: false, immutable: true })
+  is_bootstrap_admin: boolean;
 
   @Prop({
     type: [Types.ObjectId],
@@ -151,7 +154,7 @@ UserSchema.set('toJSON', {
   virtuals: true,
   versionKey: false,
   transform: (doc, ret) => {
-    ret.id = ret._id.toString();
+    ret.id = ret._id;
     const { _id, __v, ...rest } = ret;
     return rest;
   },
@@ -201,7 +204,7 @@ UserSchema.statics.findActiveUsers = function () {
   return this.find({ status: 1, deleted_at: null }).sort({ created_at: -1 });
 };
 
-UserSchema.statics.softDelete = function (id: string | Types.ObjectId) {
+UserSchema.statics.softDelete = function (id: string) {
   return this.findByIdAndUpdate(
     id,
     {
