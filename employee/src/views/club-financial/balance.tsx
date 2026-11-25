@@ -45,7 +45,7 @@ function BalanceEntries() {
             <Typography.Text>{entry.reason}</Typography.Text>
             {"withdrawalId" in entry ? <Typography.Text type="secondary" copyable>提现申请 {entry.withdrawalId}</Typography.Text> : null}
             {entry.orderId ? <Typography.Text type="secondary" copyable>{entry.orderId}</Typography.Text> : null}
-            {"businessType" in entry ? <Link to={`${entry.kind === "service_dispatch_fee" ? "/club/dispatch" : "/club/assignments"}?${new URLSearchParams({ business: entry.businessType, serviceOrder: entry.orderId })}`}>查看代跑订单</Link> : null}
+            {"businessType" in entry ? <Link to={`${entry.kind === "service_dispatch_fee" ? "/club/dispatch" : "/club/assignments"}?${new URLSearchParams({ business: entry.businessType, serviceOrder: entry.orderId })}`}>查看{entry.businessType === "companionship" ? "陪玩" : "代跑"}订单</Link> : null}
             <Typography.Text type="secondary">{showDate(entry.occurredAt)}</Typography.Text>
           </Flex>
         </Card>) : <Empty description="暂无入账流水" image={Empty.PRESENTED_IMAGE_SIMPLE} />}

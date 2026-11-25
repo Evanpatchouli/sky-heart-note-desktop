@@ -4,7 +4,7 @@ import { AppAccess, AuthUser } from '../../auth/auth.decorator';
 import Resp from '../../common/models/Resp';
 import {
   AssignServiceOrderDto, CreateClientServiceOrderDto, CreateEmployeeServiceOrderDto, DeliverServiceOrderDto,
-  PublishServiceOrderDto, RefundServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StopServiceOrderDto,
+  PublishServiceOrderDto, RefundServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StartServiceOrderDto, StopServiceOrderDto,
 } from './club-service-order.dto';
 import { ClubServiceOrderService } from './club-service-order.service';
 
@@ -70,6 +70,11 @@ export class EmployeeClubServiceOrderController extends ServiceOrderController {
   @Post(':id/claim')
   async claim(@AuthUser() actor: SessionUser, @Param('id') id: string, @Body() input: ServiceOrderRequestDto) {
     return Resp.success(await this.serviceOrders.claim(actor, id, input));
+  }
+
+  @Post(':id/start')
+  async start(@AuthUser() actor: SessionUser, @Param('id') id: string, @Body() input: StartServiceOrderDto) {
+    return Resp.success(await this.serviceOrders.start(actor, id, input));
   }
 
   @Post(':id/deliveries')

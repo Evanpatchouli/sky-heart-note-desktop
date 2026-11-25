@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
-  BUSINESS_DATE_PATTERN, dailyRunUnitPriceCents, type ServiceOrderAccounting, type ServiceOrderAction,
+  companionshipUnitPriceCents, dailyRunUnitPriceCents, type ServiceBusinessType, type ServiceOrderAccounting, type ServiceOrderAction,
   type ServiceOrderPage, type ServiceOrderScope, type ServiceOrderView,
 } from '@sky-club/common';
 import { createHash, randomInt } from 'node:crypto';
@@ -14,36 +14,34 @@ import { serviceOrderAccounting, serviceOrderPostings } from './club-service-ord
 import type {
   AssignServiceOrderDto, CreateClientServiceOrderDto, CreateEmployeeServiceOrderDto, CreateServiceOrderDto,
   DeliverServiceOrderDto, PublishServiceOrderDto, RefundServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StopServiceOrderDto,
+  StartServiceOrderDto,
 } from './club-service-order.dto';
 import { ClubServiceOrder } from './club-service-order.schema';
+import {
+  beijingDate, companionshipDeliveryDate, companionshipSlotStart, companionshipTime, dailyReportableUnits,
+  dateForUnit, hasCompanionshipDelivery, requireCompanionshipStart, serviceOrderSchedule,
+} from './club-service-order-schedule';
 import { CLUB_ID } from './club.schema';
 
 const durable = { writeConcern: { w: 'majority', j: true } } as const;
-const dailyRunPrices = { unitPriceCents: dailyRunUnitPriceCents, dispatchFeeCents: 200, clubFeeCents: 100 };
-const dayMs = 86_400_000;
-const beijingOffset = 8 * 60 * 60 * 1000;
+const servicePrices = {
+  daily_run: { unitPriceCents: dailyRunUnitPriceCents, dispatchFeeCents: 200, clubFeeCents: 100 },
+  companionship: { unitPriceCents: companionshipUnitPriceCents, dispatchFeeCents: 150, clubFeeCents: 100 },
+} satisfies Record<ServiceBusinessType, { unitPriceCents: number; dispatchFeeCents: number; clubFeeCents: number }>;
 
 type OrderAccess = { actor: SessionUser; canAssign?: boolean; finance?: boolean; financeScope?: boolean };
 type OrderChange = Partial<Pick<ClubServiceOrder, 'status' | 'dispatcherUserId' | 'receipt' | 'publishedAt' |
-  'executorUserId' | 'claimedAt' | 'completedAt' | 'deliveries' | 'stop' | 'refunds' | 'close'>>;
+  'executorUserId' | 'claimedAt' | 'completedAt' | 'deliveries' | 'stop' | 'refunds' | 'close' | 'startedAt' | 'occupiedSlots'>>;
 const financeOrders: QueryFilter<ClubServiceOrder> = {
   $or: [{ 'receipt.occurredAt': { $type: 'date' } }, { 'close.closedAt': { $type: 'date' } }, { status: 'stopped' }],
 };
-
-function dateForUnit(startDate: string, unit: number) {
-  return new Date(Date.parse(`${startDate}T00:00:00.000Z`) + (unit - 1) * dayMs).toISOString().split('T')[0];
-}
-
-function beijingDate(now: Date) {
-  return new Date(now.getTime() + beijingOffset).toISOString().slice(0, 10);
-}
 
 function hashInput(fields: readonly unknown[]) {
   return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
 }
 
 function parseOrderId(id: string) {
-  if (!isObjectIdOrHexString(id)) throw new BadRequestException('代跑订单标识格式无效');
+  if (!isObjectIdOrHexString(id)) throw new BadRequestException('服务订单标识格式无效');
   return new Types.ObjectId(id);
 }
 
@@ -52,7 +50,7 @@ function checkActive(order: ClubServiceOrder) {
 }
 
 function checkUnit(order: ClubServiceOrder, unit: number) {
-  if (unit > order.units) throw new BadRequestException('请选择本单约定的履约日');
+  if (unit > order.units) throw new BadRequestException('请选择本单约定的履约单位');
 }
 
 @Injectable()
@@ -77,13 +75,15 @@ export class ClubServiceOrderService implements OnModuleInit {
     return { items, nextCursor: orders.length > limit ? items[limit - 1].id : null };
   }
 
-  async detail(actor: SessionUser, id: string, { scope: requestedScope, businessType = 'daily_run' }: ServiceOrderQuery) {
+  async detail(actor: SessionUser, id: string, { scope: requestedScope, businessType }: ServiceOrderQuery) {
     const access = await this.readAccess(actor, requestedScope);
     const scope = actor.app === 'employee' ? {
       $or: [{ dispatcherUserId: actor.id }, { executorUserId: actor.id }, { status: 'published' },
         ...(access.canAssign ? [{ status: 'pending_assignment' }] : [])],
     } : actor.app === 'client' ? { customerUserId: actor.id } : access.financeScope ? financeOrders : {};
-    return this.view(await this.requireOrder({ ...scope, _id: parseOrderId(id), clubId: CLUB_ID, businessType }), access);
+    return this.view(await this.requireOrder({
+      ...scope, _id: parseOrderId(id), clubId: CLUB_ID, ...(businessType ? { businessType } : {}),
+    }), access);
   }
 
   async createClient(actor: SessionUser, input: CreateClientServiceOrderDto) {
@@ -120,28 +120,46 @@ export class ClubServiceOrderService implements OnModuleInit {
   claim(actor: SessionUser, id: string, { requestId }: ServiceOrderRequestDto) {
     return this.mutate(actor, id, 'claim', requestId, [], (order, now) => {
       if (order.status !== 'published') throw new ConflictException('本单已承接或当前无法承接');
-      return { status: 'claimed', executorUserId: actor.id, claimedAt: now };
+      const occupiedSlots = order.businessType === 'companionship'
+        ? Array.from({ length: order.units }, (_, index) => companionshipSlotStart(order, index + 1)) : undefined;
+      return { status: 'claimed', executorUserId: actor.id, claimedAt: now, ...(occupiedSlots ? { occupiedSlots } : {}) };
     });
   }
 
-  deliver(actor: SessionUser, id: string, { requestId, unit, evidence }: DeliverServiceOrderDto) {
-    return this.mutate(actor, id, 'deliveries', requestId, [unit, evidence], (order, now) => {
-      if (order.status !== 'claimed') throw new ConflictException('本单暂无可填报的履约日');
+  start(actor: SessionUser, id: string, { requestId, occurredAt }: StartServiceOrderDto) {
+    const startedAt = companionshipTime(occurredAt);
+    return this.mutate(actor, id, 'start', requestId, [startedAt.toISOString()], (order, now) => {
+      if (order.status !== 'claimed') throw new ConflictException('本单当前不能登记开场');
+      requireCompanionshipStart(order, startedAt, now);
+      return { startedAt };
+    });
+  }
+
+  deliver(actor: SessionUser, id: string, { requestId, unit, evidence, finishedAt: inputTime }: DeliverServiceOrderDto) {
+    const finishedAt = inputTime === undefined ? undefined : companionshipTime(inputTime);
+    const fields = finishedAt ? [unit, evidence, finishedAt.toISOString()] : [unit, evidence];
+    return this.mutate(actor, id, 'deliveries', requestId, fields, (order, now) => {
+      if (order.status !== 'claimed') throw new ConflictException('本单暂无可填报的履约单位');
       checkUnit(order, unit);
-      const businessDate = dateForUnit(order.startDate, unit);
-      if (businessDate > beijingDate(now)) throw new BadRequestException('尚未到该北京业务日，不能提交交付凭据');
-      if (order.deliveries.some(delivery => delivery.unit === unit)) throw new ConflictException('该日已提交交付凭据');
-      return { deliveries: [...order.deliveries, { unit, businessDate, evidence, submittedAt: now }] };
+      const businessDate = order.businessType === 'companionship'
+        ? companionshipDeliveryDate(order, unit, finishedAt, now) : dateForUnit(order.startDate, unit);
+      if (order.businessType === 'daily_run') {
+        if (finishedAt) throw new BadRequestException('代跑无需填写陪玩实际完成时间');
+        if (businessDate > beijingDate(now)) throw new BadRequestException('尚未到该北京业务日，不能提交交付凭据');
+      }
+      if (order.deliveries.some(delivery => delivery.unit === unit)) throw new ConflictException('该履约单位已提交交付凭据');
+      const delivery = { unit, businessDate, evidence, submittedAt: now, ...(finishedAt ? { finishedAt } : {}) };
+      return { deliveries: [...order.deliveries, delivery] };
     });
   }
 
   accept(actor: SessionUser, id: string, { requestId, unit }: ServiceOrderUnitDto) {
     return this.mutate(actor, id, 'accept', requestId, [unit], (order, now) => {
-      if (order.status !== 'claimed') throw new ConflictException('本单暂无可确认的履约日');
+      if (order.status !== 'claimed') throw new ConflictException('本单暂无可确认的履约单位');
       checkUnit(order, unit);
       const delivery = order.deliveries.find(item => item.unit === unit);
-      if (!delivery) throw new ConflictException('该日还未提交交付凭据');
-      if (delivery.acceptedAt) throw new ConflictException('该日已验收');
+      if (!delivery) throw new ConflictException('该履约单位还未提交交付凭据');
+      if (delivery.acceptedAt) throw new ConflictException('该履约单位已验收');
       const deliveries = order.deliveries.map(item => item.unit === unit ? { ...item, acceptedAt: now } : item);
       const completed = deliveries.length === order.units && deliveries.every(item => item.acceptedAt);
       return { deliveries, ...(completed ? { status: 'completed', completedAt: now } : {}) };
@@ -149,9 +167,11 @@ export class ClubServiceOrderService implements OnModuleInit {
   }
 
   stop(actor: SessionUser, id: string, { requestId, reason }: StopServiceOrderDto) {
-    return this.mutate(actor, id, 'stop', requestId, [reason], (_order, now) => ({
-      status: 'stopped', stop: { reason, stoppedAt: now, stoppedByUserId: actor.id },
-    }));
+    return this.mutate(actor, id, 'stop', requestId, [reason], (order, now) => {
+      const occupiedSlots = order.businessType === 'companionship'
+        ? order.deliveries.map(({ unit }) => companionshipSlotStart(order, unit)) : undefined;
+      return { status: 'stopped', stop: { reason, stoppedAt: now, stoppedByUserId: actor.id }, ...(occupiedSlots ? { occupiedSlots } : {}) };
+    });
   }
 
   refund(actor: SessionUser, id: string, { requestId, amountCents, occurredAt, transferReference }: RefundServiceOrderDto) {
@@ -185,23 +205,26 @@ export class ClubServiceOrderService implements OnModuleInit {
 
   private async create(source: ClubServiceOrder['source'], actorId: string, customerUserId: string,
     input: CreateServiceOrderDto, requestedDispatcherId?: string) {
-    const { businessType, requestId, recipientGameAccount, serviceDescription, startDate, units } = input;
+    const { businessType, requestId, recipientGameAccount, serviceDescription, units } = input;
+    const schedule = serviceOrderSchedule(input);
     const key = { clubId: CLUB_ID, businessType, source, createdByUserId: actorId, requestId };
-    const creationHash = hashInput([customerUserId, requestedDispatcherId, recipientGameAccount, serviceDescription, startDate, units]);
+    const creationHash = hashInput([
+      customerUserId, requestedDispatcherId, recipientGameAccount, serviceDescription,
+      schedule.scheduledStartAt?.toISOString() ?? schedule.startDate, units,
+    ]);
     const replay = (order: ClubServiceOrder) => {
-      if (order.creationHash !== creationHash) throw new ConflictException('相同提交标识已用于创建内容不同的代跑订单');
+      if (order.creationHash !== creationHash) throw new ConflictException('相同提交标识已用于创建内容不同的服务订单');
       return order;
     };
     const original = await this.orders.findOne(key).readConcern('majority').lean();
     if (original) return replay(original);
-    if (!BUSINESS_DATE_PATTERN.test(dateForUnit(startDate, units))) throw new BadRequestException('约定的最后一个业务日超出可记录范围');
-
     try {
       if (source === 'direct_dispatch') await this.customers.requireExisting(customerUserId);
       const dispatcherUserId = source === 'direct_dispatch' ? actorId : await this.selectDispatcher(requestedDispatcherId);
-      const quote = { ...dailyRunPrices, totalCents: units * dailyRunPrices.unitPriceCents };
+      const prices = servicePrices[businessType];
+      const quote = { ...prices, totalCents: units * prices.unitPriceCents };
       return (await new this.orders({
-        ...key, creationHash, customerUserId, dispatcherUserId, quote, recipientGameAccount, serviceDescription, startDate, units,
+        ...key, ...schedule, creationHash, customerUserId, dispatcherUserId, quote, recipientGameAccount, serviceDescription, units,
         status: dispatcherUserId ? 'pending_dispatch' : 'pending_assignment',
       }).save(durable.writeConcern)).toObject();
     } catch (error) {
@@ -228,7 +251,7 @@ export class ClubServiceOrderService implements OnModuleInit {
     // the same order. A losing writer validates again against the winning state.
     for (let attempt = 0; attempt < 12; attempt++) {
       const access = await this.readAccess(actor);
-      if (action === 'assign' && !access.canAssign) throw new ForbiddenException('仅团长或副团长可分配代跑订单');
+      if (action === 'assign' && !access.canAssign) throw new ForbiddenException('仅团长或副团长可分配服务订单');
       const order = await this.requireOrder(scope);
       const previous = order.commands.find(command => command.requestId === requestId);
       if (previous) {
@@ -238,10 +261,16 @@ export class ClubServiceOrderService implements OnModuleInit {
       }
       if (action !== 'refund' && action !== 'close') checkActive(order);
       const update = await change(order, new Date());
-      const saved = await this.orders.findOneAndUpdate({ ...scope, revision: order.revision }, {
-        $set: update, $push: { commands: { requestId, action, actorUserId: actor.id, inputHash } }, $inc: { revision: 1 },
-      }, { ...durable, runValidators: true, returnDocument: 'after' }).lean();
-      if (saved) return this.actionResult(action, saved, access);
+      try {
+        const saved = await this.orders.findOneAndUpdate({ ...scope, revision: order.revision }, {
+          $set: update, $push: { commands: { requestId, action, actorUserId: actor.id, inputHash } }, $inc: { revision: 1 },
+        }, { ...durable, runValidators: true, returnDocument: 'after' }).lean();
+        if (saved) return this.actionResult(action, saved, access);
+      } catch (error) {
+        if (action === 'claim' && isDuplicateKey(error, 'occupiedSlots'))
+          throw new ConflictException('该时段与您已承接的陪玩预约重叠');
+        throw error;
+      }
     }
     throw new ConflictException('本单正在更新，请刷新后核对');
   }
@@ -252,16 +281,16 @@ export class ClubServiceOrderService implements OnModuleInit {
     // from immutable terms without disclosing later work to the assigning user.
     return this.view({
       ...order, status: 'pending_dispatch', executorUserId: undefined, receipt: undefined, stop: undefined,
-      close: undefined, refunds: undefined, deliveries: [],
+      close: undefined, refunds: undefined, startedAt: undefined, deliveries: [],
     }, access);
   }
 
   private actionScope(actor: SessionUser, action: ServiceOrderAction): QueryFilter<ClubServiceOrder> {
     if (actor.app === 'client' && (action === 'accept' || action === 'stop')) return { customerUserId: actor.id };
-    if (actor.app !== 'employee' || action === 'accept' || action === 'stop') throw new ForbiddenException('该端不能执行此代跑订单操作');
+    if (actor.app !== 'employee' || action === 'accept' || action === 'stop') throw new ForbiddenException('该端不能执行此服务订单操作');
     if (action === 'assign') return {};
     if (action === 'claim') return { publishedAt: { $type: 'date' } };
-    if (action === 'deliveries') return { executorUserId: actor.id };
+    if (action === 'deliveries' || action === 'start') return { executorUserId: actor.id };
     return { dispatcherUserId: actor.id };
   }
 
@@ -298,7 +327,7 @@ export class ClubServiceOrderService implements OnModuleInit {
 
   private async requireOrder(scope: QueryFilter<ClubServiceOrder>) {
     const order = await this.orders.findOne(scope).readConcern('majority').lean();
-    if (!order) throw new NotFoundException('代跑订单不存在或不归您办理');
+    if (!order) throw new NotFoundException('服务订单不存在或不归您办理');
     return order;
   }
 
@@ -312,8 +341,13 @@ export class ClubServiceOrderService implements OnModuleInit {
     if (order.status === 'pending_dispatch' && ownDispatch) actions.push('publish');
     if (order.status === 'published' && actor.app === 'employee') actions.push('claim');
     if (order.status === 'claimed' && ownExecution) {
-      const elapsedDays = Math.max(0, Math.min(order.units, Math.floor((Date.parse(beijingDate(new Date())) - Date.parse(order.startDate)) / dayMs) + 1));
-      if (order.deliveries.length < elapsedDays) actions.push('deliveries');
+      const now = new Date();
+      if (order.businessType === 'companionship') {
+        if (!order.startedAt && order.scheduledStartAt && now >= order.scheduledStartAt) actions.push('start');
+        if (hasCompanionshipDelivery(order, now)) actions.push('deliveries');
+      } else if (order.deliveries.length < dailyReportableUnits(order, now)) {
+        actions.push('deliveries');
+      }
     }
     if (order.status === 'claimed' && ownCustomer && order.deliveries.some(delivery => !delivery.acceptedAt)) actions.push('accept');
     if (ownCustomer && order.status !== 'completed' && order.status !== 'stopped') actions.push('stop');
@@ -330,8 +364,13 @@ export class ClubServiceOrderService implements OnModuleInit {
       id: order._id.toHexString(), businessType, source, dispatcherUserId: order.dispatcherUserId ?? null,
       executorUserId: order.executorUserId ?? null, serviceDescription, startDate, units, status, actions,
       ...(showDetails ? { customerUserId, recipientGameAccount } : {}),
-      deliveries: showDetails ? order.deliveries.toSorted((a, b) => a.unit - b.unit).map(({ unit, businessDate, evidence, submittedAt, acceptedAt }) => ({
+      ...(order.scheduledStartAt && order.scheduledEndAt ? {
+        scheduledStartAt: order.scheduledStartAt.toISOString(), scheduledEndAt: order.scheduledEndAt.toISOString(),
+      } : {}),
+      ...(showDetails && order.startedAt ? { startedAt: order.startedAt.toISOString() } : {}),
+      deliveries: showDetails ? order.deliveries.toSorted((a, b) => a.unit - b.unit).map(({ unit, businessDate, evidence, submittedAt, acceptedAt, finishedAt }) => ({
         unit, businessDate, evidence, submittedAt: submittedAt.toISOString(), ...(acceptedAt ? { acceptedAt: acceptedAt.toISOString() } : {}),
+        ...(finishedAt ? { finishedAt: finishedAt.toISOString() } : {}),
       })) : [],
       ...(showMoney ? { quote: { unitPriceCents: order.quote.unitPriceCents, totalCents: order.quote.totalCents } } : {}),
       ...(showMoney && order.receipt ? { receipt: { amountCents: order.receipt.amountCents, occurredAt: order.receipt.occurredAt.toISOString() } } : {}),

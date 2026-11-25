@@ -4,7 +4,7 @@ import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, Flex, Grid,
 import {
   commissionBasisLabel, commissionUnit, formatCentsAsYuan, priceAdjustmentStateLabel, settlementIssueLabel,
   giftSettlementStatusLabel, type GiftSettlementRow, type AdminGiftSettlement,
-  terminationReviewLabel, type AdminSettlement, type DispatchTermination, type PriceAdjustment, type SettlementOrderRow,
+  terminationReviewLabel, type AdminSettlement, type DispatchTermination, type PriceAdjustment, type SettlementOrderRow, type ServiceBusinessType,
 } from "@sky-club/common";
 import { getSettlement, getSettlements } from "@/api/club.api";
 import type { AdminClubContext } from "../home";
@@ -43,14 +43,14 @@ export default function Settlements() {
   const refreshBalance = useCallback(() => setBalanceRevision(value => value + 1), []);
   const orderId = params.get("order") ?? undefined;
   const calculationId = params.get("calculation") ?? undefined;
-  const daily = params.get("business") === "daily_run";
+  const business = params.get("business") === "companionship" ? "companionship" : params.get("business") === "daily_run" ? "daily_run" : undefined;
   const { md } = Grid.useBreakpoint();
 
   function showOrder(order?: string, calculation?: string) {
     if (!selected) return;
     setParams({ ...(order ? { order } : {}), ...(calculation ? { calculation } : {}) }, { replace: true });
   }
-  function showBalanceOrder(id: string, business?: "daily_run") {
+  function showBalanceOrder(id: string, business?: ServiceBusinessType) {
     if (business) setParams({ business, serviceOrder: id });
     else showOrder(id);
   }
@@ -65,12 +65,13 @@ export default function Settlements() {
         {selected ? <>
           <ClubBalanceCard key={balanceRevision} onOpen={showBalanceOrder} />
           <nav aria-label="财务业务类型" className="service-business-switch">
-            <Button type={!daily ? "primary" : "default"} onClick={() => setParams({})}>送心</Button>
-            <Button type={daily ? "primary" : "default"} onClick={() => setParams({ business: "daily_run" })}>代跑</Button>
+            <Button type={!business ? "primary" : "default"} onClick={() => setParams({})}>送心</Button>
+            <Button type={business === "daily_run" ? "primary" : "default"} onClick={() => setParams({ business: "daily_run" })}>代跑</Button>
+            <Button type={business === "companionship" ? "primary" : "default"} onClick={() => setParams({ business: "companionship" })}>陪玩</Button>
           </nav>
-          {daily ? <ServiceOrders key={userId} app="admin" userId={userId} token={token} scope="finance" orderId={params.get("serviceOrder")} onOpen={id => setParams({ business: "daily_run", ...(id ? { serviceOrder: id } : {}) })} /> : <SettlementList onOpen={showOrder} />}
+          {business ? <ServiceOrders key={`${userId}:${business}`} app="admin" userId={userId} token={token} business={business} scope="finance" orderId={params.get("serviceOrder")} onOpen={id => setParams({ business, ...(id ? { serviceOrder: id } : {}) })} /> : <SettlementList onOpen={showOrder} />}
         </> : null}
-        {selected && !daily ? <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
+        {selected && !business ? <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
           {orderId ? <SettlementDetail key={`${orderId}/${calculationId ?? ""}`}
             orderId={orderId} calculationId={calculationId} compact={!md}
             onChange={id => showOrder(orderId, id)} /> : null}

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Input, Spin, Typography } from "antd";
-import { clubSettlementPostingLabel, servicePostingLabel, formatCentsAsYuan, USER_ID_PATTERN, type ClubBalance } from "@sky-club/common";
+import { clubSettlementPostingLabel, servicePostingLabel, formatCentsAsYuan, USER_ID_PATTERN, type ClubBalance, type ServiceBusinessType } from "@sky-club/common";
 import { getClubBalance } from "@/api/club-finance.api";
 
 const money = (cents: number) => `${cents < 0 ? "−" : ""}¥${formatCentsAsYuan(Math.abs(cents))}`;
 
-export default function ClubBalanceCard({ onOpen }: { onOpen: (id: string, business?: "daily_run") => void }) {
+export default function ClubBalanceCard({ onOpen }: { onOpen: (id: string, business?: ServiceBusinessType) => void }) {
   const [query, setQuery] = useState("");
   const [memberId, setMemberId] = useState("");
   return <Card size="small" title="入账流水">
@@ -23,7 +23,7 @@ export default function ClubBalanceCard({ onOpen }: { onOpen: (id: string, busin
   </Card>;
 }
 
-function BalanceEntries({ memberId, onOpen }: { memberId: string; onOpen: (id: string, business?: "daily_run") => void }) {
+function BalanceEntries({ memberId, onOpen }: { memberId: string; onOpen: (id: string, business?: ServiceBusinessType) => void }) {
   const [data, setData] = useState<ClubBalance>();
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);

@@ -19,12 +19,12 @@ export default function Orders() {
   const canReadOrders = !!club?.permissions.includes("CLUB_ORDERS_READ");
   const canReadFinance = !!club?.permissions.includes("CLUB_FINANCE_READ");
   if (!canReadOrders && !canReadFinance) return <Empty description="当前账号没有订单或财务查看权限" />;
-  const daily = params.get("business") === "daily_run";
-  function switchBusiness(value: boolean) {
-    const next = new URLSearchParams(params); if (value) next.set("business", "daily_run"); else next.delete("business"); next.delete("serviceOrder"); setParams(next);
+  const business = params.get("business") === "companionship" ? "companionship" : params.get("business") === "daily_run" ? "daily_run" : undefined;
+  function switchBusiness(value?: "daily_run" | "companionship") {
+    const next = new URLSearchParams(params); if (value) next.set("business", value); else next.delete("business"); next.delete("serviceOrder"); setParams(next);
   }
-  return <><nav aria-label="业务类型" className="service-business-switch"><button aria-current={!daily ? "page" : undefined} onClick={() => switchBusiness(false)}>送心</button>{canReadOrders ? <button aria-current={daily ? "page" : undefined} onClick={() => switchBusiness(true)}>代跑</button> : null}</nav>
-    {daily && !canReadOrders ? <Empty description="当前账号没有代跑订单查看权限" /> : daily ? <ServiceOrders key={userId} app="admin" userId={userId} token={token} orderId={params.get("serviceOrder")} onOpen={id => {
+  return <><nav aria-label="业务类型" className="service-business-switch"><button aria-current={!business ? "page" : undefined} onClick={() => switchBusiness()}>送心</button>{canReadOrders ? <><button aria-current={business === "daily_run" ? "page" : undefined} onClick={() => switchBusiness("daily_run")}>代跑</button><button aria-current={business === "companionship" ? "page" : undefined} onClick={() => switchBusiness("companionship")}>陪玩</button></> : null}</nav>
+    {business && !canReadOrders ? <Empty description="当前账号没有服务订单查看权限" /> : business ? <ServiceOrders key={`${userId}:${business}`} app="admin" userId={userId} token={token} business={business} orderId={params.get("serviceOrder")} onOpen={id => {
       const next = new URLSearchParams(params); if (id) next.set("serviceOrder", id); else next.delete("serviceOrder"); setParams(next);
     }} /> : <OrderList key={`${canReadOrders}/${canReadFinance}`} canReadOrders={canReadOrders} canReadFinance={canReadFinance} />}</>;
 }

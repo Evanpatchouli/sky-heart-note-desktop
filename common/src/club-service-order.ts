@@ -1,8 +1,14 @@
-export type ServiceBusinessType = "daily_run";
+export type ServiceBusinessType = "daily_run" | "companionship";
 export const dailyRunUnitPriceCents = 2000;
+export const companionshipUnitPriceCents = 1500;
+export const companionshipSlotMinutes = 30;
+export const serviceBusinessLabels: Record<ServiceBusinessType, string> = {
+  daily_run: "代跑",
+  companionship: "陪玩",
+};
 export type ServiceOrderScope = "dispatch" | "board" | "mine" | "finance";
 export type ServiceOrderStatus = "pending_assignment" | "pending_dispatch" | "published" | "claimed" | "completed" | "stopped";
-export type ServiceOrderAction = "assign" | "publish" | "claim" | "deliveries" | "accept" | "stop" | "refund" | "close";
+export type ServiceOrderAction = "assign" | "publish" | "claim" | "start" | "deliveries" | "accept" | "stop" | "refund" | "close";
 
 export interface ServiceOrderAccounting {
   status: "in_progress" | "refund_pending" | "ready_to_close" | "closed" | "void";
@@ -25,6 +31,7 @@ export interface ServiceOrderDelivery {
   businessDate: string;
   evidence: string;
   submittedAt: string;
+  finishedAt?: string;
   acceptedAt?: string;
 }
 
@@ -38,6 +45,9 @@ export interface ServiceOrderView {
   recipientGameAccount?: string;
   serviceDescription: string;
   startDate: string;
+  scheduledStartAt?: string;
+  scheduledEndAt?: string;
+  startedAt?: string;
   units: number;
   status: ServiceOrderStatus;
   actions: ServiceOrderAction[];

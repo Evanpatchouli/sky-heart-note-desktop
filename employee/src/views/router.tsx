@@ -17,7 +17,7 @@ const ClubAssignments = lazy(() => import("./club-assignments"));
 const errorElement = <><Header /><ErrorPage /></>;
 function BusinessPage({ scope, children }: { scope: "dispatch" | "board" | "mine"; children: React.ReactNode }) {
   const [params] = useSearchParams();
-  return params.get("business") === "daily_run" ? <ServiceOrderPage scope={scope} /> : children;
+  return ["daily_run", "companionship"].includes(params.get("business") ?? "") ? <ServiceOrderPage scope={scope} /> : children;
 }
 
 export default createBrowserRouter([

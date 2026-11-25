@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { BUSINESS_DATE_PATTERN, servicePostingLabel, USER_ID_PATTERN, type ServiceBusinessType, type ServiceOrderAction, type ServiceOrderStatus } from '@sky-club/common';
+import { BUSINESS_DATE_PATTERN, serviceBusinessLabels, servicePostingLabel, USER_ID_PATTERN, type ServiceBusinessType, type ServiceOrderAction, type ServiceOrderStatus } from '@sky-club/common';
 import type { Types } from 'mongoose';
 
 const cents = { type: Number, required: true, min: 0, validate: Number.isSafeInteger };
@@ -52,6 +52,9 @@ class StoredServiceOrderDelivery {
 
   @Prop({ type: Date })
   acceptedAt?: Date;
+
+  @Prop({ type: Date })
+  finishedAt?: Date;
 }
 
 @Schema({ _id: false })
@@ -71,7 +74,7 @@ class ServiceOrderCommand {
   @Prop({ type: String, required: true })
   requestId: string;
 
-  @Prop({ type: String, required: true, enum: ['assign', 'publish', 'claim', 'deliveries', 'accept', 'stop', 'refund', 'close'] })
+  @Prop({ type: String, required: true, enum: ['assign', 'publish', 'claim', 'start', 'deliveries', 'accept', 'stop', 'refund', 'close'] })
   action: ServiceOrderAction;
 
   @Prop(userId)
@@ -142,7 +145,7 @@ export class ClubServiceOrder {
   @Prop({ type: String, required: true, immutable: true })
   clubId: string;
 
-  @Prop({ type: String, required: true, immutable: true, enum: ['daily_run'] })
+  @Prop({ type: String, required: true, immutable: true, enum: Object.keys(serviceBusinessLabels) })
   businessType: ServiceBusinessType;
 
   @Prop({ type: String, required: true, immutable: true, enum: ['client_order', 'direct_dispatch'] })
@@ -174,6 +177,18 @@ export class ClubServiceOrder {
 
   @Prop({ ...calendarDate, immutable: true })
   startDate: string;
+
+  @Prop({ type: Date, immutable: true })
+  scheduledStartAt?: Date;
+
+  @Prop({ type: Date, immutable: true })
+  scheduledEndAt?: Date;
+
+  @Prop({ type: Date })
+  startedAt?: Date;
+
+  @Prop({ type: [Date], default: undefined })
+  occupiedSlots?: Date[];
 
   @Prop({ type: Number, required: true, immutable: true, min: 1, validate: Number.isSafeInteger })
   units: number;
@@ -225,3 +240,6 @@ ClubServiceOrderSchema.index({ clubId: 1, businessType: 1, executorUserId: 1, _i
 const closed = { partialFilterExpression: { 'close.closedAt': { $type: 'date' as const } } };
 ClubServiceOrderSchema.index({ clubId: 1, 'close.closedAt': 1 }, closed);
 ClubServiceOrderSchema.index({ clubId: 1, 'close.postings.memberUserId': 1 }, closed);
+ClubServiceOrderSchema.index({ clubId: 1, executorUserId: 1, occupiedSlots: 1 }, {
+  unique: true, partialFilterExpression: { businessType: 'companionship', occupiedSlots: { $type: 'date' } },
+});
