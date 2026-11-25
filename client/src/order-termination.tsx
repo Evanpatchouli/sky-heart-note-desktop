@@ -42,7 +42,7 @@ function readPending(key: string): Write | undefined {
 
 export function TerminationActions({ order, reload }: { order: Order; reload: () => void }) {
   const { id, token } = useAuthSession();
-  const key = `sky-heart.termination.v1:${id}:${order.clubId}:${order.id}`;
+  const key = `sky-club.termination.v1:${id}:${order.clubId}:${order.id}`;
   const [pending, setPending] = useState(() => readPending(key));
   const [saving, setSaving] = useState(false);
   const [reason, setReason] = useState("");

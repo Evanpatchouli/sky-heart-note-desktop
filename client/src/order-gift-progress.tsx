@@ -108,7 +108,7 @@ export function CustomerContinuation({ route, requests, quotes, canRequest, relo
   const [error, setError] = useState("");
   const inFlight = useRef(false);
   const pending = useRef<{ payload: string; requestId: string }>(undefined);
-  const storageKey = `sky-heart.client.continuation:${id}:${route}`;
+  const storageKey = `sky-club.client.continuation:${id}:${route}`;
 
   async function submit(path: string, data: object) {
     if (inFlight.current) return;

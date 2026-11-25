@@ -1,8 +1,8 @@
-const cachePrefix = `sky-heart:pwa:${config.app}:`;
+const cachePrefix = `sky-club:pwa:${config.app}:`;
 const cacheName = cachePrefix + config.version;
 const assetUrls = new Set(config.assets.map(path => new URL(path, self.location.origin).href));
 const assetDestinations = new Set(["script", "style", "font", "image", "worker"]);
-const notificationCache = `sky-heart:notification:${config.app}`;
+const notificationCache = `sky-club:notification:${config.app}`;
 const objectId = /^[a-f0-9]{24}$/;
 const validId = value => typeof value === "string" && objectId.test(value);
 const pendingDisplays = new Map();

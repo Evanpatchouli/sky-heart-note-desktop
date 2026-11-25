@@ -73,7 +73,7 @@ export default function DeliveryPrice({ route, breakdown, comparison, adjustment
   onRefresh: () => void;
 }) {
   const { id, token } = useAuthSession();
-  const storageKey = `sky-heart.price-adjustment.v1:${id}:${route}`;
+  const storageKey = `sky-club.price-adjustment.v1:${id}:${route}`;
   const [pending, setPending] = useState(() => persistedWrite(storageKey));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

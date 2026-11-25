@@ -61,7 +61,7 @@ services:
       - "127.0.0.1:${SERVER_PORT:-8793}:8793"
     networks:
       app:
-        aliases: [sky-club-upstream, sky-heart-upstream]
+        aliases: [sky-club-upstream]
       database: {}
     depends_on:
       mongodb:

@@ -6,7 +6,7 @@ async function sha256(value: string) {
 
 export async function synchronizeNotificationSession(app: WebApp) {
   if (!window.isSecureContext || !("caches" in window) || !("serviceWorker" in navigator)) return;
-  const name = `sky-heart:notification:${app}`;
+  const name = `sky-club:notification:${app}`;
   const write = async () => {
     const token = getAppToken(app);
     const cache = await caches.open(name);
@@ -15,7 +15,7 @@ export async function synchronizeNotificationSession(app: WebApp) {
     let binding: string | undefined;
     if (token) {
       const accessHash = Array.from(await sha256(token), byte => byte.toString(16).padStart(2, "0")).join("");
-      binding = btoa(String.fromCharCode(...await sha256("sky-heart:push:" + accessHash)))
+      binding = btoa(String.fromCharCode(...await sha256("sky-club:push:" + accessHash)))
         .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
     }
     if (getAppToken(app) !== token || binding === previous) return;

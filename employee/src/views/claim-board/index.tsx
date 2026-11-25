@@ -49,7 +49,7 @@ function readQueue(userId: string) {
   catch { return new URLSearchParams(); }
 }
 
-const queueKey = (userId: string) => `sky-heart.employee.claim-queue.v1:${userId}`;
+const queueKey = (userId: string) => `sky-club.employee.claim-queue.v1:${userId}`;
 
 function assignmentHref(userId: string, orderId: string) {
   const path = "/club/assignments";
@@ -202,7 +202,7 @@ function ClubBoard({ userId, selectedId, noticeId, initialOrder, pickDefault, he
   onBack: () => void;
 }) {
   const route = "club/claim-board";
-  const prefix = `sky-heart.employee.pending-claim.v1:${userId}:`;
+  const prefix = `sky-club.employee.pending-claim.v1:${userId}:`;
   const [pending, setPending] = useState(() => readPendingClaims(prefix));
   const [result, setResult] = useState<{ key: string; page: Page }>();
   const [error, setError] = useState("");

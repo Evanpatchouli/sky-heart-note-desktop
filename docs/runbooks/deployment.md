@@ -15,13 +15,9 @@ curl -fsS http://localhost:8793/api/site
 
 使用内置 MongoDB 时依次启动 MongoDB、API 和前端。启用 `MIGRATE_ON_START=true` 时 API 在启动时迁移数据。空库启动后按[首次启用俱乐部运营](../../README.md#首次启用俱乐部运营)配置团长。
 
-## 已有安装升级到 Sky Club
+## Eotion 部署
 
-1. 先备份 MongoDB 和团员 SQLite 卷，记下当前 Git 版本、Compose 项目名、实际卷名和环境文件。用 `docker compose ls` 查询项目名，通过 `docker inspect <容器>` 的挂载记录确认卷和目标路径。
-2. 根 Compose 已运行时，将 `COMPOSE_PROJECT_NAME` 设为原项目名以沿用现有容器、网络和默认命名卷。使用内置 MongoDB 时显式设置 `MONGO_DB_NAME` 和 `DB_MONGO_USERNAME` 为现有值。已设置 `DB_MONGO_CONNECTION` 或 `EMPLOYEE_VOLUME_NAME` 的部署沿用原配置。保留现有数据库凭据、会话密钥和前端 Origin。
-3. 独立 API 原容器配置了自动重启。使用旧版本的 Compose 文件和原项目名执行 `docker compose -f server/docker-compose.yml down`，保留命名卷。切到根 Compose 时，将 `EMPLOYEE_VOLUME_NAME` 指向旧容器挂载在 `/app/server/data/employee` 的卷，沿用数据库和会话配置，再启动根 Compose。继续使用独立 API 时，沿用原 Compose 项目运行新版 `server/redeploy.sh`。新容器名为 `sky-club-server`。
-4. Eotion 部署使用[覆盖文件](../../docker-compose.eotion.yml)。新代理可配置 `sky-club-api`（端口 8793）以及 `sky-club-admin`、`sky-club-employee`、`sky-club-client`、`sky-club-site`（端口 80）。原代理别名仍可继续使用。前端同源 `/api` 代理继续使用新旧 API 版本都支持的内部别名，允许分别更新前端和 API。
-5. 若已保存的俱乐部名仍须更新，由有效团长在「账户菜单 → 俱乐部运营」将显示名改为 Sky Club。环境变量 `CLUB_NAME` 用于空库初始化。
+使用 [Eotion Compose 覆盖文件](../../docker-compose.eotion.yml)接入现有的 MongoDB 和边缘 Nginx。边缘代理将 API 转发给 `sky-club-api:8793`，四个前端分别转发给 `sky-club-admin`、`sky-club-employee`、`sky-club-client` 和 `sky-club-site` 的 80 端口。环境变量和网络配置见[接入 Eotion 使用的生产网络](../../README.md#接入-eotion-使用的生产网络)。
 
 ## 发布检查与回滚
 

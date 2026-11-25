@@ -48,7 +48,7 @@ export default function DeliveryDiary({ order, delivery, route, refresh, disable
   onSaved: () => void;
 }) {
   const { id: userId, token } = useAuthSession();
-  const storageKey = `sky-heart.delivery-report.v1:${userId}:${route}`;
+  const storageKey = `sky-club.delivery-report.v1:${userId}:${route}`;
   const historyRoute = `${route}/daily-reports`;
   const [page, setPage] = useState<HistoryPage>();
   const [after, setAfter] = useState<string>();

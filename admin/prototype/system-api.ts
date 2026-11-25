@@ -16,7 +16,7 @@ interface ReviewUser {
   is_bootstrap_admin: boolean;
 }
 export const REVIEW_ADMIN_ID = "00A0";
-const key = "sky-heart.admin-review.system.v2";
+const key = "sky-club.admin-review.system.v2";
 function initialUsers(): ReviewUser[] {
   return [
     [REVIEW_ADMIN_ID,"管理员","review_admin","role-admin"],

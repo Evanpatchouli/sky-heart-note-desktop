@@ -5,7 +5,7 @@
   const customer = "知夏";
   const defaultDispatchers = ["青禾", "鹿鸣"];
   const members = [...defaultDispatchers, "云岫", "阿澄", "禾川"];
-  const storageKey = "sky-heart.design-review.p1.v1";
+  const storageKey = "sky-club.design-review.p1.v1";
   const fixtureVersion = 3;
   const initialRules = () => ({basis: "到账颗数", clubFee: 5, version: 1});
   function ruleSnapshot(rules) {

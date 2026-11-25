@@ -10,7 +10,7 @@ const tabs = [
   { path: "/club/assignments", title: "我的", icon: "user" },
 ] as const;
 
-const storageKey = (userId: string, path: string) => `sky-heart.employee.mobile-nav.v1:${userId}:${path}`;
+const storageKey = (userId: string, path: string) => `sky-club.employee.mobile-nav.v1:${userId}:${path}`;
 
 export function rememberedMemberPath(userId: string, path: string) {
   try {
@@ -20,7 +20,7 @@ export function rememberedMemberPath(userId: string, path: string) {
   return path;
 }
 
-const navigationOwnerKey = "sky-heart.employee.mobile-nav.v1:current-user";
+const navigationOwnerKey = "sky-club.employee.mobile-nav.v1:current-user";
 
 export function MemberHome() {
   const { id } = useAuthSession();

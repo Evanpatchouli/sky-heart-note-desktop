@@ -41,7 +41,7 @@ export function OrderGiftTermination({ route, value, canRequest, awaitingPriceDe
   const [error, setError] = useState("");
   const pending = useRef<{ reason: string; requestId: string }>(undefined);
   const inFlight = useRef(false);
-  const key = `sky-heart.client.gift-stop:${id}:${route}`;
+  const key = `sky-club.client.gift-stop:${id}:${route}`;
 
   async function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

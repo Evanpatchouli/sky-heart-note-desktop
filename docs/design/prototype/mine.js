@@ -16,12 +16,12 @@
   };
   const perMember = new Map();
   let focusAfterNavigation = "";
-  const dateKey = name => "sky-heart.design.mine-day." + name;
+  const dateKey = name => "sky-club.design.mine-day." + name;
 
   function preferences(name) {
     if (!perMember.has(name)) {
       let lastView, date = today;
-      try { lastView = sessionStorage.getItem("sky-heart.mine-view." + name); } catch { /* 使用内存。 */ }
+      try { lastView = sessionStorage.getItem("sky-club.mine-view." + name); } catch { /* 使用内存。 */ }
       try { date = localStorage.getItem(dateKey(name)) || today; } catch { /* 使用内存。 */ }
       perMember.set(name, {view: lastView, search:"", status:"", date});
     }
@@ -63,7 +63,7 @@
     const requested = params.get("view") || pref.view;
     const view = views.some(v => v[0] === requested) ? requested : "timeline";
     pref.view = view;
-    try { sessionStorage.setItem("sky-heart.mine-view." + ClubDemo.member, view); } catch { /* 使用内存。 */ }
+    try { sessionStorage.setItem("sky-club.mine-view." + ClubDemo.member, view); } catch { /* 使用内存。 */ }
     const rows = orders.map(record);
     const navigate = (orderId, target = view) => go("member","mine",orderId,{view:target});
     if (id) {

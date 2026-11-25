@@ -352,7 +352,7 @@ export class ClubDispatchPushService implements OnModuleInit, OnModuleDestroy {
     }).select({ eventKey: 1, type: 1, target: 1, title: 1, body: 1 }).lean();
     if (!notice || notice.type === 'normal') return finish('cancelled');
     const envelope = {
-      deviceBinding: digest('sky-heart:push:' + subscription.accessHash),
+      deviceBinding: digest('sky-club:push:' + subscription.accessHash),
       expiresAt: job.expiresAt.getTime(),
     };
     const noticeId = job.noticeId.toHexString();

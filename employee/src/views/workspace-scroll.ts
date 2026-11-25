@@ -5,7 +5,7 @@ export function useWorkspaceScroll<Element extends HTMLElement = HTMLElement>(
   initialPosition?: (element: Element) => number,
 ) {
   const ref = useRef<Element>(null);
-  const storageKey = `sky-heart.employee.workspace-scroll.v1:${context}`;
+  const storageKey = `sky-club.employee.workspace-scroll.v1:${context}`;
   const restored = useRef<string>(undefined);
 
   useLayoutEffect(() => {

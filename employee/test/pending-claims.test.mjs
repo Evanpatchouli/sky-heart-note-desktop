@@ -20,9 +20,9 @@ function mockBrowserStorage(t) {
   return storage;
 }
 
-const club = 'sky-heart.employee.pending-claim.v1:0001:main:';
-const otherClub = 'sky-heart.employee.pending-claim.v1:0001:other:';
-const otherMember = 'sky-heart.employee.pending-claim.v1:0002:main:';
+const club = 'sky-club.employee.pending-claim.v1:0001:main:';
+const otherClub = 'sky-club.employee.pending-claim.v1:0001:other:';
+const otherMember = 'sky-club.employee.pending-claim.v1:0002:main:';
 const order = '000000000000000000000001';
 const otherOrder = '000000000000000000000002';
 const request = (kind, hearts) => ({ requestId: randomUUID(), kind, hearts });

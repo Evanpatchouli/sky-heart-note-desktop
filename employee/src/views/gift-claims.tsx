@@ -38,7 +38,7 @@ const noticeMessages = {
 };
 type NoticeTarget = (GiftClaimNoticeTarget | { status: "located"; clubId: string }) & { readAt?: string | null };
 
-const queueKey = (userId: string) => `sky-heart.employee.gift-claim-queue.v1:${userId}`;
+const queueKey = (userId: string) => `sky-club.employee.gift-claim-queue.v1:${userId}`;
 
 function readQueue(userId: string) {
   try { return new URLSearchParams(sessionStorage.getItem(queueKey(userId)) ?? ""); }
@@ -169,7 +169,7 @@ function Orders({ orderId, noticeId, legacyClaimPath, filter, after, onPage, onR
   const { id, token } = useAuthSession();
   const { emit } = useEmitter();
   const root = "club/gift-claims";
-  const prefix = `sky-heart.employee.gift-claim.v1:${id}:`;
+  const prefix = `sky-club.employee.gift-claim.v1:${id}:`;
   const [loadedPage, setLoadedPage] = useState<{ key: string; page: Page }>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<NoticeTarget>();

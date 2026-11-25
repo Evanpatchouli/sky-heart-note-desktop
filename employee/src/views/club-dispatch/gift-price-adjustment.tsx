@@ -74,7 +74,7 @@ export function GiftPriceAdjustmentPanel({ route, progress, reload }: {
   const canChange = !progress.closedAt && (!progress.termination || progress.termination.origin === "declined_adjustment");
   const mayPropose = canChange && (progress.canRequestContinuation || current?.state === "needs_requote") && !!segment;
   const actions = current && { adjustmentId: current.id, expectedRevision: current.revision };
-  const storageKey = `sky-heart.employee.gift-price:${id}:${route}`;
+  const storageKey = `sky-club.employee.gift-price:${id}:${route}`;
 
   async function submit<T>(path: string, fields: object, receive: (result: T) => void, write = false) {
     if (inFlight.current) return;

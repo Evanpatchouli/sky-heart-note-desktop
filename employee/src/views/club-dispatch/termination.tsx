@@ -34,7 +34,7 @@ export default function DispatchTerminationPanel({ route, termination, mayRecord
   onRefresh: () => void;
 }) {
   const { id, token } = useAuthSession();
-  const key = `sky-heart.dispatch-termination.v1:${id}:${route}`;
+  const key = `sky-club.dispatch-termination.v1:${id}:${route}`;
   const [pending, setPending] = useState(() => pendingWrite(key));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

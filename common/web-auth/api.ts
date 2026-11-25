@@ -14,7 +14,7 @@ export interface Candidate extends Pick<AppSession, "id" | "username" | "nicknam
   sourceApp: WebApp;
 }
 
-const tokenKey = (app: WebApp) => `sky-heart.${app}.token`;
+const tokenKey = (app: WebApp) => `sky-club.${app}.token`;
 export const getAppToken = (app: WebApp) => localStorage.getItem(tokenKey(app));
 export function saveToken(app: WebApp, token: string | null) {
   if (token) localStorage.setItem(tokenKey(app), token);

@@ -78,7 +78,7 @@ API 只连接受信的 HTTPS 推送网关。默认接受 Chrome、Firefox 和 Sa
 
 在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，团员的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。
 
-**首次启动**时复制配置文件，填写四个独立的随机值，再运行全量脚本。已有安装升级到 Sky Club 前，请先按[部署手册](docs/runbooks/deployment.md#已有安装升级到-sky-club)核对项目名、数据库和卷配置。日常更新运行 `./deploy-all.sh`。
+**首次启动**时复制配置文件，填写四个独立的随机值，再运行全量脚本。日常更新运行 `./deploy-all.sh`。发布检查见[部署手册](docs/runbooks/deployment.md#发布检查与回滚)。
 
 ```sh
 cp .env.example .env
@@ -120,8 +120,6 @@ SITE_ORIGIN=https://www.example.com
 ```
 
 服务端会加入已有的 `mongo` 网络，API 与四个前端会加入已有的 `public-web` 网络。这两个外部网络可通过 `MONGO_NETWORK`、`PUBLIC_WEB_NETWORK` 更名。边缘 Nginx 终止 HTTPS，并将上述五个域名分别转发到 `sky-club-api:8793`、`sky-club-admin:80`、`sky-club-employee:80`、`sky-club-client:80`、`sky-club-site:80`。三个登录端共享同一个 HTTPS API 主机及其授权 Cookie。
-
-从独立 API Compose 切换到根 Compose 时，按[已有安装升级步骤](docs/runbooks/deployment.md#已有安装升级到-sky-club)复用团员 SQLite 卷与 MongoDB 配置，再移除旧 API 容器以释放端口。
 
 ## 跨端登录与部署
 

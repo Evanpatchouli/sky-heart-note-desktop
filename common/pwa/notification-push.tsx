@@ -20,7 +20,7 @@ const memoryPending = new Set<WebApp>();
 
 class ReminderError extends Error {}
 
-function offKey(app: WebApp) { return `sky-heart.${app}.notification-push.pending-off.v1`; }
+function offKey(app: WebApp) { return `sky-club.${app}.notification-push.pending-off.v1`; }
 
 function pendingOff(app: WebApp) {
   try { return localStorage.getItem(offKey(app)) === "1"; }

@@ -41,7 +41,7 @@ export default function PendingAssignment({ onAssigned }: {
 }) {
   const { id, token } = useAuthSession();
   const route = "club";
-  const storageKey = `sky-heart.employee.assignment.v1:${id}`;
+  const storageKey = `sky-club.employee.assignment.v1:${id}`;
   const [board, setBoard] = useState<{ page: Page; candidates: Candidate[] }>();
   const [after, setAfter] = useState<string>();
   const [attempt, setAttempt] = useState(0);

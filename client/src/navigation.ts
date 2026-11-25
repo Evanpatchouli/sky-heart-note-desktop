@@ -1,6 +1,6 @@
 import { useLayoutEffect } from "react";
 
-const key = (userId: string, name: string) => `sky-heart.client.navigation.v1:${userId}:${name}`;
+const key = (userId: string, name: string) => `sky-club.client.navigation.v1:${userId}:${name}`;
 
 export function readClientContext(userId: string, name: string) {
   try { return sessionStorage.getItem(key(userId, name)); } catch { return null; }
@@ -48,9 +48,9 @@ export function useClientScroll(userId: string, context: string, ready: boolean)
 }
 
 export function readClientNavigationOwner() {
-  try { return sessionStorage.getItem("sky-heart.client.navigation.v1:current-user"); } catch { return null; }
+  try { return sessionStorage.getItem("sky-club.client.navigation.v1:current-user"); } catch { return null; }
 }
 
 export function rememberClientNavigationOwner(userId: string) {
-  try { sessionStorage.setItem("sky-heart.client.navigation.v1:current-user", userId); } catch { /* Optional UI context. */ }
+  try { sessionStorage.setItem("sky-club.client.navigation.v1:current-user", userId); } catch { /* Optional UI context. */ }
 }

@@ -78,8 +78,8 @@ function ClubOrders({ userId, clubName }: { userId: string; clubName: string }) 
   const requestedId = params.get("orderId");
   const selectedId = requestedId && /^[a-f0-9]{24}$/i.test(requestedId) ? requestedId : null;
   const route = "club/orders";
-  const viewKey = `sky-heart.employee.assignment-view.v1:${userId}`;
-  const preferencesKey = `sky-heart.employee.assignment-preferences.v1:${userId}`;
+  const viewKey = `sky-club.employee.assignment-view.v1:${userId}`;
+  const preferencesKey = `sky-club.employee.assignment-preferences.v1:${userId}`;
   const requestedView = params.get("view") ?? preferredView(viewKey);
   const view = views.find(item => item.id === requestedView)?.id ?? "timeline";
   const [preferences, setPreferences] = useState(() => defaultPreferences(preferencesKey));

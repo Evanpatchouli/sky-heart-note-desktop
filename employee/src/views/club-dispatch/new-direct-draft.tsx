@@ -62,7 +62,7 @@ function requestError(err: unknown) {
 
 export default function NewDirectDraft({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const { id: userId, token } = useAuthSession();
-  const storageKey = `sky-heart.employee.direct-draft.v1:${userId}`;
+  const storageKey = `sky-club.employee.direct-draft.v1:${userId}`;
   const [pending, setPending] = useState(() => readPending(storageKey));
   const [form] = Form.useForm<DraftFields>();
   const newCustomer = Form.useWatch("customerMode", form) === "new";

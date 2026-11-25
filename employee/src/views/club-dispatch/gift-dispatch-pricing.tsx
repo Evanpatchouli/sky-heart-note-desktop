@@ -138,7 +138,7 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
 }) {
   const { id: userId, token } = useAuthSession();
   const { requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes } = order;
-  const continuationKey = `sky-heart.employee.continuation.v1:${userId}:${route}`;
+  const continuationKey = `sky-club.employee.continuation.v1:${userId}:${route}`;
   const [form] = Form.useForm<PriceFields>();
   const [continuation] = Form.useForm<SegmentFields>();
   const [pendingContinuation, setPendingContinuation] = useState(() => readContinuation(continuationKey));

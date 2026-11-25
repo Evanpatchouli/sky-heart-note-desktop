@@ -118,12 +118,12 @@ for (const { name, port, label } of apps) {
 
   test(`${name} 发布缓存、离线恢复及网络请求隔离`, async () => {
     const worker = loadWorker(read("service-worker.js", "utf8"), origin);
-    const previous = `sky-heart:pwa:${name}:previous`;
+    const previous = `sky-club:pwa:${name}:previous`;
     worker.storage.set(previous, new Map());
     worker.storage.set("unrelated", new Map());
     await worker.dispatch("install");
 
-    const published = [...worker.storage.keys()].find(key => key.startsWith(`sky-heart:pwa:${name}:`) && key !== previous);
+    const published = [...worker.storage.keys()].find(key => key.startsWith(`sky-club:pwa:${name}:`) && key !== previous);
     assert.match(published, /:[a-f0-9]{16}$/);
     const staticAssets = readdirSync(new URL("assets/", dist)).sort();
     assert.deepEqual([...worker.storage.get(published).keys()], staticAssets.map(file => `${origin}/assets/${file}`));
@@ -204,7 +204,7 @@ for (const { name, port, label } of apps) {
     const key = origin + "/__pwa_notification_session__";
     const binding = "a".repeat(43);
     const cache = new Map([[key, new Response(binding)]]);
-    worker.storage.set(`sky-heart:notification:${name}`, cache);
+    worker.storage.set(`sky-club:notification:${name}`, cache);
     const notice = {
       type: "app-notification", version: 1, targetApp: name, noticeType: "important",
       notificationId: "1".repeat(24), noticeId: "2".repeat(24), target: "inbox",

@@ -73,7 +73,7 @@ export function NewOrder() {
   const { id, token } = useAuthSession();
   const { loggingOut } = useSessionActions();
   const options = useClientRead<OrderOptions>("/client/club/order-options", "暂时无法读取派单人，请检查网络连接后重试。");
-  const storageKey = `sky-heart.client.order-submission.v1:${id}`;
+  const storageKey = `sky-club.client.order-submission.v1:${id}`;
   const draftKey = "order-draft";
   const [pending, setPending] = useState(() => readPending(storageKey));
   const [draft] = useState(() => readDraft(id, draftKey));

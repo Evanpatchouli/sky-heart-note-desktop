@@ -106,7 +106,7 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose, onSaved,
   const [saving, setSaving] = useState(false);
   const inFlight = useRef<AbortController>(undefined);
   const historyRoute = `${orderRoute}/daily-reports`;
-  const storageKey = `sky-heart.gift-daily-report.v1:${userId}:${orderRoute}`;
+  const storageKey = `sky-club.gift-daily-report.v1:${userId}:${orderRoute}`;
   const [pending, setPending] = useState(() => readPending(storageKey));
   const shares = order.segments.flatMap(segment => segment.shares.map(share => ({ ...share, segmentIndex: segment.segmentIndex })));
   const accounts = [...new Map(shares.flatMap(share => (share.executionGameAccounts ?? []).map(account => [account.id, account] as const))).values()];

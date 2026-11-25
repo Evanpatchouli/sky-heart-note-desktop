@@ -183,7 +183,7 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
 export function PublishedGiftAllocation({ route, revision, onChanged }: { route: string; revision: number; onChanged?: () => void }) {
   const path = route + "/gift-dispatch";
   const { id, token } = useAuthSession();
-  const transferKey = `sky-heart.employee.pending-gift-transfer:${id}:${route}`;
+  const transferKey = `sky-club.employee.pending-gift-transfer:${id}:${route}`;
   const [savedTransfer, setSavedTransfer] = useState(() => readTransfer(transferKey));
   const [data, setData] = useState<GiftDispatchPreparation>();
   const [error, setError] = useState("");

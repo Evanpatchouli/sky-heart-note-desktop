@@ -47,7 +47,7 @@ export function OrderGiftPriceAdjustment({ route, value, history, stopped, reloa
   const inFlight = useRef(false);
   const [error, setError] = useState("");
   const pending = useRef<{ key: string; requestId: string }>(undefined);
-  const key = `sky-heart.client.gift-price:${id}:${route}:${value.id}:${value.revision}:${decision}`;
+  const key = `sky-club.client.gift-price:${id}:${route}:${value.id}:${value.revision}:${decision}`;
 
   async function confirm() {
     if (!decision || inFlight.current) return;
