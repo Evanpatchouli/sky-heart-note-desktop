@@ -8,7 +8,7 @@ import { acceptsGiftExecution } from './club-gift-execution.service';
 import { activeGiftSegments } from './club-gift-allocation';
 
 export type GiftDayFact = {
-  _id: { shareId: Types.ObjectId; businessDate: string };
+  _id: { orderId: Types.ObjectId; shareId: Types.ObjectId; businessDate: string };
   giftTimes: Types.Decimal128;
   knownHearts: Types.Decimal128;
   unknownLines: number;
@@ -67,7 +67,7 @@ function giftFactsForOrderIds(
     })),
     { $sort: { version: -1 } },
     { $group: {
-      _id: { $ifNull: ['$originalId', '$_id'] }, lines: { $first: '$lines' },
+      _id: { orderId: '$orderId', originalId: { $ifNull: ['$originalId', '$_id'] } }, lines: { $first: '$lines' },
       shareId: { $first: '$shareId' }, businessDate: { $first: '$businessDate' },
     } },
     { $unwind: '$lines' },
@@ -75,7 +75,7 @@ function giftFactsForOrderIds(
     { $match: { shareId: { $in: shareIds } } },
     { $group: {
       _id: {
-        shareId: '$shareId', businessDate: '$businessDate',
+        orderId: '$_id.orderId', shareId: '$shareId', businessDate: '$businessDate',
         period: { $cond: [{ $in: ['$lines.period', ['normal', 'double']] }, '$lines.period', 'unconfirmed'] },
         promotionPaidSegmentIndices: '$lines.promotionPaidSegmentIndices',
       },
@@ -85,7 +85,7 @@ function giftFactsForOrderIds(
       knownLines: { $sum: { $cond: [{ $ne: [{ $ifNull: ['$lines.receivedHearts', null] }, null] }, 1, 0] } },
     } },
     { $group: {
-      _id: { shareId: '$_id.shareId', businessDate: '$_id.businessDate' },
+      _id: { orderId: '$_id.orderId', shareId: '$_id.shareId', businessDate: '$_id.businessDate' },
       giftTimes: { $sum: '$giftTimes' }, knownHearts: { $sum: '$knownHearts' },
       unknownLines: { $sum: '$unknownLines' }, knownLines: { $sum: '$knownLines' },
       periods: { $push: {
@@ -95,7 +95,7 @@ function giftFactsForOrderIds(
       } },
     } },
   ];
-  return collection.aggregate<GiftDayFact>(pipeline).toArray();
+  return collection.aggregate<GiftDayFact>(pipeline, { readConcern: { level: 'majority' } }).toArray();
 }
 
 export function allPaidGiftsDelivered(

@@ -42,7 +42,9 @@ function AuthorizedHome() {
   const mayConfigureRule = club?.permissions.includes("CLUB_COMMISSION_MANAGE");
   const mayReadFinance = club?.permissions.includes("CLUB_FINANCE_READ");
   const mayPayWithdrawal = club?.permissions.includes("CLUB_WITHDRAWAL_PAY");
+  const mayReadOrders = club?.permissions.includes("CLUB_ORDERS_READ");
   const clubChildren: MenuProps["items"] = [
+    ...(mayReadOrders ? [{ key: "/club/orders", label: "订单监管" }] : []),
     ...(mayConfigureRule ? [{ key: "/club/rules", label: "抽成规则" }] : []),
     ...(mayReadFinance || mayPayWithdrawal ? [{ key: "/club/settlements", label: mayReadFinance ? "结算核对" : "提现实付" }] : []),
     ...(club?.canDecideAdjustments || mayReadFinance ? [{ key: "/club/penalties", label: "罚款管理" }] : []),

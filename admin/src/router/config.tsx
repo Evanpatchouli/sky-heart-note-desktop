@@ -25,6 +25,11 @@ export const routeConfigs: RouteConfig[] = [
   },
 
   {
+    path: "/club/orders",
+    label: "订单监管",
+    component: lazy(() => import("@/views/club/orders")),
+  },
+  {
     path: "/club/rules",
     label: "抽成规则",
     component: lazy(() => import("@/views/club/rules")),

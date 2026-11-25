@@ -20,3 +20,4 @@ export * from './club-settlement-corrections';
 export * from './club-gift-termination';
 export * from './club-fulfillment';
 export * from './club-settlement';
+export * from "./club-dashboard";

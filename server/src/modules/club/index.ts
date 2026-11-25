@@ -9,6 +9,8 @@ import { AdminClubController } from './admin-club.controller';
 import { ClubClaimController } from './club-claim.controller';
 import { ClubClaimService } from './club-claim.service';
 import { ClubCustomerService } from './club-customer.service';
+import { ClubDashboardController } from './club-dashboard.controller';
+import { ClubDashboardService } from './club-dashboard.service';
 import { ClubDailyReportStore } from './club-daily-report.store';
 import { ClubDeliveryController } from './club-delivery.controller';
 import { DailyReport, DailyReportSchema } from './club-delivery.schema';
@@ -97,6 +99,7 @@ import { ClubWithdrawalStore } from './club-withdrawal.store';
     ]),
   ],
   controllers: [
+    ClubDashboardController,
     ClubSettlementCorrectionController,
     AdminClubFinancialAdjustmentController,
     EmployeeClubFinancialAdjustmentController,
@@ -124,6 +127,7 @@ import { ClubWithdrawalStore } from './club-withdrawal.store';
     ClientClubOrderController,
   ],
   providers: [
+    ClubDashboardService,
     ClubSettlementCorrectionService,
     ClubFinancialAdjustmentService,
     ClubWithdrawalService,

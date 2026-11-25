@@ -527,6 +527,16 @@ pnpm --dir server club:configure notify employee important sample.event.001 00A1
 
 独立罚款将有效决定作为本人借记与团费贷记的共同凭据，两项使用相同流水事件键 `club.penalty:<罚款ID>`。订单罚款生效后纳入核算，实际余额在结单时变化。结单写入方须在同一次 `club_orders` 原子更新中写入 `closedAt` 和 `settlementPenaltyIds`（本次核算冻结的本单生效罚款 ObjectId 数组）。`adjustmentPostings` 按确切 ID 与生效时间核对后生成个人借记和团费贷记。订单结单或取消后不再新增或批准该单的关联罚款，原生效操作可按原请求重试。团费补偿以每笔实退款为团费支出凭据，批准后的待退款进入订单应退，退款登记后进入实际流水。结单按扣罚前送心报酬入账，派抽、团抽、优惠与赠送成本按各自分录核算。已冻结罚款和已登记补偿由原记录提供入账依据。
 
+### 管理端运营仪表盘
+
+管理端首页 `/#/dashboard` 显示本俱乐部运营数据，回到前台、手动刷新或页面可见时的 15 秒轮询会重新读取。订单查看权限 `CLUB_ORDERS_READ` 与财务查看权限 `CLUB_FINANCE_READ` 分别控制订单和资金部分。指标及来源链接进入 `/#/club/orders` 的同口径清单，待结单行可直接打开原单财务核对。
+
+| 接口 | 口径 |
+| --- | --- |
+| `GET /api/admin/club/dashboard` | 订单部分统计有派单人且尚待发布的订单笔数、现可承接次数、有效履约次数、已知到账颗数和改价退款待办笔数。待分配订单在待办行单列。财务部分显示待结单笔数、对应净实收及已入账团费余额。 |
+| `GET /api/admin/club/dashboard/orders` | 用 `metric`、`source`、`after`、`limit` 筛选并翻页。指标包括 `pending_dispatch`、`claimable`、`fulfilled`、`received`、`action_required`、`ready_to_close` 和 `all`。待结单清单需要财务查看权限。 |
+| `GET /api/admin/club/dashboard/orders/:id` | 有订单查看权限的管理员可核对单笔来源、派单归属、可接次数、履约和到账。历史按颗订单保留到账观察，未知到账单独列明。 |
+
 ### 个人余额提现
 
 团员在个人余额页申请提现。申请和批准占用可申请金额，账面余额在每笔实际打款登记时扣减。团长或副团长可批准或驳回，驳回释放占用。获批后的分次实付合计达到申请金额时办结。每笔实付关联原申请、时间和经办人，可在本人流水中核对。

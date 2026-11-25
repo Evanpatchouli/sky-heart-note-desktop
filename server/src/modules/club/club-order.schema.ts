@@ -161,6 +161,7 @@ export class PendingAssignmentDecision {
 export class ClubOrder {
   _id: Types.ObjectId;
   createdAt: Date;
+  updatedAt?: Date;
 
   @Prop({
     type: String,

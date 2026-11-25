@@ -1,384 +1,100 @@
-import { useAsyncEffect, useTitle } from "@evanpatchouli/react-hooks-kit";
-import * as LoginLogAPI from "@/api/login-log.api";
-import type { DailyLoginData } from "@/api/login-log.api";
-import { useState } from "react";
-import { Row, Col, Statistic, Card, Table, Tag } from "antd";
-import {
-  FieldTimeOutlined,
-  CalendarOutlined,
-  FundOutlined,
-  RiseOutlined,
-  UserOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-} from "@ant-design/icons";
-import EChartsReact from "echarts-for-react";
-import type { ColumnsType } from "antd/es/table";
+import { useEffect, useState } from "react";
+import { Link, useOutletContext } from "react-router";
+import { Alert, Button, Card, Col, Empty, Flex, Row, Spin, Statistic, Typography } from "antd";
+import { formatCentsAsYuan, type ClubDashboard, type DashboardMetric } from "@sky-club/common";
+import { getDashboard } from "@/api/club-dashboard.api";
+import { useLoginStore } from "@/auth/store";
+import type { AdminClubContext } from "../home";
+import { dispatchStatusLabel, orderUrl, received, sourceLabels } from "../club/dashboard-shared";
 
-export default function DashboardView() {
-  const [dailyCount, setDailyCount] = useState<number>(0);
-  const [weeklyCount, setWeeklyCount] = useState<number>(0);
-  const [monthlyCount, setMonthlyCount] = useState<number>(0);
-  const [yearlyCount, setYearlyCount] = useState<number>(0);
-  const [trendData, setTrendData] = useState<DailyLoginData[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+const money = (cents: number) => `${cents < 0 ? "−" : ""}¥${formatCentsAsYuan(Math.abs(cents))}`;
 
-  useTitle("仪表盘 - Sky Club");
+export default function Dashboard() {
+  const token = useLoginStore(state => state.token);
+  return <DashboardContent key={token} />;
+}
 
-  useAsyncEffect(async () => {
-    setLoading(true);
-    try {
-      const [daily, weekly, monthly, yearly, trend] = await Promise.all([
-        LoginLogAPI.count("daily"),
-        LoginLogAPI.count("weekly"),
-        LoginLogAPI.count("monthly"),
-        LoginLogAPI.count("yearly"),
-        LoginLogAPI.getTrendData(),
-      ]);
-
-      setDailyCount(daily.getData() || 0);
-      setWeeklyCount(weekly.getData() || 0);
-      setMonthlyCount(monthly.getData() || 0);
-      setYearlyCount(yearly.getData() || 0);
-      setTrendData(trend.getData() ?? []);
-    } finally {
-      setLoading(false);
-    }
+function DashboardContent() {
+  const { club, loadFailed, reload } = useOutletContext<AdminClubContext>();
+  const [data, setData] = useState<ClubDashboard>();
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const canReadOrders = !!club?.permissions.includes("CLUB_ORDERS_READ");
+  const canReadFinance = !!club?.permissions.includes("CLUB_FINANCE_READ");
+  const canRead = canReadOrders || canReadFinance;
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") setRevision(value => value + 1); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, []);
+  useEffect(() => {
+    if (!canRead) return;
+    let active = true;
+    let timer: number;
+    async function poll() {
+      try {
+        if (document.visibilityState === "visible") {
+          const value = await getDashboard();
+          if (active) { setData(value); setError(""); }
+        }
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : "仪表盘加载失败");
+      } finally {
+        if (active) timer = window.setTimeout(() => void poll(), 15000);
+      }
+    }
+    void poll();
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [canRead, canReadOrders, canReadFinance, revision]);
 
-  // 折线图配置
-  const lineChartOption = {
-    title: {
-      text: "近7日登录趋势",
-      left: "center",
-      top: 10,
-      textStyle: { fontSize: 16, fontWeight: "normal" },
-    },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: function (params: any) {
-        return `${params[0].name}<br/>登录人次: ${params[0].value}`;
-      },
-    },
-    grid: {
-      left: "3%",
-      right: "4%",
-      bottom: "3%",
-      containLabel: true,
-    },
-    xAxis: {
-      type: "category",
-      data: trendData?.map((item) => item.date) || [],
-      axisLabel: { fontSize: 12 },
-    },
-    yAxis: {
-      type: "value",
-      name: "登录人次",
-      nameStyle: { fontSize: 12 },
-      axisLabel: { fontSize: 12 },
-    },
-    series: [
-      {
-        name: "登录人次",
-        type: "line",
-        data: trendData?.map((item) => item.count) || [0, 0, 0, 0, 0, 0, 0],
-        smooth: true,
-        symbol: "circle",
-        symbolSize: 8,
-        lineStyle: { width: 3, color: "#1890ff" },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: "rgba(24,144,255,0.3)" },
-              { offset: 1, color: "rgba(24,144,255,0.01)" },
-            ],
-          },
-        },
-        label: {
-          show: true,
-          position: "top",
-          fontSize: 12,
-          formatter: "{c}",
-        },
-      },
-    ],
-  };
+  if (loadFailed) return <Alert type="error" showIcon title="俱乐部加载失败" action={<Button onClick={reload}>重试</Button>} />;
+  if (club === undefined) return <Spin aria-label="加载俱乐部" />;
+  if (!canRead) return <Empty description="当前账号没有订单或财务查看权限" />;
+  if (error) return <Alert type="error" showIcon title={error} action={<Button onClick={() => setRevision(value => value + 1)}>重试</Button>} />;
+  if (!data) return <Spin aria-label="加载运营仪表盘" />;
 
-  // 表格列配置
-  const columns: ColumnsType<DailyLoginData> = [
-    {
-      title: "日期",
-      dataIndex: "date",
-      key: "date",
-      align: "center",
-    },
-    {
-      title: "登录人次",
-      dataIndex: "count",
-      key: "count",
-      align: "center",
-      sorter: (a, b) => a.count - b.count,
-      render: (value) => <span style={{ fontWeight: "bold" }}>{value}</span>,
-    },
-    {
-      title: "环比增长",
-      dataIndex: "growth",
-      key: "growth",
-      align: "center",
-      sorter: (a, b) => a.growth === b.growth ? 0 : (a.growth ?? -Infinity) - (b.growth ?? -Infinity),
-      render: (value: number | null) => value === null ? "—" : value === 0 ? "0%" : (
-        <Tag
-          color={value >= 0 ? "success" : "error"}
-          icon={value >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-        >
-          {value >= 0 ? "+" : ""}
-          {value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}%
-        </Tag>
-      ),
-    },
-  ];
-
-  // 统计数据列配置
-  const statisticsColumns: ColumnsType<any> = [
-    {
-      title: "统计项",
-      dataIndex: "name",
-      key: "name",
-    },
-    {
-      title: "数值",
-      dataIndex: "value",
-      key: "value",
-      align: "right",
-    },
-    {
-      title: "占比",
-      dataIndex: "percentage",
-      key: "percentage",
-      align: "right",
-    },
-  ];
-
-  // 统计数据
-  const statisticsData = [
-    {
-      key: "1",
-      name: "今日登录",
-      value: dailyCount,
-      percentage: `${((dailyCount / yearlyCount) * 100 || 0).toFixed(1)}%`,
-    },
-    {
-      key: "2",
-      name: "本周登录",
-      value: weeklyCount,
-      percentage: `${((weeklyCount / yearlyCount) * 100 || 0).toFixed(1)}%`,
-    },
-    {
-      key: "3",
-      name: "本月登录",
-      value: monthlyCount,
-      percentage: `${((monthlyCount / yearlyCount) * 100 || 0).toFixed(1)}%`,
-    },
-    {
-      key: "4",
-      name: "本年登录",
-      value: yearlyCount,
-      percentage: "100%",
-    },
-    {
-      key: "5",
-      name: "日均登录",
-      value: Math.round(weeklyCount / 7),
-      percentage: "-",
-    },
-    {
-      key: "6",
-      name: "月均登录",
-      value: Math.round(monthlyCount / 30),
-      percentage: "-",
-    },
-  ];
-
-  return (
-    <div style={{ padding: "24px" }}>
-      {/* 标题行 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={24}>
-          <h2 style={{ margin: 0 }}>登录人次统计</h2>
-        </Col>
-      </Row>
-
-      {/* 统计数据卡片 */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={6}>
-          <Card
-            variant="borderless"
-            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-          >
-            <Statistic
-              title={
-                <span>
-                  <FieldTimeOutlined
-                    style={{ marginRight: 8, color: "#1890ff" }}
-                  />
-                  今日登录
-                </span>
-              }
-              value={dailyCount}
-              styles={{ content: { color: "#1890ff", fontSize: 28 } }}
-              suffix="人次"
-            />
-          </Card>
-        </Col>
-
-        <Col xs={24} sm={12} md={6}>
-          <Card
-            variant="borderless"
-            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-          >
-            <Statistic
-              title={
-                <span>
-                  <CalendarOutlined
-                    style={{ marginRight: 8, color: "#52c41a" }}
-                  />
-                  本周登录
-                </span>
-              }
-              value={weeklyCount}
-              styles={{ content: { color: "#52c41a", fontSize: 28 } }}
-              suffix="人次"
-            />
-          </Card>
-        </Col>
-
-        <Col xs={24} sm={12} md={6}>
-          <Card
-            variant="borderless"
-            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-          >
-            <Statistic
-              title={
-                <span>
-                  <CalendarOutlined
-                    style={{ marginRight: 8, color: "#fa8c16" }}
-                  />
-                  本月登录
-                </span>
-              }
-              value={monthlyCount}
-              styles={{ content: { color: "#fa8c16", fontSize: 28 } }}
-              suffix="人次"
-            />
-          </Card>
-        </Col>
-
-        <Col xs={24} sm={12} md={6}>
-          <Card
-            variant="borderless"
-            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-          >
-            <Statistic
-              title={
-                <span>
-                  <FundOutlined style={{ marginRight: 8, color: "#722ed1" }} />
-                  本年登录
-                </span>
-              }
-              value={yearlyCount}
-              styles={{ content: { color: "#722ed1", fontSize: 28 } }}
-              suffix="人次"
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 图表和统计表格区域 */}
-      <Col span={24} style={{ marginTop: 24 }}>
-        <Row gutter={[16, 16]}>
-          {/* 左侧：折线图 */}
-          <Col xs={24} lg={14}>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <h3 style={{ margin: "0 0 16px 0" }}>
-                  <RiseOutlined style={{ marginRight: 8, color: "#1890ff" }} />
-                  登录趋势分析
-                </h3>
-              </Col>
-            </Row>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Card
-                  variant="borderless"
-                  style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-                >
-                  <div style={{ height: 400 }}>
-                    <EChartsReact
-                      option={lineChartOption}
-                      showLoading={loading}
-                    />
-                  </div>
-                </Card>
-              </Col>
-            </Row>
-          </Col>
-
-          {/* 右侧：统计表格 */}
-          <Col xs={24} lg={10}>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <h3 style={{ margin: "0 0 16px 0" }}>
-                  <UserOutlined style={{ marginRight: 8, color: "#52c41a" }} />
-                  详细统计数据
-                </h3>
-              </Col>
-            </Row>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Card
-                  variant="borderless"
-                  style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-                >
-                  <Table
-                    columns={statisticsColumns}
-                    dataSource={statisticsData}
-                    pagination={false}
-                    size="small"
-                    loading={loading}
-                  />
-                </Card>
-              </Col>
-            </Row>
-
-            {/* 每日明细表格 */}
-            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-              <Col span={24}>
-                <Card
-                  variant="borderless"
-                  style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
-                  title="每日明细"
-                  extra={<Tag color="blue">近7日</Tag>}
-                >
-                  <Table
-                    columns={columns}
-                    rowKey="date"
-                    dataSource={trendData}
-                    pagination={false}
-                    size="small"
-                    loading={loading}
-                  />
-                </Card>
-              </Col>
-            </Row>
-          </Col>
-        </Row>
-      </Col>
-    </div>
-  );
+  const operations = canReadOrders ? data.operations : undefined;
+  const finance = canReadFinance ? data.finance : undefined;
+  const metrics: { metric: DashboardMetric; title: string; value: number | string; unit: string; hint?: string }[] = operations ? [
+    { metric: "pending_dispatch", title: "待派单订单", value: operations.pendingOrders, unit: "笔" },
+    { metric: "claimable", title: "可承接", value: operations.claimableGiftTimes, unit: "次" },
+    { metric: "fulfilled", title: "已履约", value: operations.deliveredGiftTimes, unit: "次" },
+    { metric: "received", title: "已知实际到账", value: operations.knownReceivedLines ? operations.knownReceivedHearts : operations.unknownReceivedLines ? "待确认" : "暂无记录", unit: operations.knownReceivedLines ? "颗" : "", hint: operations.unknownReceivedLines ? `${operations.unknownReceivedLines} 条到账待确认` : undefined },
+    { metric: "action_required", title: "改价与退款待办", value: operations.actionOrders, unit: "笔" },
+  ] : [];
+  return <Flex vertical gap="middle">
+    <Flex justify="space-between" align="center" wrap gap="small">
+      <div><Typography.Title level={4} style={{ margin: 0 }}>俱乐部运营仪表盘</Typography.Title><Typography.Text type="secondary">{club?.name} · 全部订单</Typography.Text></div>
+      <Button onClick={() => setRevision(value => value + 1)}>刷新仪表盘</Button>
+    </Flex>
+    {operations ? <>
+      <Row gutter={[12, 12]}>{metrics.map(metric => <Col key={metric.metric} xs={12} md={8} xl={4}>
+        <Link to={orderUrl({ metric: metric.metric })} aria-label={`${metric.title} ${metric.value} ${metric.unit}，查看订单`}>
+          <Card size="small" hoverable style={{ height: "100%" }}><Statistic title={metric.title} value={metric.value} suffix={metric.unit} />{metric.hint ? <Typography.Text type="secondary">{metric.hint}</Typography.Text> : null}</Card>
+        </Link>
+      </Col>)}</Row>
+      <Card size="small" title="派单与履约待办" extra={<Link to={orderUrl()}>订单监管</Link>}>
+        {operations.attention.length ? <Flex vertical gap="small">{operations.attention.map(row => <Flex key={row.orderId} justify="space-between" align="center" gap="small" wrap>
+          <div><Typography.Text strong>{sourceLabels[row.source]} · {row.recipientGameAccount}</Typography.Text><div><Typography.Text type="secondary">{row.actionLabel ?? (row.pendingDispatch ? "待派单" : dispatchStatusLabel(row.dispatchStatus))} · {row.orderId}</Typography.Text></div></div>
+          <Link to={orderUrl({ metric: row.actionLabel ? "action_required" : row.pendingDispatch ? "pending_dispatch" : "all", order: row.orderId })} aria-label={`查看待办 ${row.orderId}`}>查看详情</Link>
+        </Flex>)}</Flex> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待处理订单" />}
+      </Card>
+      <Card size="small" title="订单来源与交付">
+        <Row gutter={[16, 16]}>{operations.sources.map(source => <Col key={source.source} xs={24} md={12}>
+          <Flex vertical gap="small"><Typography.Text strong>{sourceLabels[source.source]} · {source.orders} 笔</Typography.Text>
+            <Link to={orderUrl({ source: source.source, metric: "all" })}>查看全部订单</Link>
+            <Link to={orderUrl({ source: source.source, metric: "fulfilled" })}>已履约 {source.deliveredGiftTimes} 次</Link>
+            <Link to={orderUrl({ source: source.source, metric: "received" })}>实际到账 {received(source.knownReceivedHearts, source.unknownReceivedLines, source.knownReceivedLines)}</Link>
+          </Flex>
+        </Col>)}</Row>
+      </Card>
+    </> : null}
+    {finance ? <Card size="small" title="结算核对" extra={<Link to="/club/settlements">财务核对</Link>}>
+      <Flex vertical gap="small"><Link to={orderUrl({ metric: "ready_to_close" })}>待结单 {finance.readyOrders} 笔 · 净实收 {money(finance.readyNetCents)}</Link>
+        <Link to="/club/settlements">团费已入账余额 {money(finance.clubBalanceCents)}</Link>
+        {finance.ready.length ? finance.ready.map(row => <Link key={row.orderId} to={`/club/settlements?order=${encodeURIComponent(row.orderId)}`}>核对订单 {row.orderId} · {money(row.netReceivedCents)}</Link>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待结单订单" />}
+      </Flex>
+    </Card> : null}
+  </Flex>;
 }
