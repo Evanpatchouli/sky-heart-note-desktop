@@ -1,9 +1,9 @@
 import { ConflictException } from '@nestjs/common';
 import { clubSettlementPostingLabel, type ClubBalanceEntry, type ClubSettlementPostingKind,
-  type GiftSettlementCalculation, type GiftSettlementClose } from '@webapp-template/common';
+  type GiftSettlementCalculation, type GiftSettlementClose } from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 import type { StoredSettlementCorrection } from './club-settlement-correction.service';
-import type { SettlementCorrection, SettlementCorrectionCouponChange } from '@webapp-template/common';
+import type { SettlementCorrection, SettlementCorrectionCouponChange } from '@sky-club/common';
 
 export type OrderSettlementPosting = {
   kind: ClubSettlementPostingKind;

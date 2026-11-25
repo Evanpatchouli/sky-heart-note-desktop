@@ -1,6 +1,6 @@
 import { BellOutlined } from "@ant-design/icons";
-import { useAuthSession } from "@webapp-template/common/web-auth";
-import { NotificationBell, notificationReadEvent } from "@webapp-template/common/notifications";
+import { useAuthSession } from "@sky-club/common/web-auth";
+import { NotificationBell, notificationReadEvent } from "@sky-club/common/notifications";
 import { dispatchNoticeReadEvent } from "#/service/dispatch-notices";
 import useEmitter from "#/utils/useEmitter";
 

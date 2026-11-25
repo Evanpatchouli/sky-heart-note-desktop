@@ -2,7 +2,7 @@ import { Alert, Button, Collapse, Descriptions, Flex, Table, Tag, Typography } f
 import {
   clubPenaltyPostingLabel, clubSettlementPostingLabel, formatCentsAsYuan, giftSettlementIssueLabel, giftSettlementStatusLabel, settlementCashMovementLabel,
   type AdminGiftSettlement, type GiftSettlementAmounts, type GiftSettlementProgress,
-} from "@webapp-template/common";
+} from "@sky-club/common";
 
 const periods = { normal: "普通期", double: "双倍期", unconfirmed: "待核对时段" };
 const kinds = { daily: "日报", supplement: "补报", correction: "更正" };

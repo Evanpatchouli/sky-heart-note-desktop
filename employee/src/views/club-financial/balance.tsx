@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin, Typography } from "antd";
-import { clubPenaltyPostingLabel, clubSettlementPostingLabel, type PersonalClubBalance } from "@webapp-template/common";
-import { useAuthSession } from "@webapp-template/common/web-auth";
+import { clubPenaltyPostingLabel, clubSettlementPostingLabel, type PersonalClubBalance } from "@sky-club/common";
+import { useAuthSession } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";

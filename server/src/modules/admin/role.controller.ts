@@ -13,7 +13,7 @@ import {
 import { ToBoolean, ToNumber } from '@/decorators/transform.decorator';
 import { Tag } from '@/decorators/tag.decorator';
 import { Todo } from '@/decorators/todo.decorator';
-import { PaginatedResult } from '@webapp-template/common';
+import { PaginatedResult } from '@sky-club/common';
 import { Deprecated } from '@/decorators/deprecated.decorator';
 
 class QueryUserRoleParams {

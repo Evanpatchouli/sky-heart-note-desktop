@@ -1,4 +1,4 @@
-import type { ValuesOf } from "@webapp-template/common";
+import type { ValuesOf } from "@sky-club/common";
 import { CaptchaWay } from '@/constants/index';
 import useCaptcha, { type UseCaptchaOptions } from "@/hooks/useCaptcha";
 

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { formatCentsAsYuan, isGiftOrderProgress, terminationReviewLabel, type OrderTermination } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, isGiftOrderProgress, terminationReviewLabel, type OrderTermination } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { clientRequest, clientOrdersPath, type Order } from "./order-api";
 
 function money(cents: number | null) {

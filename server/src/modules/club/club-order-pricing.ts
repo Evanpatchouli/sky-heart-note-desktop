@@ -1,4 +1,4 @@
-import { quoteHeartCounts, type OrderPricing, type PendingQuoteActivity, type QuoteAmounts } from '@webapp-template/common';
+import { quoteHeartCounts, type OrderPricing, type PendingQuoteActivity, type QuoteAmounts } from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 
 type OrderQuote = Pick<ClubOrder, 'heartDelivery' | 'pricing' | 'dispatchPricing' | 'receipt'>;

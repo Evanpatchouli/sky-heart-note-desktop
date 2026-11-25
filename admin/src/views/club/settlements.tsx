@@ -5,7 +5,7 @@ import {
   commissionBasisLabel, commissionUnit, formatCentsAsYuan, priceAdjustmentStateLabel, settlementIssueLabel,
   giftSettlementStatusLabel, type GiftSettlementRow, type AdminGiftSettlement,
   terminationReviewLabel, type AdminSettlement, type DispatchTermination, type PriceAdjustment, type SettlementOrderRow,
-} from "@webapp-template/common";
+} from "@sky-club/common";
 import { getSettlement, getSettlements } from "@/api/club.api";
 import type { AdminClubContext } from "../home";
 import GiftSettlementDetail from "./gift-settlement-detail";

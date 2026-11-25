@@ -1,5 +1,5 @@
 import { Descriptions, Tag } from "antd";
-import { clubAdjustmentStatusLabel, clubPenaltyPostingLabel, formatCentsAsYuan, type ClubAdjustmentRecord } from "@webapp-template/common";
+import { clubAdjustmentStatusLabel, clubPenaltyPostingLabel, formatCentsAsYuan, type ClubAdjustmentRecord } from "@sky-club/common";
 
 export const money = (cents: number) => `${cents < 0 ? "−" : ""}¥${formatCentsAsYuan(Math.abs(cents))}`;
 export const showDate = (date: string) => new Date(date).toLocaleString("zh-CN");

@@ -1,4 +1,4 @@
-import { Nullable, TimeUnitString } from '@webapp-template/common';
+import { Nullable, TimeUnitString } from '@sky-club/common';
 import TimeUnitUtil from '../utils/time.unit.util';
 import { createLogger } from '@/common/logger';
 import path from 'path';

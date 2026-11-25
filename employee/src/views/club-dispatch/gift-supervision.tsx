@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Flex, Input, Spin, Typography } from "antd";
-import { formatCentsAsYuan, type GiftDispatchSupervision, type GiftSupervisionDay } from "@webapp-template/common";
-import { RequestError } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, type GiftDispatchSupervision, type GiftSupervisionDay } from "@sky-club/common";
+import { RequestError } from "@sky-club/common/web-auth";
 import { GiftPeriodFacts, giftHearts as hearts, giftMoney, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
 import { GiftPriceAdjustmentPanel } from "./gift-price-adjustment";

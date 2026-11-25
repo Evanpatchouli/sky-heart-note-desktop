@@ -1,6 +1,6 @@
 import type Resp from "@/models/Resp";
 import { createAppRequest } from "./request";
-import type { PaginatedResult } from "@webapp-template/common";
+import type { PaginatedResult } from "@sky-club/common";
 
 const appRequest = createAppRequest("/admin/user-manage");
 

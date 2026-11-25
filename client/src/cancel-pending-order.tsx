@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { readClientContext, rememberClientContext } from "./navigation";
 import { clientRequest, clientOrdersPath, type OrderSummary } from "./order-api";
 

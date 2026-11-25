@@ -1,4 +1,4 @@
-import type { ClubBalance, ClubBalanceEntry } from '@webapp-template/common';
+import type { ClubBalance, ClubBalanceEntry } from '@sky-club/common';
 import type { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
 import { hasConfirmedAdjustment, hasConfirmedMemberPenalty, penaltyPostedAt, type PostedOrderPenalties } from './club-gift-settlement-adjustments';
 

@@ -1,4 +1,4 @@
-import type { ClubAdjustmentRecord, ClubBalance, ClubPenaltyList, PublishClubPenalty } from "@webapp-template/common";
+import type { ClubAdjustmentRecord, ClubBalance, ClubPenaltyList, PublishClubPenalty } from "@sky-club/common";
 import type Resp from "@/models/Resp";
 import { createAppRequest } from "./request";
 

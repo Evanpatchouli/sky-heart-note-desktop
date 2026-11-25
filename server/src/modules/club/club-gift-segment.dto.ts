@@ -2,7 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize, IsArray, IsBoolean, IsInt, IsObject, IsString, Matches, Max, Min, ValidateNested,
 } from 'class-validator';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 
 export const giftBusinessDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 

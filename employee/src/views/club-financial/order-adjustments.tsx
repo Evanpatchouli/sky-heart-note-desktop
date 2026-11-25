@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Card, Descriptions, Empty, Flex, Form, Input, Modal, Select, Spin, Typography } from "antd";
 import dayjs from "dayjs";
 import { formatCentsAsYuan, parseYuanAsCents, type ClubAdjustmentKind, type ClubAdjustmentRecord,
-  type OrderAdjustmentList, type RecordCompensationRefund, type RequestClubAdjustment } from "@webapp-template/common";
+  type OrderAdjustmentList, type RecordCompensationRefund, type RequestClubAdjustment } from "@sky-club/common";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";
 import { AdjustmentSummary, money, showDate } from "./adjustment-summary";

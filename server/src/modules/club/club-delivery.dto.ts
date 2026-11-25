@@ -15,7 +15,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { PRICING_PERIODS } from '@webapp-template/common';
+import { PRICING_PERIODS } from '@sky-club/common';
 
 export const OBSERVED_PERIODS = [...PRICING_PERIODS, 'unconfirmed'] as const;
 export type ObservedPeriod = (typeof OBSERVED_PERIODS)[number];

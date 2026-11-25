@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Flex, Spin, Typography } from "antd";
-import { useAuthSession } from "@webapp-template/common/web-auth";
+import { useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import GiftDeliveryDiary from "../gift-delivery-diary";
 import { GiftExecutionAccounts } from "../club-dispatch/gift-execution-accounts";

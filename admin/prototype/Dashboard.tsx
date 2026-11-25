@@ -12,7 +12,7 @@ export default function Dashboard() {
   const { orders } = useClub();
   const { posted, pending } = useSettlements();
   const narrow = !Grid.useBreakpoint().md;
-  useEffect(() => { document.title = "俱乐部运营仪表盘 - 送心手记"; }, []);
+  useEffect(() => { document.title = "俱乐部运营仪表盘 - Sky Club"; }, []);
 
   const metrics: {key: Queue; label: string; value: number; unit: string}[] = [
     {key:"pending", label:"待派单订单", value:orders.filter(o=>inQueue(o,"pending")).length, unit:"笔"},

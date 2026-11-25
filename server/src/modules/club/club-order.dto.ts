@@ -15,7 +15,7 @@ import {
   DELIVERY_PERIOD_PREFERENCES,
   USER_ID_PATTERN,
   type DeliveryPeriodPreference,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { ORDER_SOURCES, type OrderSource } from './club-order.schema';
 
 export class OrderRequestDto {

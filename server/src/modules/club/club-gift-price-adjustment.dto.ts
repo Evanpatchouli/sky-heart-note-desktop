@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsISO8601, IsMongoId, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
-import type { GiftPriceShift } from '@webapp-template/common';
+import type { GiftPriceShift } from '@sky-club/common';
 
 const timestamp = /T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 const trim = ({ value }: { value: unknown }) => typeof value === 'string' ? value.trim() : value;

@@ -1,11 +1,11 @@
 {
-  "name": "@webapp-template/client",
+  "name": "@sky-club/client",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": { "dev": "vite", "build": "tsc --noEmit && vite build && node ../common/pwa/build.mjs client", "preview": "vite preview" },
   "dependencies": {
-    "@webapp-template/common": "workspace:*",
+    "@sky-club/common": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

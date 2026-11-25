@@ -1,4 +1,4 @@
-import { TimeUnit } from '@webapp-template/common';
+import { TimeUnit } from '@sky-club/common';
 import TimeUnitUtil from '@/utils/time.unit.util';
 import { randomInt } from 'node:crypto';
 

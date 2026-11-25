@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import { notificationReadEvent, notificationRequest, type InboxNotice } from "@webapp-template/common/notifications";
+import { RequestError, useAuthSession } from "@sky-club/common/web-auth";
+import { notificationReadEvent, notificationRequest, type InboxNotice } from "@sky-club/common/notifications";
 
 const objectId = /^[a-f0-9]{24}$/i;
 

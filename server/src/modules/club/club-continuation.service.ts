@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, giftSegmentTimes, type ContinuationQuote, type ContinuationRequest, type GiftWindow } from '@webapp-template/common';
+import { calculateGiftQuote, giftSegmentTimes, type ContinuationQuote, type ContinuationRequest, type GiftWindow } from '@sky-club/common';
 import { isObjectIdOrHexString, Model, type QueryFilter } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
 import { activeGiftSegments, requireGiftWindowCapacity } from './club-gift-allocation';

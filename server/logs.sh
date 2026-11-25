@@ -1,1 +1,1 @@
-docker logs --tail 300 webapp-template-server
+docker logs --tail 300 sky-club-server

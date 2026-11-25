@@ -5,7 +5,7 @@ import { EditOutlined } from "@ant-design/icons";
 import {
   commissionBasisLabel, commissionUnit, formatCentsAsYuan, parseYuanAsCents,
   type CommissionBasis, type CommissionRule,
-} from "@webapp-template/common";
+} from "@sky-club/common";
 import { getCommissionRule, getDispatchHistory, saveCommissionRule, type AdminClub, type DispatchPricingRow } from "@/api/club.api";
 import type { AdminClubContext } from "../home";
 import ClubPromotions from "./promotions";

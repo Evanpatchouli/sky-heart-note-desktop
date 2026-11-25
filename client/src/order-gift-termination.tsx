@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
-import { formatCentsAsYuan, type CustomerGiftTermination } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, type CustomerGiftTermination } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { clientRequest } from "./order-api";
 
 const money = (cents: number) => `¥${formatCentsAsYuan(cents)}`;

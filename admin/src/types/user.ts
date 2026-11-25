@@ -1,4 +1,4 @@
-import type { Maybe } from "@webapp-template/common";
+import type { Maybe } from "@sky-club/common";
 
 export interface AccountLoginForm {
   username: string;

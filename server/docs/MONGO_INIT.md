@@ -3,12 +3,12 @@
 mongo shell or mongo-init.js
 
 ```js
-use sky-heart-note
+use sky-club
 db.createUser({
- user: "sky_heart",
+ user: "sky-club",
  pwd: passwordPrompt(),
  roles: [
-    { role: "readWrite", db: "sky-heart-note" }
+    { role: "readWrite", db: "sky-club" }
   ]
 })
 ```

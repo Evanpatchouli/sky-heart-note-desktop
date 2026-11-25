@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { giftSegmentTimes } from '@webapp-template/common';
+import { giftSegmentTimes } from '@sky-club/common';
 import type {
   GiftClaimResult, GiftDayAllocation, GiftExecutionAccount, GiftDispatchSegment, GiftOffer, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { Types } from 'mongoose';
 import type { ClubOrder } from './club-order.schema';
 import { giftPriceSegments } from './club-gift-price-basis';

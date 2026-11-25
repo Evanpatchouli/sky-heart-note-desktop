@@ -1,11 +1,11 @@
 import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
-import { AuthGate, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
-import { registerPwa } from "@webapp-template/common/pwa";
-import { NotificationBell } from "@webapp-template/common/notifications";
+import { AuthGate, useAuthSession, useSessionActions } from "@sky-club/common/web-auth";
+import { registerPwa } from "@sky-club/common/pwa";
+import { NotificationBell } from "@sky-club/common/notifications";
 import { CustomerActivation } from "./customer-activation";
 import ClubInvitation from "./club-invitation";
-import { NavigationIcon, useMobileViewport } from "@webapp-template/common/mobile-navigation";
+import { NavigationIcon, useMobileViewport } from "@sky-club/common/mobile-navigation";
 import { MyOrders, OrderDetail } from "./my-orders";
 import { NewOrder } from "./new-order";
 import { orderCursor, orderListHref, orderSource, readClientContext, readClientNavigationOwner, rememberClientContext, rememberClientNavigationOwner, rememberedOrderList } from "./navigation";
@@ -58,7 +58,7 @@ function ClientApp() {
 
   return <main className="client-orders">
     <header className="client-orders__header">
-      <a href="/" className="client-orders__brand"><img src="/pwa/icon-192.png" alt="" width="28" height="28" />送心手记 <span>· 客户端</span></a>
+      <a href="/" className="client-orders__brand"><img src="/pwa/icon-192.png" alt="" width="28" height="28" />Sky Club <span>· 客户端</span></a>
       <nav aria-label="客户端导航">
         <a href={list} aria-current={isOrderList || isDetail ? "page" : undefined}>我的订单</a>
         <a href="/order" aria-current={isCreate ? "page" : undefined}>下单</a>

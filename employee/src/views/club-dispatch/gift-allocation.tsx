@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import { giftSegmentTimes } from "@webapp-template/common";
-import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow } from "@webapp-template/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
+import { giftSegmentTimes } from "@sky-club/common";
+import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow } from "@sky-club/common";
 import { employeeRequest } from "#/service/request";
 
 type Candidate = GiftDispatchPreparation["candidates"][number];

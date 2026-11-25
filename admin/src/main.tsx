@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { registerPwa } from "@webapp-template/common/pwa";
+import { registerPwa } from "@sky-club/common/pwa";
 import "./index.css";
 import App from "./App.tsx";
 

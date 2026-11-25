@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin } from "antd";
-import { deliveryPeriodPreferenceLabel, USER_ID_PATTERN, type DeliveryPeriodPreference } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { deliveryPeriodPreferenceLabel, USER_ID_PATTERN, type DeliveryPeriodPreference } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 type Candidate = { userId: string; nickname: string | null; dispatcher: boolean };

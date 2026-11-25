@@ -159,7 +159,7 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
   await t.test('官网匿名可读，团员工作区、设置和共享变量需要团员端授权', async () => {
     const response = await fetch(base + '/site', { headers: { origin: 'https://site.sky.test' } });
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).name, '送心手记');
+    assert.equal((await response.json()).name, 'Sky Club');
     const employee = browser(base);
     const { token } = await employee.login('employee', 'test_employee', password);
     await employee.request('employee', '/employee/workspace', { status: 401 });

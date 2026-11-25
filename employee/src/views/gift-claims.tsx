@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Spin, Tag, Typography } from "antd";
 import { Link, useSearchParams } from "react-router";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import type { GiftClaimFilter, GiftClaimNoticeTarget, GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
+import type { GiftClaimFilter, GiftClaimNoticeTarget, GiftClaimOrder, GiftClaimResult, GiftOffer } from "@sky-club/common";
 import Header from "#/components/Header";
 import { dispatchNoticeReadEvent, dispatchNoticeRoute } from "#/service/dispatch-notices";
 import { employeeRequest } from "#/service/request";

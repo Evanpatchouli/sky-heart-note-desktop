@@ -359,7 +359,7 @@ export class ClubDispatchPushService implements OnModuleInit, OnModuleDestroy {
     const payload = notice.eventKey ? {
       ...envelope, type: 'app-notification', version: 1, targetApp, noticeType: notice.type,
       notificationId: publicationId, noticeId,
-      target: notice.target, title: notice.title ?? '送心手记', message: notice.body ?? '你有一条新通知，点击查看',
+      target: notice.target, title: notice.title ?? 'Sky Club', message: notice.body ?? '你有一条新通知，点击查看',
     } : {
       ...envelope, type: 'club-dispatch', version: 1, message: '有新派单，点击进入接单区',
       publicationId, noticeId,

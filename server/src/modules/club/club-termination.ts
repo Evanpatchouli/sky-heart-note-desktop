@@ -1,4 +1,4 @@
-import type { OrderTermination, TerminationReview } from '@webapp-template/common';
+import type { OrderTermination, TerminationReview } from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 import type { StoredPriceAdjustment } from './club-price-adjustment';
 import { deliveryTarget } from './club-order-pricing';

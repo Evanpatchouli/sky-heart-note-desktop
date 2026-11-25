@@ -1,4 +1,4 @@
-import { Maybe } from '@webapp-template/common';
+import { Maybe } from '@sky-club/common';
 import RS from '@/constants/resp.constant';
 
 export default class Resp<T = unknown> {

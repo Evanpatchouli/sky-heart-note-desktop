@@ -27,11 +27,11 @@ import {
   UserOutlined,
   MoreOutlined,
 } from "@ant-design/icons";
-import type { PaginatedResult } from "@webapp-template/common";
+import type { PaginatedResult } from "@sky-club/common";
 import { ifFalsy } from "@/utils/value";
 import USpan from "@/components/unimportant/uspan";
 import UA from "@/components/unimportant/ua";
-import { USER_ID_PATTERN } from "@webapp-template/common";
+import { USER_ID_PATTERN } from "@sky-club/common";
 import { useTitle } from "@evanpatchouli/react-hooks-kit";
 
 export default function UserManageView() {

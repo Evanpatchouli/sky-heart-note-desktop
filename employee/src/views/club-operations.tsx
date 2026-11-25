@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Checkbox, Empty, Flex, Form, Input, InputNumber, Spin, Typography } from "antd";
-import { formatCentsAsYuan, parseYuanAsCents, type CommissionRule } from "@webapp-template/common";
-import { RequestError } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, parseYuanAsCents, type CommissionRule } from "@sky-club/common";
+import { RequestError } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 function Site() {
-  const [name, setName] = useState("送心手记");
+  const [name, setName] = useState("Sky Club");
   useEffect(() => {
     const controller = new AbortController();
     const api = (import.meta.env.VITE_APP_API_BASE_URL || "/api").replace(/\/$/, "");

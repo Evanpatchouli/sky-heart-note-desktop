@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
   MAX_PROMOTIONAL_GIFT_DIVISOR, platformDiscountForService, splitGiftQuoteDiscounts,
   type ClubPromotionPolicy, type GiftPriceSegment, type GiftQuotePromotions, type PlatformPromotionSource, type PlatformPromotionTerms,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { Model } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';

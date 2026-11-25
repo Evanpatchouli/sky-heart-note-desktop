@@ -1,4 +1,4 @@
-import type { Nullable } from "@webapp-template/common";
+import type { Nullable } from "@sky-club/common";
 
 export interface IResp<T = unknown> {
   code: number | string;

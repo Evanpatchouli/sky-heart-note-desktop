@@ -5,7 +5,7 @@ import {
   AppstoreOutlined, BarsOutlined, CalendarOutlined, DownOutlined,
   LogoutOutlined, OrderedListOutlined, TableOutlined, UserOutlined,
 } from "@ant-design/icons";
-import { useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
+import { useAuthSession, useSessionActions } from "@sky-club/common/web-auth";
 import MemberBrand from "#/components/MemberBrand";
 import { employeeRequest } from "#/service/request";
 import DispatchNotices from "./DispatchNotices";

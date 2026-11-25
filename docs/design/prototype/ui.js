@@ -45,7 +45,7 @@
   function navLinks(app,view) {
     return nav[app].map(([key,label,glyph]) => '<a class="shell-link" href="#'+app+'/'+key+'"'+(key===view?' aria-current="page"':'')+'>'+icon(glyph)+'<span>'+label+'</span></a>').join("");
   }
-  function brand() { return '<span class="brand"><span class="brand-mark">'+icon("plane")+'</span>送心手记</span>'; }
+  function brand() { return '<span class="brand"><span class="brand-mark">'+icon("plane")+'</span>Sky Club</span>'; }
   function go(app,view,id,params) {
     const search = new URLSearchParams(params).toString();
     const hash = "#" + [app,view,id].filter(Boolean).map(encodeURIComponent).join("/") + (search ? "?" + search : "");
@@ -113,7 +113,7 @@
     const {app,view,id,params}=route(), team=app==="member";
     const links=navLinks(app,view);
     document.body.dataset.app=app;
-    document.title=(team?"团员端":"客户端")+" · "+nav[app].find(n=>n[0]===view)[1]+" · 送心手记原型";
+    document.title=(team?"团员端":"客户端")+" · "+nav[app].find(n=>n[0]===view)[1]+" · Sky Club 原型";
     $("rail").innerHTML=team?brand()+'<nav class="rail-links" aria-label="桌面主导航">'+links+'</nav><div class="shell-who"><span class="shell-avatar">'+esc(ClubDemo.member.slice(-1))+'</span><div>'+esc(ClubDemo.member)+'<small>团员</small></div></div>':"";
     const unread=team&&ClubDemo.state.notices.some(n=>n.recipients.includes(ClubDemo.member)&&!n.readBy.includes(ClubDemo.member));
     $("bar").innerHTML='<span class="bar-brand">'+brand()+'</span><span class="context-label">'+(team?"团员工作台":"客户服务")+'</span>'+

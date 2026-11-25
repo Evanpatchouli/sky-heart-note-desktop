@@ -1,7 +1,7 @@
 import { useLoginStore } from "@/auth/store";
 import { useEmit } from "@/hooks/useEmitter";
-import type { Nullable } from "@webapp-template/common";
-import type { AppSession } from "@webapp-template/common/web-auth";
+import type { Nullable } from "@sky-club/common";
+import type { AppSession } from "@sky-club/common/web-auth";
 import { createStyles } from "@/utils/style.util";
 import { Dropdown, Avatar, type MenuProps } from "antd";
 import { useMemo } from "react";

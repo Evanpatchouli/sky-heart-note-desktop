@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
-import { formatCentsAsYuan, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type GiftPeriodProgress, type PricingPeriod } from "@webapp-template/common";
-import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type GiftPeriodProgress, type PricingPeriod } from "@sky-club/common";
+import { RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { clientRequest } from "./order-api";
 
 const periods = { normal: "普通期", double: "双倍期", unconfirmed: "实际时段待核对" };

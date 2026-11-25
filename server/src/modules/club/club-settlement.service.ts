@@ -14,7 +14,7 @@ import type {
   PersonalSettlement,
   SettlementCalculation,
   SettlementOrderRow,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { isObjectIdOrHexString, Model, Types, type QueryFilter } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { DailyReport } from './club-delivery.schema';

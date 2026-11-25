@@ -6,7 +6,7 @@ import {
   type SettlementIssue,
   type SettlementReport,
   type SettlementSendAmounts,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { type DailyReport } from './club-delivery.schema';
 import { activityQuantities, deliveryTarget, publishedQuoteMatchesReceipt } from './club-order-pricing';
 import type { ClubOrder } from './club-order.schema';

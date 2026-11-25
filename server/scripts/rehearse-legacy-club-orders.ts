@@ -388,7 +388,7 @@ async function rehearse(directory: string, connection: Connection) {
 }
 
 async function run() {
-  const directory = mkdtempSync(join(tmpdir(), 'sky-heart-migration-'));
+  const directory = mkdtempSync(join(tmpdir(), 'sky-club-migration-'));
   try {
     await withTemporaryMongo(directory, (connection) =>
       rehearse(directory, connection),

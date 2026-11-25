@@ -1,7 +1,7 @@
 import { Flex, Tag, Typography } from "antd";
 import {
   deliveryPeriodPreferenceLabel, formatCentsAsYuan, type DeliveryPeriodBreakdown,
-} from "@webapp-template/common";
+} from "@sky-club/common";
 
 export const actualPeriodLabels = { ...deliveryPeriodPreferenceLabel, unconfirmed: "时段待核对" };
 

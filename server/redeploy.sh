@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 compose=(docker compose -f docker-compose.yml)
-service=webapp-template-server
+service=sky-club-server
 
 if "${compose[@]}" up -d --build --force-recreate --no-deps "$service"; then
   for ((attempt=1; attempt<=60; attempt++)); do

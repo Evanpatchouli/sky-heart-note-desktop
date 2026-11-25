@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Descriptions, Flex, Modal, Spin, Tag, Typography } from "antd";
-import { formatCentsAsYuan, giftSettlementStatusLabel, type GiftSettlementClose, type PersonalGiftSettlement } from "@webapp-template/common";
-import { useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, giftSettlementStatusLabel, type GiftSettlementClose, type PersonalGiftSettlement } from "@sky-club/common";
+import { useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "./types";
 import CashCorrections from "../club-financial/cash-corrections";

@@ -1,4 +1,4 @@
-name: sky-heart-note
+name: sky-club
 
 x-web-args: &web-args
   VITE_APP_API_BASE_URL: ${VITE_APP_API_BASE_URL:-http://localhost:${SERVER_PORT:-8793}/api}
@@ -36,12 +36,12 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: mongo-admin
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
-      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-sky-heart-note}
-      SKY_MONGO_USER: ${DB_MONGO_USERNAME:-sky_heart}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-sky-club}
+      SKY_MONGO_USER: ${DB_MONGO_USERNAME:-sky-club}
       SKY_MONGO_PASSWORD: ${DB_MONGO_PASSWORD:-}
     volumes:
       - mongo-data:/data/db
-      - ./deploy/init-mongo.js:/docker-entrypoint-initdb.d/10-sky-heart.js:ro
+      - ./deploy/init-mongo.js:/docker-entrypoint-initdb.d/10-sky-club.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--host", "mongodb", "--eval", "quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)"]
       interval: 10s
@@ -50,7 +50,7 @@ services:
       start_period: 20s
 
   server:
-    image: ${COMPOSE_PROJECT_NAME:-sky-heart-note}-server:latest
+    image: ${COMPOSE_PROJECT_NAME:-sky-club}-server:latest
     build:
       context: .
       dockerfile: server/Dockerfile
@@ -61,7 +61,7 @@ services:
       - "127.0.0.1:${SERVER_PORT:-8793}:8793"
     networks:
       app:
-        aliases: [sky-heart-upstream]
+        aliases: [sky-club-upstream, sky-heart-upstream]
       database: {}
     depends_on:
       mongodb:
@@ -72,13 +72,13 @@ services:
       APP_ENV: production
       APP_HOST: 0.0.0.0
       APP_PORT: 8793
-      DB_MONGO_CONNECTION: ${DB_MONGO_CONNECTION:-mongodb://mongodb:27017/${MONGO_DB_NAME:-sky-heart-note}}
-      DB_MONGO_USERNAME: ${DB_MONGO_USERNAME-sky_heart}
+      DB_MONGO_CONNECTION: ${DB_MONGO_CONNECTION:-mongodb://mongodb:27017/${MONGO_DB_NAME:-sky-club}}
+      DB_MONGO_USERNAME: ${DB_MONGO_USERNAME-sky-club}
       DB_MONGO_PASSWORD: ${DB_MONGO_PASSWORD:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-root}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
-      CLUB_NAME: ${CLUB_NAME:-送心手记}
+      CLUB_NAME: ${CLUB_NAME:-Sky Club}
       MIGRATE_ON_START: ${MIGRATE_ON_START:-true}
       ADMIN_ORIGIN: ${ADMIN_ORIGIN:-http://localhost:${ADMIN_PORT:-5173}}
       EMPLOYEE_ORIGIN: ${EMPLOYEE_ORIGIN:-http://localhost:${EMPLOYEE_PORT:-5174}}
@@ -104,7 +104,7 @@ services:
 
   admin:
     <<: *frontend
-    image: ${COMPOSE_PROJECT_NAME:-sky-heart-note}-admin:latest
+    image: ${COMPOSE_PROJECT_NAME:-sky-club}-admin:latest
     build:
       <<: *web-build
       args:
@@ -115,7 +115,7 @@ services:
 
   employee:
     <<: *frontend
-    image: ${COMPOSE_PROJECT_NAME:-sky-heart-note}-employee:latest
+    image: ${COMPOSE_PROJECT_NAME:-sky-club}-employee:latest
     build:
       <<: *web-build
       args:
@@ -126,7 +126,7 @@ services:
 
   client:
     <<: *frontend
-    image: ${COMPOSE_PROJECT_NAME:-sky-heart-note}-client:latest
+    image: ${COMPOSE_PROJECT_NAME:-sky-club}-client:latest
     build:
       <<: *web-build
       args:
@@ -137,7 +137,7 @@ services:
 
   site:
     <<: *frontend
-    image: ${COMPOSE_PROJECT_NAME:-sky-heart-note}-site:latest
+    image: ${COMPOSE_PROJECT_NAME:-sky-club}-site:latest
     build:
       <<: *web-build
       args:
@@ -153,5 +153,5 @@ networks:
 
 volumes:
   employee-data:
-    name: ${EMPLOYEE_VOLUME_NAME:-${COMPOSE_PROJECT_NAME:-sky-heart-note}_employee-data}
+    name: ${EMPLOYEE_VOLUME_NAME:-${COMPOSE_PROJECT_NAME:-sky-club}_employee-data}
   mongo-data:

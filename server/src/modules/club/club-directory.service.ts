@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { Model } from 'mongoose';
 import {
   canAccess,
@@ -41,7 +41,7 @@ export class ClubDirectoryService implements OnModuleInit {
     await Promise.all([this.clubs.init(), this.members.init()]);
     const key = { _id: CLUB_ID };
     if (await this.clubs.exists(key)) return;
-    const name = process.env.CLUB_NAME?.trim() || '送心手记';
+    const name = process.env.CLUB_NAME?.trim() || 'Sky Club';
     if (name.length > 80) throw new Error('CLUB_NAME 最多可配置 80 个字符');
     try {
       await this.clubs.updateOne(key, { $setOnInsert: { ...key, name } }, {

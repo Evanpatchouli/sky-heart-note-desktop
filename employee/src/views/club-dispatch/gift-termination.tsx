@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Alert, Button, Card, Flex, Input } from "antd";
-import { formatCentsAsYuan, parseYuanAsCents, type GiftDispatchSupervision, type GiftTermination } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, parseYuanAsCents, type GiftDispatchSupervision, type GiftTermination } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 const money = (cents: number) => `¥${formatCentsAsYuan(cents)}`;

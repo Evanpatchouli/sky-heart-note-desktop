@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { getAppToken, invalidateSession, RequestError, saveToken, subscribeToken, verifySession } from "@webapp-template/common/web-auth";
+import { getAppToken, invalidateSession, RequestError, saveToken, subscribeToken, verifySession } from "@sky-club/common/web-auth";
 import { RouterView } from "./router";
 import { useEvent } from "./hooks/useEmitter";
 import { acceptSession, useLoginStore } from "./auth/store";

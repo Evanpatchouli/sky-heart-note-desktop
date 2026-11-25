@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsISO8601, IsMongoId, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
-import { USER_ID_PATTERN, type ClubAdjustmentDecision, type ClubAdjustmentKind } from '@webapp-template/common';
+import { USER_ID_PATTERN, type ClubAdjustmentDecision, type ClubAdjustmentKind } from '@sky-club/common';
 
 const trim = ({ value }: { value: unknown }) => typeof value === 'string' ? value.trim() : value;
 const lower = ({ value }: { value: unknown }) => typeof value === 'string' ? value.toLowerCase() : value;

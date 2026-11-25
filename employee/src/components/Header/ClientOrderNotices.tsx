@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert } from "antd";
 import { Link } from "react-router";
-import { getAppToken, useAuthSession } from "@webapp-template/common/web-auth";
+import { getAppToken, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 type ClientOrderNotice = { orderId: string; clubName: string; recipientGameAccount: string; createdAt: string };

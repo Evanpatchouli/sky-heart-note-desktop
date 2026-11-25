@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { giftServiceAmounts } from '@webapp-template/common';
+import { giftServiceAmounts } from '@sky-club/common';
 import { startSystem, captchaCode } from './start-system.mjs';
 
 const employee = '/employee/club';

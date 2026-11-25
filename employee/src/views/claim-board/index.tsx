@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Spin, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
-import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
+import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
 import { dispatchNoticeReadEvent, dispatchNoticeRoute } from "#/service/dispatch-notices";
 import { employeeRequest } from "#/service/request";

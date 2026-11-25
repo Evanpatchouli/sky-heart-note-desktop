@@ -15,8 +15,8 @@ import {
   PERMISSION_IN_KEY,
   PERMISSIONS_KEY,
 } from './auth.constants';
-import type { RoleCode } from '@webapp-template/common';
-import { Hintable, HintableArray } from '@webapp-template/common';
+import type { RoleCode } from '@sky-club/common';
+import { Hintable, HintableArray } from '@sky-club/common';
 import type { WebApp } from './app-access';
 
 export const APP_ACCESS_KEY = 'required-web-app';

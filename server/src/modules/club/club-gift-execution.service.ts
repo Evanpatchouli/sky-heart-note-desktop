@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { GiftExecutionAccount } from '@webapp-template/common';
+import type { GiftExecutionAccount } from '@sky-club/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { EmployeeService } from '../employee/employee.service';
 import { ClubDirectoryService } from './club-directory.service';

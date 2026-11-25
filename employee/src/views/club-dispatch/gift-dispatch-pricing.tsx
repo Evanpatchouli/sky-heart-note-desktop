@@ -4,8 +4,8 @@ import { Alert, Button, Card, Flex, Form, Input, InputNumber, Modal, Select, Spi
 import {
   calculateGiftQuote, deliveryPeriodPreferenceLabel, formatCentsAsYuan, giftFulfillmentSegments, parseYuanAsCents, platformPromotionDescription, platformPromotionLabels,
   type ClubPromotionPolicy, type CommissionRule, type ContinuationQuote, type ContinuationRequest, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type GiftPriceSegment, type GiftSegmentDispatchInput, type OrderPricing, type PlatformPromotionSource,
-} from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+} from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import { GiftDispatchForm, PublishedGiftAllocation } from "./gift-allocation";
 import { GiftContinuationManagement } from "./gift-continuations";

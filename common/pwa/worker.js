@@ -38,7 +38,7 @@ async function showPush(payload, tag) {
   const receipt = "/__pwa_notification_receipts__/" + payload.noticeId;
   if (await cache.match(receipt)) return;
   if (!(await self.registration.getNotifications({ tag })).length) {
-    await self.registration.showNotification(payload.type === "club-dispatch" ? "送心手记" : payload.title, {
+    await self.registration.showNotification(payload.type === "club-dispatch" ? "Sky Club" : payload.title, {
       body: payload.message, tag, icon: "/pwa/icon-192.png", renotify: false, data: payload,
     });
   }

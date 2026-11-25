@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, Input, Select, Spin, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { useSearchParams } from "react-router";
-import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import {
   commissionBasisLabel, commissionUnit, deliveryPeriodPreferenceLabel, formatCentsAsYuan, parseYuanAsCents, paymentStatusLabel, quoteHeartCounts,
   type CommissionReview, type CommissionRule, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type OrderPricing,
   type OrderReceipt, type PaymentStatus, type PendingQuoteActivity,
-} from "@webapp-template/common";
+} from "@sky-club/common";
 import Header from "#/components/Header";
 import type { EmployeeClub } from "../club-operations";
 import { employeeRequest } from "#/service/request";

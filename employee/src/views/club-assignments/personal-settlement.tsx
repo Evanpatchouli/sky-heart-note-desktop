@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Descriptions, Flex, Spin, Tag, Typography } from "antd";
-import { formatCentsAsYuan, settlementIssueLabel, type PersonalSettlement } from "@webapp-template/common";
+import { formatCentsAsYuan, settlementIssueLabel, type PersonalSettlement } from "@sky-club/common";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "./types";
 

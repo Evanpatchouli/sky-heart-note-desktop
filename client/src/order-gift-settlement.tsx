@@ -1,4 +1,4 @@
-import { formatCentsAsYuan, giftSettlementStatusLabel, type CustomerGiftSettlement } from "@webapp-template/common";
+import { formatCentsAsYuan, giftSettlementStatusLabel, type CustomerGiftSettlement } from "@sky-club/common";
 
 export function OrderGiftSettlement({ value, showTerminationEvidence = true }: {
   value: CustomerGiftSettlement;

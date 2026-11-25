@@ -1,7 +1,7 @@
 import {
   giftFulfillmentSegments, giftServiceAmounts,
   type CustomerGiftPriceAdjustment, type GiftPriceAdjustment, type GiftPriceSegment, type QuoteDiscountShare,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 
 export type StoredGiftPriceAdjustment = Omit<GiftPriceAdjustment,

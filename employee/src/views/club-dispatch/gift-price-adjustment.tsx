@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Alert, Button, Popconfirm } from "antd";
-import { formatCentsAsYuan, parseYuanAsCents, type GiftDispatchSupervision, type GiftPriceAdjustment, type GiftPricePreview } from "@webapp-template/common";
-import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, parseYuanAsCents, type GiftDispatchSupervision, type GiftPriceAdjustment, type GiftPricePreview } from "@sky-club/common";
+import { RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 const periods = { normal: "普通期", double: "双倍期" };

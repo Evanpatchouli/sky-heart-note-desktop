@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import { authRequest, RequestError } from "@webapp-template/common/web-auth";
+import { authRequest, RequestError } from "@sky-club/common/web-auth";
 
 type Registration = { id: string; employeeUrl: string };
 

@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { DatabaseSync, type SQLOutputValue } from 'node:sqlite';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 
 type Field =
   | null

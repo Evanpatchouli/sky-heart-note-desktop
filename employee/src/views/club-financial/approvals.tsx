@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, Input, Modal, Spin, Tabs, Typography } from "antd";
-import type { ClubAdjustmentDecision, ClubAdjustmentList, ClubAdjustmentRecord } from "@webapp-template/common";
-import { useAuthSession } from "@webapp-template/common/web-auth";
+import type { ClubAdjustmentDecision, ClubAdjustmentList, ClubAdjustmentRecord } from "@sky-club/common";
+import { useAuthSession } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";

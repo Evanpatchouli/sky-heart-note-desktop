@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 
 export type LoginLogDocument = HydratedDocument<LoginLog>;
 

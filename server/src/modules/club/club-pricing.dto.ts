@@ -13,8 +13,8 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { PRICING_PERIODS } from '@webapp-template/common';
-import type { PricingPeriod } from '@webapp-template/common';
+import { PRICING_PERIODS } from '@sky-club/common';
+import type { PricingPeriod } from '@sky-club/common';
 import { giftBusinessDatePattern } from './club-gift-segment.dto';
 
 export class UpdateCommissionRuleDto {

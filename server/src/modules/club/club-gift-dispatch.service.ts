@@ -1,10 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { giftSegmentTimes } from '@webapp-template/common';
+import { giftSegmentTimes } from '@sky-club/common';
 import type {
   GiftAllocationTotals, GiftClaimFilter, GiftClaimNoticeTarget, GiftClaimOrder, GiftClaimResult,
   GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
 import { ClubDailyReportStore } from './club-daily-report.store';

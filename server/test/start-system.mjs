@@ -44,7 +44,7 @@ async function startChild(cleanup, executable, args, options) {
 }
 
 export async function startSystem(t, { database, origins, adminUsername, extraFixtures = '', initialCache = {}, extraEnv = {}, concurrentStarts = false }) {
-  const directory = await mkdtemp(join(tmpdir(), 'sky-heart-e2e-'));
+  const directory = await mkdtemp(join(tmpdir(), 'sky-club-e2e-'));
   const cleanup = [];
   t.after(async () => {
     for (const stop of cleanup.reverse()) await stop();

@@ -16,7 +16,7 @@ import {
   PRICING_PERIODS,
   type DeliveryPeriodShift,
   type PricingPeriod,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { ClubOrderQuery } from './club-order.dto';
 
 export class AgreementDeadlineDto {

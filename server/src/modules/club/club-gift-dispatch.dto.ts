@@ -3,7 +3,7 @@ import {
   ArrayMaxSize, IsArray, IsDefined, IsIn, IsInt, IsMongoId, IsObject, Matches, Max, Min, ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { OrderRequestDto } from './club-order.dto';
 
 import { GiftDispatchSegmentDto } from './club-gift-segment.dto';

@@ -7,7 +7,7 @@ export class AppController {
 
   @Get('site')
   getSite() {
-    return { name: '送心手记' };
+    return { name: 'Sky Club' };
   }
 
   @Get()

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { formatCentsAsYuan, type CustomerGiftPriceAdjustment } from "@webapp-template/common";
-import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, type CustomerGiftPriceAdjustment } from "@sky-club/common";
+import { RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { clientRequest } from "./order-api";
 
 const periods = { normal: "普通期", double: "双倍期" };

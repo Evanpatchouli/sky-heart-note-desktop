@@ -1,4 +1,4 @@
-import type { PriceAdjustment, PriceAdjustmentReviewRecord, PriceSegment } from '@webapp-template/common';
+import type { PriceAdjustment, PriceAdjustmentReviewRecord, PriceSegment } from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 import { terminationView } from './club-termination';
 

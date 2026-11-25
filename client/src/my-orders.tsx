@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { deliveryPeriodPreferenceLabel, formatCentsAsYuan, isGiftOrderProgress, paymentStatusLabel, platformPromotionLabels, priceAdjustmentStateLabel,
-  type PriceAdjustment, type PriceAdjustmentDecision } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+  type PriceAdjustment, type PriceAdjustmentDecision } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import {
   clientRequest, clientOrdersPath, detailHref, dispatchLabel, orderDispatcher, sourceLabel, useClientRead, type Order,
 } from "./order-api";

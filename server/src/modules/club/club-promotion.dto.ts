@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer';
 import {
   IsIn, IsInt, IsString, IsUUID, Length, Matches, Max, Min, ValidateIf,
 } from 'class-validator';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 
 export class UpdateClubPromotionDto {
   @IsInt()

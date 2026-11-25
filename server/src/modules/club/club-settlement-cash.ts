@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import type { GiftSettlementAdjustment, GiftSettlementCalculation, GiftSettlementIssue, SettlementCashMovement, SettlementCashMovementKind } from '@webapp-template/common';
+import type { GiftSettlementAdjustment, GiftSettlementCalculation, GiftSettlementIssue, SettlementCashMovement, SettlementCashMovementKind } from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 
 const cashCategories = {

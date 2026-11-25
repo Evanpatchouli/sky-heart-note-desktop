@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { USER_ID_PATTERN, type PersonalClubBalance } from '@webapp-template/common';
+import { USER_ID_PATTERN, type PersonalClubBalance } from '@sky-club/common';
 import { isObjectIdOrHexString, Model, Types, type QueryFilter } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';

@@ -4,23 +4,23 @@ services:
     networks:
       mongo: {}
       public_web:
-        aliases: [sky-heart-api]
+        aliases: [sky-club-api, sky-heart-api]
   admin:
     networks:
       public_web:
-        aliases: [sky-heart-admin]
+        aliases: [sky-club-admin, sky-heart-admin]
   employee:
     networks:
       public_web:
-        aliases: [sky-heart-employee]
+        aliases: [sky-club-employee, sky-heart-employee]
   client:
     networks:
       public_web:
-        aliases: [sky-heart-client]
+        aliases: [sky-club-client, sky-heart-client]
   site:
     networks:
       public_web:
-        aliases: [sky-heart-site]
+        aliases: [sky-club-site, sky-heart-site]
 
 networks:
   mongo:

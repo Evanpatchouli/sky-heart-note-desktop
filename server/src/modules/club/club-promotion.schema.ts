@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { USER_ID_PATTERN, type PlatformPromotionTerms } from '@webapp-template/common';
+import { USER_ID_PATTERN, type PlatformPromotionTerms } from '@sky-club/common';
 import { SchemaTypes } from 'mongoose';
 
 @Schema({ collection: 'club_promotion_coupons', timestamps: { updatedAt: false }, versionKey: false })

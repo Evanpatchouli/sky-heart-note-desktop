@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, Input, InputNumber, Modal, Radio, Select, Spin, Tag, Typography } from "antd";
 import dayjs from "dayjs";
-import { formatCentsAsYuan, type GiftClaimOrder, type GiftDailyReport, type GiftDeliveryProgress, type GiftReportPeriod, type SettlementCorrection } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, type GiftClaimOrder, type GiftDailyReport, type GiftDeliveryProgress, type GiftReportPeriod, type SettlementCorrection } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { GiftPeriodFacts, giftHearts as actual, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
 

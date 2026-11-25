@@ -1,7 +1,7 @@
 import { Navigate, Outlet } from "react-router";
 import { useEffect, useState } from "react";
 import { AuditOutlined, BellOutlined } from "@ant-design/icons";
-import { NotificationBell } from "@webapp-template/common/notifications";
+import { NotificationBell } from "@sky-club/common/notifications";
 import type { MenuProps } from "antd";
 import { getAdminClub, type AdminClub } from "@/api/club.api";
 import { useLoginStore } from "@/auth/store";

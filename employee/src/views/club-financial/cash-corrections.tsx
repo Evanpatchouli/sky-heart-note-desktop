@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Flex, Form, Input, Modal, Select, Spin, Tag, Typography } from "antd";
-import { formatCentsAsYuan, parseYuanAsCents, settlementCashMovementLabel, type SettlementCashMovement, type SettlementCorrection } from "@webapp-template/common";
+import { formatCentsAsYuan, parseYuanAsCents, settlementCashMovementLabel, type SettlementCashMovement, type SettlementCorrection } from "@sky-club/common";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";
 import { money, showDate } from "./adjustment-summary";

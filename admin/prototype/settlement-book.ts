@@ -44,7 +44,7 @@ export function reconcile(s: Settlement) {
 // 每个结算单仅占用一个凭据键。页面与流水均从同一凭据推导，重复操作不追加金额。
 const key = (id: string) => "sky-heart.admin-review.finance.v1." + id;
 const memory = new Map<string, string>();
-const updated = "sky-heart-finance-posted";
+const updated = "sky-club-finance-posted";
 export function postedAt(id: string) {
   try { return localStorage.getItem(key(id)) ?? memory.get(id) ?? null; } catch { return memory.get(id) ?? null; }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Flex, Progress, Spin, Tag, Typography } from "antd";
 import dayjs from "dayjs";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import ClubDeliveryPeriods from "#/components/ClubDeliveryPeriods";
 import DeliveryReportForm, { periodLabels, type ReportDraft } from "./delivery-report-form";

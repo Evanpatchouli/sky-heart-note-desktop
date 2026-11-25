@@ -41,7 +41,7 @@ export default function AdminShell({ menu, account, children }: {
           {children}
         </Layout.Content>
         <Layout.Footer style={{ textAlign: "center", flexShrink: 0 }}>
-          送心手记 ©{dayjs().year()}
+          Sky Club ©{dayjs().year()}
         </Layout.Footer>
       </Layout>
     </Layout>

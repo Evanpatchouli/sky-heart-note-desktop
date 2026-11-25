@@ -3,13 +3,13 @@ import {
   BUSINESS_DATE_PATTERN,
   DELIVERY_PERIOD_PREFERENCES,
   USER_ID_PATTERN,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import type {
   CommissionReview,
   DeliveryPeriodPreference,
   DispatchPricing,
   OrderPricing,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { Schema as MongooseSchema, SchemaTypes, Types } from 'mongoose';
 import type { GiftDispatchState } from './club-gift-allocation';
 import type { StoredGiftPriceAdjustment } from './club-gift-price-basis';

@@ -1,5 +1,5 @@
 {
-  "name": "@webapp-template/common",
+  "name": "@sky-club/common",
   "version": "1.0.0",
   "description": "Shared constants, types and components",
   "main": "./dist/index.js",

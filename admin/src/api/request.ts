@@ -3,7 +3,7 @@ import Resp from "@/models/Resp";
 import type { IResp } from "@/types/resp";
 import { message } from "antd";
 import axios, { AxiosError, type AxiosResponse } from "axios";
-import { apiUrl, invalidateSession } from "@webapp-template/common/web-auth";
+import { apiUrl, invalidateSession } from "@sky-club/common/web-auth";
 
 // 定义通用的响应接口
 export interface ApiResponse<T = any> {

@@ -1,7 +1,7 @@
 import {
   giftSegmentTimes, type GiftSettlementAmounts, type GiftSettlementCalculation,
   type GiftSettlementCash, type GiftSettlementIssue, type GiftSettlementProgress,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { isDeepStrictEqual } from 'node:util';
 import { continuationView } from './club-continuation.service';
 import type { ClubFinancialAdjustment } from './club-financial-adjustment.schema';

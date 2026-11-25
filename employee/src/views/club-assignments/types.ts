@@ -1,5 +1,5 @@
-import type { DeliveryPeriodBreakdown, GiftDispatchSegment, PricingPeriod } from "@webapp-template/common";
-import { RequestError } from "@webapp-template/common/web-auth";
+import type { DeliveryPeriodBreakdown, GiftDispatchSegment, PricingPeriod } from "@sky-club/common";
+import { RequestError } from "@sky-club/common/web-auth";
 
 export type ExecutionAccount = {
   id: string;

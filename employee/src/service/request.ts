@@ -1,4 +1,4 @@
-import { authRequest, getAppToken, invalidateSession, RequestError } from "@webapp-template/common/web-auth";
+import { authRequest, getAppToken, invalidateSession, RequestError } from "@sky-club/common/web-auth";
 
 export async function employeeRequest<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   const token = getAppToken("employee");

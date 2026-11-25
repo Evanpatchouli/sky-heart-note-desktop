@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Form, Input, InputNumber, Modal, Radio, Select } from "antd";
-import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, type DeliveryPeriodPreference } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, type DeliveryPeriodPreference } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 type CustomerCandidate = { userId: string; nickname: string | null };

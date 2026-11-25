@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { AppstoreOutlined, ArrowLeftOutlined, BarsOutlined, CalendarOutlined, FilterOutlined, OrderedListOutlined, SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { Alert, Button, Empty, Flex, Spin } from "antd";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
-import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 import { useWorkspaceScroll } from "../workspace-scroll";

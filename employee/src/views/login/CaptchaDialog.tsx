@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Alert, Form, Input, Modal, type InputRef } from "antd";
 import { PictureOutlined, ReloadOutlined } from "@ant-design/icons";
-import { postLogin, RequestError, useAuthCaptcha, type SignInProps } from "@webapp-template/common/web-auth";
+import { postLogin, RequestError, useAuthCaptcha, type SignInProps } from "@sky-club/common/web-auth";
 import styles from "./login.module.css";
 
 export type Credentials = { username: string; password: string };

@@ -1,7 +1,7 @@
 {
   "id": "/?app=client",
-  "name": "送心手记 · 客户端",
-  "short_name": "送心客户端",
+  "name": "Sky Club · 客户端",
+  "short_name": "Sky Club 客户端",
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",

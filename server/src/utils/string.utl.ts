@@ -1,4 +1,4 @@
-import { Maybe } from '@webapp-template/common';
+import { Maybe } from '@sky-club/common';
 
 export const isEmpty = (str: string) => {
   if (typeof str !== 'string') {

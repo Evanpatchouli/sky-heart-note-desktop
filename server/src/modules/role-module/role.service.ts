@@ -1,9 +1,9 @@
-import { Maybe } from '@webapp-template/common';
+import { Maybe } from '@sky-club/common';
 import { DeleteResult, Model, QueryFilter, Types } from 'mongoose';
 import { Injectable, Dependencies, Inject } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Role } from './role.schema';
-import { PaginatedResult } from '@webapp-template/common';
+import { PaginatedResult } from '@sky-club/common';
 
 @Injectable()
 @Dependencies(getModelToken(Role.name))

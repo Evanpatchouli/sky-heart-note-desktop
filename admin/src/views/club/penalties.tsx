@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Empty, Flex, Form, Input, Modal, Select, Spin, Table, Tag, Typography } from "antd";
-import { clubAdjustmentStatusLabel, clubPenaltyPostingLabel, formatCentsAsYuan, parseYuanAsCents, type ClubAdjustmentRecord, type ClubPenaltyList } from "@webapp-template/common";
+import { clubAdjustmentStatusLabel, clubPenaltyPostingLabel, formatCentsAsYuan, parseYuanAsCents, type ClubAdjustmentRecord, type ClubPenaltyList } from "@sky-club/common";
 import { useOutletContext } from "react-router";
 import { getClubPenalties, publishClubPenalty } from "@/api/club-finance.api";
 import type { AdminClubContext } from "../home";

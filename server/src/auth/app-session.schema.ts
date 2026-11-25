@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { apps, type WebApp } from './app-access';
 
 @Schema({ collection: 'app_sessions', versionKey: false })

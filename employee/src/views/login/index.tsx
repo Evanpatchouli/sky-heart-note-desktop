@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Button, ConfigProvider, Form, Input } from "antd";
 import { ArrowRightOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
-import { SharedAccounts, type SignInProps } from "@webapp-template/common/web-auth";
+import { SharedAccounts, type SignInProps } from "@sky-club/common/web-auth";
 import MemberBrand from "#/components/MemberBrand";
 import landscape from "#/assets/member-sky.webp";
 import styles from "./login.module.css";

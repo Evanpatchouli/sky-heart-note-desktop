@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Alert, Button, Checkbox, Flex, Form, Input, Typography } from "antd";
-import { formatCentsAsYuan, parseYuanAsCents, type ContinuationQuote, type ContinuationRequest, type GiftWindow } from "@webapp-template/common";
-import { RequestError } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan, parseYuanAsCents, type ContinuationQuote, type ContinuationRequest, type GiftWindow } from "@sky-club/common";
+import { RequestError } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 const periods = { normal: "普通期", double: "双倍期" };

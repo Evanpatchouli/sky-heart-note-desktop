@@ -1,7 +1,7 @@
-import type { CustomerGiftTermination, GiftPricePayment, GiftTermination, GiftTerminationChange } from '@webapp-template/common';
+import type { CustomerGiftTermination, GiftPricePayment, GiftTermination, GiftTerminationChange } from '@sky-club/common';
 import { factCounts, type GiftDayFact } from './club-gift-delivery';
 import { giftPaidAmounts, giftPriceSegments } from './club-gift-price-basis';
-import { giftSegmentTimes } from '@webapp-template/common';
+import { giftSegmentTimes } from '@sky-club/common';
 import type { ClubOrder } from './club-order.schema';
 
 export type GiftTerminationRequest = { id: string; hash: string };

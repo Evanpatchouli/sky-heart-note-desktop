@@ -28,7 +28,7 @@ export default function Loading<T>({ on, theme, color, disableHeartBit }: Loadin
   const loadColor2 = useMemo(() => loadColor + "81", [loadColor]);
   return on ? (
     <div
-      className="webapp-template-loading"
+      className="sky-club-loading"
       style={{
         // @ts-ignore
         "--loading-color": `${loadColor}`,

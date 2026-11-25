@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Input, Modal, Spin, Tag, Typography } from "antd";
 import {
   type AgreedReportDay, type DispatchFulfillment, type GiftDispatchSupervision, type ShareFulfillment,
-} from "@webapp-template/common";
-import { RequestError } from "@webapp-template/common/web-auth";
+} from "@sky-club/common";
+import { RequestError } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import ClubDeliveryPeriods, { actualPeriodLabels } from "#/components/ClubDeliveryPeriods";
 import type { ReportRecord } from "../club-assignments/types";

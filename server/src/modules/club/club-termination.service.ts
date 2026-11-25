@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { OrderTermination, TerminationReview } from '@webapp-template/common';
+import type { OrderTermination, TerminationReview } from '@sky-club/common';
 import { createHash } from 'node:crypto';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { customerFulfillmentView } from './club-delivery';

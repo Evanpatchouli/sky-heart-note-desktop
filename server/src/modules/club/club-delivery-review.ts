@@ -8,7 +8,7 @@ import {
   type DeliveryPriceIssue,
   type ObservedDeliveryPeriod,
   type OrderFulfillment,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import type { Types } from 'mongoose';
 import { jsonCount, quotedDeliverySegments, type ShareDelivery } from './club-delivery';
 import { deliveryTarget, publishedQuoteMatchesReceipt } from './club-order-pricing';

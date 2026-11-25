@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, Input, Modal, Spin, Typography } from "antd";
-import { settlementCashMovementLabel, type ClubAdjustmentDecision, type GiftReportLine, type SettlementCorrection } from "@webapp-template/common";
+import { settlementCashMovementLabel, type ClubAdjustmentDecision, type GiftReportLine, type SettlementCorrection } from "@sky-club/common";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";
 import { money, showDate } from "./adjustment-summary";

@@ -3,7 +3,7 @@ import type {
   AgreedReportDay,
   DispatchFulfillment,
   OrderFulfillment,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import type {
   DailyReportLine,
   ReportCheck,

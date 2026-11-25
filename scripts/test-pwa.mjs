@@ -94,8 +94,8 @@ for (const { name, port, label } of apps) {
     const html = read("index.html", "utf8");
     const manifest = JSON.parse(read("manifest.webmanifest", "utf8"));
     assert.equal(manifest.id, `/?app=${name}`);
-    assert.equal(manifest.name, `送心手记 · ${label}`);
-    assert.equal(manifest.short_name, `送心${label}`);
+    assert.equal(manifest.name, `Sky Club · ${label}`);
+    assert.equal(manifest.short_name, `Sky Club ${label}`);
     assert.equal(new URL(manifest.start_url, origin).href, origin + "/");
     assert.equal(new URL(manifest.scope, origin).href, origin + "/");
     assert.equal(manifest.display, "standalone");
@@ -138,7 +138,7 @@ for (const { name, port, label } of apps) {
     const offline = await worker.request("/?vtype=list", navigation);
     assert.equal(offline.status, 503);
     assert.equal(offline.headers.get("Cache-Control"), "no-store");
-    assert.match(await offline.text(), new RegExp(`送心手记 · ${label}[\\s\\S]*当前无法连接`));
+    assert.match(await offline.text(), new RegExp(`Sky Club · ${label}[\\s\\S]*当前无法连接`));
     assert.equal((await worker.request(`/assets/${entry}`, { destination: "script" })).status, 200);
 
     for (const path of ["/club/dispatch", "/club/operations", "/claim-board/?orderId=example"]) {

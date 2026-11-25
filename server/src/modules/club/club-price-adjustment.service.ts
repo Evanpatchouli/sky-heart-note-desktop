@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { DeliveryPeriodShift, DeliveryPriceComparison } from '@webapp-template/common';
+import type { DeliveryPeriodShift, DeliveryPriceComparison } from '@sky-club/common';
 import { createHash } from 'node:crypto';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { customerFulfillmentView } from './club-delivery';

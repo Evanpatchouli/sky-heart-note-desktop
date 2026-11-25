@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Input, Modal, Select, Spin, Tag, Typography } from "antd";
-import { getAppToken, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
+import { getAppToken, useAuthSession, useSessionActions } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import DeliveryDiary from "./delivery-diary";
 import PersonalSettlementCard from "./personal-settlement";

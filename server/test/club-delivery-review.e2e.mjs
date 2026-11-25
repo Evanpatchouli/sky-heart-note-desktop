@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { calculateQuoteAmounts } from '@webapp-template/common';
+import { calculateQuoteAmounts } from '@sky-club/common';
 import { startClubSystem } from './club-test-system.mjs';
 
 const quote = (period, hearts, unitPriceCents) => ({ period, hearts, unitPriceCents });

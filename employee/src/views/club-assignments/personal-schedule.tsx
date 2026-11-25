@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Alert, Button, Flex, Modal } from "antd";
-import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
+import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import { type PersonalSchedule, type ScheduleDates, requestMessage } from "./types";
 

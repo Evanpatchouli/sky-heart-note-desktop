@@ -6,7 +6,7 @@ import {
   getClientIpWithInfo,
   IpInfoInterface,
 } from '@/utils/ip.utils';
-import { Hintable } from '@webapp-template/common';
+import { Hintable } from '@sky-club/common';
 
 /**
  * 获取客户端IP装饰器

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { GiftPriceDecision, GiftPricePayment, GiftPricePreview, GiftPriceShift } from '@webapp-template/common';
+import type { GiftPriceDecision, GiftPricePayment, GiftPricePreview, GiftPriceShift } from '@sky-club/common';
 import { createHash } from 'node:crypto';
 import { isObjectIdOrHexString, Model, type QueryFilter, Types } from 'mongoose';
 import { ClubDailyReportStore } from './club-daily-report.store';

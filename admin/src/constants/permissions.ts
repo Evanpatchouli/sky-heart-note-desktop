@@ -11,7 +11,7 @@ export enum PermissionType {
 // =====================================================
 // 2. 角色编码常量（新增 OPERATOR）
 // =====================================================
-import { ROLES } from '@webapp-template/common';
+import { ROLES } from '@sky-club/common';
 export { ROLES };
 
 // =====================================================

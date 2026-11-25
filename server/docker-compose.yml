@@ -1,11 +1,11 @@
 services:
   # NestJS 应用服务
-  webapp-template-server:
+  sky-club-server:
     build:
       context: ../
       dockerfile: server/Dockerfile
-    image: webapp-template-server:latest
-    container_name: webapp-template-server
+    image: sky-club-server:latest
+    container_name: sky-club-server
     restart: always
     ports:
       - "8793:8793"

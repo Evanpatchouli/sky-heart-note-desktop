@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAuthSession } from "@webapp-template/common/web-auth";
+import { useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import toast from "#/utils/toast";
 

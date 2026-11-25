@@ -1,5 +1,5 @@
 {
-  "name": "@webapp-template/employee",
+  "name": "@sky-club/employee",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -14,7 +14,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@webapp-template/common": "workspace:*",
+    "@sky-club/common": "workspace:*",
     "antd": "^6.2.2",
     "classnames": "^2.5.1",
     "dayjs": "^1.11.19",

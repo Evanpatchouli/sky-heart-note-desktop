@@ -1,7 +1,7 @@
 {
   "id": "/?app=admin",
-  "name": "送心手记 · 管理端",
-  "short_name": "送心管理端",
+  "name": "Sky Club · 管理端",
+  "short_name": "Sky Club 管理端",
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",

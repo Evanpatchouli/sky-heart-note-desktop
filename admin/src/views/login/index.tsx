@@ -3,7 +3,7 @@ import { DesktopOutlined, QrcodeOutlined } from "@ant-design/icons";
 import { Card, Typography } from "antd";
 import { useTitle } from "@evanpatchouli/react-hooks-kit";
 import { useNavigate } from "react-router";
-import { SharedAccounts } from "@webapp-template/common/web-auth";
+import { SharedAccounts } from "@sky-club/common/web-auth";
 import { UserLoginEvent } from "@/events/user.event";
 import { useEmit } from "@/hooks/useEmitter";
 import { APP_NAME, SYSTEM_NAME } from "@/constants";

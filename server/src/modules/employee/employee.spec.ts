@@ -14,7 +14,7 @@ describe('团员数据', () => {
   let directory: string;
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'sky-heart-employee-'));
+    directory = mkdtempSync(join(tmpdir(), 'sky-club-employee-'));
     process.env.EMPLOYEE_DATA_DIR = directory;
   });
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ContinuationQuote, ContinuationRequest, CustomerGiftProgress, CustomerQuote, CustomerReceipt, DeliveryPeriodPreference, OrderFulfillment, OrderTermination, PaymentStatus, PendingQuoteActivity, PriceAdjustment, PriceSegment } from "@webapp-template/common";
-import type { CustomerGiftSettlement } from "@webapp-template/common";
-import { authRequest, getAppToken, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import type { ContinuationQuote, ContinuationRequest, CustomerGiftProgress, CustomerQuote, CustomerReceipt, DeliveryPeriodPreference, OrderFulfillment, OrderTermination, PaymentStatus, PendingQuoteActivity, PriceAdjustment, PriceSegment } from "@sky-club/common";
+import type { CustomerGiftSettlement } from "@sky-club/common";
+import { authRequest, getAppToken, invalidateSession, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 
 export const sourceLabel = { direct_dispatch: "直接派单", client_order: "客户端下单" };
 export const dispatchLabel = { draft: "待派发", pending_assignment: "待分配", pending: "待派单", published: "已派发", cancelled: "已取消" };

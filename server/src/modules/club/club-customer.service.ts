@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { Model, Types, type PipelineStage } from 'mongoose';
 import { canAccess } from '../../auth/app-access';
 import { RoleService } from '../role-module/role.service';

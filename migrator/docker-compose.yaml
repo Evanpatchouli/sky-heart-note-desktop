@@ -1,6 +1,6 @@
 services:
   # 迁移 Job（一次性运行）
-  webapp-template-migrate:
+  sky-club-migrate:
     build:
       context: ..
       dockerfile: migrator/Dockerfile # 专用 Dockerfile 或复用

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Select, Spin } from "antd";
-import { parseYuanAsCents, platformPromotionDescription, type ClubPromotionPolicy } from "@webapp-template/common";
+import { parseYuanAsCents, platformPromotionDescription, type ClubPromotionPolicy } from "@sky-club/common";
 import { getClubPromotions, issueClubCoupon, saveClubPromotions } from "@/api/club.api";
 
 type ActivityFields = { name?: string; payablePercent?: number };

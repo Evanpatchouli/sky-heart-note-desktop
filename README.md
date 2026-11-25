@@ -1,17 +1,17 @@
-# 送心手记
+# Sky Club
 
 本仓库以 [webapp-template 的 main 提交 a6b1583](https://github.com/Evanpatchouli/webapp-template/tree/a6b158331a55a3c474f5ef7657522547b7d5f2c2) 为骨架，将原桌面团员端迁移为 Web 应用。四个前端共用 NestJS 服务。
 
-俱乐部平台的需求与计划见[业务说明](docs/club-business.md)、[送心业务细则](docs/heart-delivery.md)、[路线图](docs/roadmap.md)和[开发任务清单](docs/todo.md)。
+项目标识为 `sky-club`。[文档地图](docs/README.md)按架构、规格、运行手册及任务计划组织项目资料。俱乐部平台的需求与计划见[业务说明](docs/club-business.md)、[送心业务细则](docs/heart-delivery.md)、[路线图](docs/roadmap.md)和[开发任务清单](docs/todo.md)。
 
 三端的[设计评审入口](docs/design/README.md)包含可联动的 P1 交互原型、视觉规范及手机、Pad 和桌面预览。[管理端原型](docs/design/admin/README.md)直接复用现有后台布局与 Ant Design 组件。
 
 | 包 | 用途 | 开发地址 | 准入角色 |
 | --- | --- | --- | --- |
-| admin | 管理用户与角色、查看登录记录 | http://localhost:5173 | admin |
-| employee | 原团员端的送心订单、时间轴与分析 | http://localhost:5174 | employee、admin |
-| client | Vite + React 客户端基础页 | http://localhost:5175 | common、employee、admin |
-| site | Vite + React 官网基础页 | http://localhost:5176 | 公开 |
+| admin | 用户与角色、俱乐部规则、财务与罚款 | http://localhost:5173 | admin |
+| employee | 派单、承接、排期、履约与结单 | http://localhost:5174 | employee、admin |
+| client | 注册、下单、订单进度、改价确认与结算 | http://localhost:5175 | common、employee、admin |
+| site | 公开官网 | http://localhost:5176 | 公开 |
 | server | 身份、授权和业务 API | http://localhost:8793/api | 各接口按端校验 |
 
 ## 本地启动
@@ -38,7 +38,7 @@ pnpm dev:site
 
 ## 首次启用俱乐部运营
 
-API 从空库启动时创建本团，初始名称取 `CLUB_NAME`，默认「送心手记」。现有库保留已保存的名称。先让拟任团长拥有一个可登录团员端的启用账号。可使用初始化的 `root`，也可让该用户从客户端注册，再由平台管理员授予 `employee` 角色。请核对账号的四位用户 ID。
+API 从空库启动时创建本团，初始名称取 `CLUB_NAME`，默认「Sky Club」。现有库保留已保存的名称。先让拟任团长拥有一个可登录团员端的启用账号。可使用初始化的 `root`，也可让该用户从客户端注册，再由平台管理员授予 `employee` 角色。请核对账号的四位用户 ID。
 
 在与 API 使用相同 MongoDB 配置的可信部署环境指定首位团长。将示例中的 `00A1` 换成已核对的 ID。
 
@@ -78,7 +78,7 @@ API 只连接受信的 HTTPS 推送网关。默认接受 Chrome、Firefox 和 Sa
 
 在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，团员的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。
 
-**首次启动**时复制配置文件，填写四个独立的随机值，再运行全量脚本。已部署的主机日常更新只需运行 `./deploy-all.sh`。
+**首次启动**时复制配置文件，填写四个独立的随机值，再运行全量脚本。已有安装升级到 Sky Club 前，请先按[部署手册](docs/runbooks/deployment.md#已有安装升级到-sky-club)核对项目名、数据库和卷配置。日常更新运行 `./deploy-all.sh`。
 
 ```sh
 cp .env.example .env
@@ -110,8 +110,8 @@ chmod 600 .env
 ```dotenv
 COMPOSE_PROFILES=
 COMPOSE_FILE=docker-compose.yml:docker-compose.eotion.yml
-DB_MONGO_CONNECTION=mongodb://mongodb:27017/sky-heart-note
-DB_MONGO_USERNAME=sky_heart
+DB_MONGO_CONNECTION=mongodb://mongodb:27017/sky-club
+DB_MONGO_USERNAME=sky-club
 VITE_APP_API_BASE_URL=https://api.example.com/api
 ADMIN_ORIGIN=https://admin.example.com
 EMPLOYEE_ORIGIN=https://employee.example.com
@@ -119,9 +119,9 @@ CLIENT_ORIGIN=https://client.example.com
 SITE_ORIGIN=https://www.example.com
 ```
 
-服务端会加入已有的 `mongo` 网络，API 与四个前端会加入已有的 `public-web` 网络。这两个外部网络可通过 `MONGO_NETWORK`、`PUBLIC_WEB_NETWORK` 更名。边缘 Nginx 终止 HTTPS，并将上述五个域名分别转发到 `sky-heart-api:8793`、`sky-heart-admin:80`、`sky-heart-employee:80`、`sky-heart-client:80`、`sky-heart-site:80`。三个登录端共享同一个 HTTPS API 主机及其授权 Cookie。
+服务端会加入已有的 `mongo` 网络，API 与四个前端会加入已有的 `public-web` 网络。这两个外部网络可通过 `MONGO_NETWORK`、`PUBLIC_WEB_NETWORK` 更名。边缘 Nginx 终止 HTTPS，并将上述五个域名分别转发到 `sky-club-api:8793`、`sky-club-admin:80`、`sky-club-employee:80`、`sky-club-client:80`、`sky-club-site:80`。三个登录端共享同一个 HTTPS API 主机及其授权 Cookie。
 
-**从已使用四位用户 ID 的 server 单服务 Compose 切换**时，先用 `docker inspect webapp-template-server --format '{{range .Mounts}}{{println .Name .Destination}}{{end}}'` 确认挂载在 `/app/server/data/employee` 的卷名，将根 `.env` 的 `EMPLOYEE_VOLUME_NAME` 设为该值（通常是 `server_employee-data`），并沿用原 MongoDB、`SESSION_SECRET` 与应用域名。停止旧 API 容器后再执行根目录的部署脚本，避免端口冲突。若继续使用旧的独立部署，原 `server/redeploy.sh` 仍可使用。
+从独立 API Compose 切换到根 Compose 时，按[已有安装升级步骤](docs/runbooks/deployment.md#已有安装升级到-sky-club)复用团员 SQLite 卷与 MongoDB 配置，再移除旧 API 容器以释放端口。
 
 ## 跨端登录与部署
 

@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { lazy, Suspense } from "react";
-import { AuthGate } from "@webapp-template/common/web-auth";
-import { registerPwa } from "@webapp-template/common/pwa";
+import { AuthGate } from "@sky-club/common/web-auth";
+import { registerPwa } from "@sky-club/common/pwa";
 import "./index.css";
 
 const App = lazy(() => import("./App"));

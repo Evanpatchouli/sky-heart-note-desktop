@@ -1,2 +1,2 @@
-docker compose run --rm webapp-template-migrate
-docker rmi migrator-webapp-template-migrate
+docker compose run --rm sky-club-migrate
+docker rmi migrator-sky-club-migrate

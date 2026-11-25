@@ -3,7 +3,7 @@
 从项目根目录将 `server/.env.example` 复制为 `server/.env`，设置 `DB_MONGO_CONNECTION`、随机生成的 `SESSION_SECRET` 和首次创建管理员使用的 `BOOTSTRAP_ADMIN_PASSWORD`。管理员用户名由 `BOOTSTRAP_ADMIN_USERNAME` 指定，默认是 `root`。生产运行也可以从进程环境或 `server/.env.production` 读取配置。
 
 ```sh
-pnpm --filter @webapp-template/server migrate
+pnpm --filter @sky-club/server migrate
 ```
 
 也可以设置 `MIGRATE_ON_START=true`，由服务在监听 HTTP 前运行同一组迁移。首次创建管理员后可以移除 `BOOTSTRAP_ADMIN_PASSWORD`。

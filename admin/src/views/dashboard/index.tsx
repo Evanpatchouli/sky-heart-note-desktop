@@ -23,7 +23,7 @@ export default function DashboardView() {
   const [trendData, setTrendData] = useState<DailyLoginData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  useTitle("仪表盘 - 送心手记");
+  useTitle("仪表盘 - Sky Club");
 
   useAsyncEffect(async () => {
     setLoading(true);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin, Typography } from "antd";
-import { clubSettlementPostingLabel, formatCentsAsYuan, type ClubBalance } from "@webapp-template/common";
+import { clubSettlementPostingLabel, formatCentsAsYuan, type ClubBalance } from "@sky-club/common";
 import { getClubBalance } from "@/api/club-finance.api";
 
 const money = (cents: number) => `${cents < 0 ? "−" : ""}¥${formatCentsAsYuan(Math.abs(cents))}`;

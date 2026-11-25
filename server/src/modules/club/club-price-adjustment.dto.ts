@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { IsIn, IsInt, IsISO8601, IsMongoId, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
-import type { PriceAdjustmentDecision } from '@webapp-template/common';
+import type { PriceAdjustmentDecision } from '@sky-club/common';
 import { DeliveryPeriodShiftDto } from './club-fulfillment.dto';
 
 export class ProposePriceAdjustmentDto extends DeliveryPeriodShiftDto {

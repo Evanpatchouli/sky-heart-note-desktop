@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Flex, Form, Input, Select, Tag, Typography } from "antd";
 import {
   formatCentsAsYuan, parseYuanAsCents, terminationReviewLabel, type DispatchTermination, type TerminationHeartRule,
-} from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+} from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import { actualPeriodLabels } from "#/components/ClubDeliveryPeriods";
 

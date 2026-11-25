@@ -1,7 +1,7 @@
 import { CLUB_ID } from './club.schema';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { IsIn, IsMongoId, ValidateIf } from 'class-validator';
-import type { GiftClaimFilter } from '@webapp-template/common';
+import type { GiftClaimFilter } from '@sky-club/common';
 import type { SessionUser } from '../../auth/app-access';
 import { AppAccess, AuthUser } from '../../auth/auth.decorator';
 import Resp from '../../common/models/Resp';

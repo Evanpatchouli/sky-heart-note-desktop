@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { Equals, IsIn, IsInt, IsISO8601, IsMongoId, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
-import type { TerminationHeartRule } from '@webapp-template/common';
+import type { TerminationHeartRule } from '@sky-club/common';
 
 const trim = Transform(({ value }) => typeof value === 'string' ? value.trim() : value);
 

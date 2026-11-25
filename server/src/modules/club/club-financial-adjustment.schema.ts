@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Schema as MongooseSchema, Types } from 'mongoose';
-import type { GiftSettlementAdjustment } from '@webapp-template/common';
+import type { GiftSettlementAdjustment } from '@sky-club/common';
 
 @Schema({ _id: false })
 export class CompensationRefund {

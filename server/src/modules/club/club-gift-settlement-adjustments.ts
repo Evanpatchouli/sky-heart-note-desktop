@@ -1,4 +1,4 @@
-import { USER_ID_PATTERN, type ClubAdjustmentRecord, type GiftSettlementAdjustment, type GiftSettlementIssue, type PersonalGiftPenalty } from '@webapp-template/common';
+import { USER_ID_PATTERN, type ClubAdjustmentRecord, type GiftSettlementAdjustment, type GiftSettlementIssue, type PersonalGiftPenalty } from '@sky-club/common';
 import type { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
 
 type AdjustmentDecision = Pick<GiftSettlementAdjustment, 'status' | 'amountCents' | 'decidedByUserId'> & {

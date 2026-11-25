@@ -1,4 +1,4 @@
-import { ValuesOf } from '@webapp-template/common';
+import { ValuesOf } from '@sky-club/common';
 
 export const LoginTypes = {
   SHARED: 'shared',

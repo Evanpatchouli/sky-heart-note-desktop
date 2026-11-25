@@ -1,5 +1,5 @@
 const DB_PROVIDE = 'DATABASE_CONNECTION';
-const DB_CONNECTION = 'mongodb://localhost/webapp-template';
+const DB_CONNECTION = 'mongodb://localhost/sky-club';
 
 export const UserConstant = {
   NAME: 'user',

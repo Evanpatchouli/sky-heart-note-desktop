@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, platformPromotionDescription, type DeliveryPeriodPreference, type PlatformPromotionSource } from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
+import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, platformPromotionDescription, type DeliveryPeriodPreference, type PlatformPromotionSource } from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@sky-club/common/web-auth";
 import {
   clientRequest, clientOrdersPath, detailHref, dispatcherName, dispatchLabel, orderDispatcher,
   sourceLabel, useClientRead, type OrderSummary,

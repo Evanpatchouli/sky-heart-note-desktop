@@ -1,4 +1,4 @@
-import type { Maybe } from "@webapp-template/common";
+import type { Maybe } from "@sky-club/common";
 import type { BaseEvent } from "@/types/event";
 import type { ILoginResult } from "@/types/user";
 import { nanoid } from "nanoid";

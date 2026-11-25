@@ -4,8 +4,8 @@ import {
   formatCentsAsYuan, parseYuanAsCents, priceAdjustmentStateLabel, PRICING_PERIODS,
   type DeliveryPeriodBreakdown, type DeliveryPeriodShift, type DeliveryPriceComparison,
   type DeliveryPriceIssue, type PriceAdjustment, type PriceAdjustmentIssue, type PriceAdjustmentReviewRecord,
-} from "@webapp-template/common";
-import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+} from "@sky-club/common";
+import { getAppToken, RequestError, useAuthSession } from "@sky-club/common/web-auth";
 import { actualPeriodLabels } from "#/components/ClubDeliveryPeriods";
 import { employeeRequest } from "#/service/request";
 

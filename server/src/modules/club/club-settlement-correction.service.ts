@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { GiftReportLine, GiftSettlementCalculation, SettlementCorrection, SettlementCorrectionCouponChange } from '@webapp-template/common';
+import type { GiftReportLine, GiftSettlementCalculation, SettlementCorrection, SettlementCorrectionCouponChange } from '@sky-club/common';
 import { createHash } from 'node:crypto';
 import { Model } from 'mongoose';
 import { isDuplicateKey } from '../user-module/user-id';

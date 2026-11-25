@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { User } from './user.schema';
 import { UserModel } from './user.model';
 import { QueryFilter } from 'mongoose';
-import { PaginatedResult } from '@webapp-template/common';
+import { PaginatedResult } from '@sky-club/common';
 import CustomError from '@/exception/CustomError';
 import { hashPassword } from '@/auth/password';
 import { randomBytes } from 'node:crypto';

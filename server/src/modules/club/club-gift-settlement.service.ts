@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { AdminGiftSettlement, CustomerGiftSettlement, GiftSettlementCalculation, GiftSettlementRow, PersonalGiftSettlement } from '@webapp-template/common';
+import type { AdminGiftSettlement, CustomerGiftSettlement, GiftSettlementCalculation, GiftSettlementRow, PersonalGiftSettlement } from '@sky-club/common';
 import { Model, Types, type QueryFilter } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { ClubDailyReportStore, reportObjectId } from './club-daily-report.store';

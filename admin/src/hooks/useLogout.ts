@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { getAppToken, invalidateSession } from "@webapp-template/common/web-auth";
+import { getAppToken, invalidateSession } from "@sky-club/common/web-auth";
 import { useEvent } from "./useEmitter";
 import { logout } from "@/api/user.api";
 

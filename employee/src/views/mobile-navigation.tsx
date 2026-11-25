@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router";
-import { useAuthSession } from "@webapp-template/common/web-auth";
-import { NavigationIcon, useMobileViewport, usePhoneWidth } from "@webapp-template/common/mobile-navigation";
+import { useAuthSession } from "@sky-club/common/web-auth";
+import { NavigationIcon, useMobileViewport, usePhoneWidth } from "@sky-club/common/mobile-navigation";
 import Root from "./root";
 
 const tabs = [

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { GiftSettlementReference } from '@webapp-template/common';
+import type { GiftSettlementReference } from '@sky-club/common';
 import { createHash } from 'node:crypto';
 import { Model, Types } from 'mongoose';
 import { isDuplicateKey } from '../user-module/user-id';

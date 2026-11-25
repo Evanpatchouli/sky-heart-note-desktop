@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Flex, Form, InputNumber, Modal, Select, Spin, Typography } from "antd";
-import { commissionBasisLabel, commissionUnit, formatCentsAsYuan, type DispatchPricing } from "@webapp-template/common";
-import { RequestError } from "@webapp-template/common/web-auth";
+import { commissionBasisLabel, commissionUnit, formatCentsAsYuan, type DispatchPricing } from "@sky-club/common";
+import { RequestError } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 type DirectedShare = { userId: string; hearts: number };

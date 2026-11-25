@@ -3,7 +3,7 @@ import {
   NotFoundException, OnModuleDestroy, OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { isObjectIdOrHexString, Model, Types } from 'mongoose';
 import { parseApp, type WebApp } from '../../auth/app-access';
 import { AppNotificationEvent, noticeTypes, type NoticeTarget, type NoticeType } from './app-notification.schema';

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { Schema as MongooseSchema, Types } from 'mongoose';
 import { apps, type WebApp } from '../../auth/app-access';
 import { noticeTypes, type NoticeTarget, type NoticeType } from './app-notification.schema';

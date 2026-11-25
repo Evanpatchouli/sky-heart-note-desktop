@@ -1,4 +1,4 @@
-import type { AppSession } from "@webapp-template/common/web-auth";
+import type { AppSession } from "@sky-club/common/web-auth";
 import { create } from "zustand";
 
 interface LoginStore {

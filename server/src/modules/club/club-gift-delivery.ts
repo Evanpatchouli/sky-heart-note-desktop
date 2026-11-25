@@ -1,5 +1,5 @@
-import type { GiftDeliveryProgress, GiftDeliverySegment, GiftPerformance, GiftPeriodProgress, GiftPriceSegment, GiftReportPeriod, GiftShareProgress } from '@webapp-template/common';
-import { giftSegmentTimes } from '@webapp-template/common';
+import type { GiftDeliveryProgress, GiftDeliverySegment, GiftPerformance, GiftPeriodProgress, GiftPriceSegment, GiftReportPeriod, GiftShareProgress } from '@sky-club/common';
+import { giftSegmentTimes } from '@sky-club/common';
 import { Types, type Collection, type PipelineStage } from 'mongoose';
 import { jsonReportCount } from './club-daily-report-view';
 import type { ClubOrder } from './club-order.schema';

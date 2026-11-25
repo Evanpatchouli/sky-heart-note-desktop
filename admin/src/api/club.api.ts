@@ -1,4 +1,4 @@
-import type { AdminGiftSettlement, AdminSettlement, ClubPromotionPolicy, CommissionRule, DispatchPricing, GiftSettlementRow, PlatformPromotionSource, SettlementOrderRow } from "@webapp-template/common";
+import type { AdminGiftSettlement, AdminSettlement, ClubPromotionPolicy, CommissionRule, DispatchPricing, GiftSettlementRow, PlatformPromotionSource, SettlementOrderRow } from "@sky-club/common";
 import type Resp from "@/models/Resp";
 import { createAppRequest } from "./request";
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { authRequest, RequestError } from "@webapp-template/common/web-auth";
+import { authRequest, RequestError } from "@sky-club/common/web-auth";
 
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const readToken = () => new URLSearchParams(window.location.hash.slice(1)).get("token");

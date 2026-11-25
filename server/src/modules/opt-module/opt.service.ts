@@ -1,6 +1,6 @@
 import cache from '@/cache';
 import { OPTWay } from '@/constants/opt.constant';
-import { ValuesOf } from '@webapp-template/common';
+import { ValuesOf } from '@sky-club/common';
 import { BadRequestException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createOPT } from './opt.util';
 import EmailService from '../email-module/email.service';

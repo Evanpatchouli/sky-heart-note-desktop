@@ -1,4 +1,4 @@
-import { formatCentsAsYuan, type GiftPerformance } from "@webapp-template/common";
+import { formatCentsAsYuan, type GiftPerformance } from "@sky-club/common";
 
 export const giftPeriodLabels = { normal: "普通期", double: "双倍期", unconfirmed: "实际时段待核对" };
 

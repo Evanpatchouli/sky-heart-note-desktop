@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { estimateReceivedHearts, giftFulfillmentSegments, giftSegmentTimes, type CustomerGiftProgress, type GiftDispatchSupervision, type GiftMemberSupervision, type GiftSupervisionDay } from '@webapp-template/common';
+import { estimateReceivedHearts, giftFulfillmentSegments, giftSegmentTimes, type CustomerGiftProgress, type GiftDispatchSupervision, type GiftMemberSupervision, type GiftSupervisionDay } from '@sky-club/common';
 import { Model } from 'mongoose';
 import { ClubDailyReportStore } from './club-daily-report.store';
 import { jsonReportCount } from './club-daily-report-view';

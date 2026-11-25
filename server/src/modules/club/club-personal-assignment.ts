@@ -1,4 +1,4 @@
-import type { GiftShare } from '@webapp-template/common';
+import type { GiftShare } from '@sky-club/common';
 import type { QueryFilter } from 'mongoose';
 import { activeGiftSegments, giftShareView } from './club-gift-allocation';
 import { eligiblePromotionalFacts, giftProgress, type GiftDayFact } from './club-gift-delivery';

@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
-import { usePhoneWidth } from "@webapp-template/common/mobile-navigation";
+import { usePhoneWidth } from "@sky-club/common/mobile-navigation";
 import { CalendarOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { useWorkspaceScroll } from "../workspace-scroll";
 import { type AssignmentRow, assignmentStatus, assignmentStatuses, isGiftAssignment, ownGiftHearts, scheduleLabel, type ScheduleDates } from "./types";

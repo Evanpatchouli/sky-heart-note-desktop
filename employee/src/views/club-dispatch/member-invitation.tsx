@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Alert, Button, Flex, Typography } from "antd";
-import { RequestError } from "@webapp-template/common/web-auth";
+import { RequestError } from "@sky-club/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
 export default function MemberInvitation() {

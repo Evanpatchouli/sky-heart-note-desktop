@@ -1,4 +1,4 @@
-import { Maybe } from '@webapp-template/common';
+import { Maybe } from '@sky-club/common';
 import type { SessionUser } from '../auth/app-access';
 
 export interface AccessInfo {

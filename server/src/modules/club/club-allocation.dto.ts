@@ -12,7 +12,7 @@ import {
   ValidateNested,
   ValidateIf,
 } from 'class-validator';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { USER_ID_PATTERN } from '@sky-club/common';
 import { GiftDispatchSegmentDto } from './club-gift-segment.dto';
 
 class AllocationRequest {

@@ -10,7 +10,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments } from '@webapp-template/common';
+import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments } from '@sky-club/common';
 import type {
   CommissionRule,
   CustomerQuote,
@@ -20,7 +20,7 @@ import type {
   GiftDispatchSupervision,
   OrderPricing,
   PaymentStatus,
-} from '@webapp-template/common';
+} from '@sky-club/common';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';

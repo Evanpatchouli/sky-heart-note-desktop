@@ -2,7 +2,7 @@ import { Model, QueryFilter } from 'mongoose';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './user.schema';
-import { PaginatedResult } from '@webapp-template/common';
+import { PaginatedResult } from '@sky-club/common';
 
 @Injectable()
 export class UserModel {

@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
-import { settlementCashMovementLabel, type SettlementCashMovementKind } from '@webapp-template/common';
+import { settlementCashMovementLabel, type SettlementCashMovementKind } from '@sky-club/common';
 
 export class CloseGiftSettlementDto {
   @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)

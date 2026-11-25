@@ -3,8 +3,8 @@ import {
   COMMISSION_BASES,
   PRICING_PERIODS,
   USER_ID_PATTERN,
-} from '@webapp-template/common';
-import type { CommissionBasis, GiftQuotePromotions, PricingPeriod } from '@webapp-template/common';
+} from '@sky-club/common';
+import type { CommissionBasis, GiftQuotePromotions, PricingPeriod } from '@sky-club/common';
 import { SchemaTypes } from 'mongoose';
 
 const wholeNumber = {

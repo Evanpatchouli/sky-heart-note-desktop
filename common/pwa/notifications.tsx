@@ -20,7 +20,7 @@ export interface InboxNotice {
 
 type NoticePage = { items: InboxNotice[]; hasUnread: boolean; nextCursor: string | null };
 const objectId = /^[0-9a-f]{24}$/i;
-export const notificationReadEvent = "sky-heart:notification-read";
+export const notificationReadEvent = "sky-club:notification-read";
 const date = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" });
 
 export function NotificationBell({ app, token, icon, className }: {
