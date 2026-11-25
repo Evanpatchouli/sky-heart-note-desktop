@@ -176,3 +176,23 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 绑定后显示待登记关系。已有好友费用为 0，新解锁费用取原报价约定的每次金额。报价时明确免费可填单价 0，接口可带 `unlock.unitPriceAgreed: true`。留空时页面保存 `unitPriceAgreed: false`，当时若尚未知仍可登记事实，费用为 `null`，另计入待核对次数。旧报价沿用原语义，0 次 × 0 分代表未约定。实际解锁在同一单内按接收游戏号、团员和个人稳定号登记一次，与本人关联的份额数无关。俱乐部、订单、有效成员以及份额归属均由服务端校验。客户侧继续按本人单据核对原报价和现金实收。
 
 个人 SQLite 用独立映射表保存稳定标识，旧记录首次列出时补齐。已有执行记录保存关联时的名称，同一数字编号删除重建后取得新的稳定标识。改派后，原送心者仍有历史记录和原关系；接手人按自己的份额选择自己的个人号。仅存名称的历史按颗执行账号继续按原编号和名称读取。跨单换号、失败、退款、补付与正式结算见[待确认规则](heart-delivery.md#需要业务方确认的决定)。
+
+## 我的日报、补报与更正
+
+实际承接人在「按次接单」找到订单，在「我的承接」份额下关联本人送心号，然后打开订单卡片的「我的日报」。选择执行号，填写业务日期、实际赠送次数和实际到账颗数。留空表示未知，填 0 表示确认到账为零。同一号同一天的一份日报可填写该号已关联的多个份额和实际时段。业务日期由团员填写，业务日与活动边界待 Q2 确认。[数量与金额口径](heart-delivery.md#数量与金额的口径)
+
+补报和未入账日报更正提交即生效，需填原因。关闭领取或暂停新执行后，过去的实绩仍可补报和更正。历史保留各版本、前后值、经办人、账面业务日期、双方游戏号快照与服务端提交时间。正式按次进度使用每份日报的最新版本，按实际赠送次数抵扣本人净份额，超额次数单列。双倍期已送 4 次计履约 4 次，按原计划预计到账 8 颗，实际据实填写。普通待结依据用份额内次数乘原段每次单价，减去该单每次派抽和团抽。提交日报只更新业务事实及待结依据。已入账后更正与资金处理待 Q4、Q5 确认。
+
+历史按颗订单的日报历史返回 `priceUnit: "received_hearts"`。原日报按实际到账抵扣颗数，旧补报和更正仍显示原有的待核对状态。旧报告的次数、颗数、版本和原因继续可查。
+
+| 请求 | 用途 |
+| --- | --- |
+| `GET /api/employee/clubs/:clubId/orders/:orderId/daily-reports` | 每页读取本人的 25 条日报版本，用 `nextCursor` 作下一页的 `after`。按次单另返回 `giftProgress`。 |
+| `POST /api/employee/clubs/:clubId/orders/:orderId/shares/:shareId/execution-accounts/:accountId/daily-reports` | 给本人承接中已关联的账号提交日报。`kind` 取 `daily` 或 `supplement`，补报需填 `reason`。`businessDate` 格式为 `YYYY-MM-DD`。 |
+| `POST /api/employee/clubs/:clubId/orders/:orderId/daily-reports/:reportId/corrections` | 给本人的日报追加更正。`reportId` 取历史项的 `originalId`，提交当前 `expectedVersion` 与 `reason`。 |
+
+两种写入均提交 UUID v4 `requestId` 和 `lines`。按次明细包含非负整数 `giftTimes` 和非负整数或 `null` 的 `receivedHearts`。省略 `receivedHearts` 同样表示未知。可填行级 `shareId` 选择该号已关联的本人份额，省略时使用首报路由的份额。计价段由份额确定，可选填 `quoteSegment` 核对对应的从 1 开始的段号。可填实际 `period`（`normal`、`double` 或 `unconfirmed`），省略则沿用该段约定时段。已知和未知实际到账均直接保留。
+
+按次 `giftProgress` 的 `deliveredGiftTimes`、`remainingGiftTimes`、`observedGiftTimes`、`excessGiftTimes` 及 `shares` 按本人净份额汇总。本人实际到账见 `actualReceivedHearts`，有未知明细时该值为 `null`，已知小计和未知明细数分别见 `knownReceivedHearts`、`unknownReceivedLines`。本人已履约次数按原段预计的颗数见 `estimatedDeliveredHearts`，本人待结依据见 `pendingCompensation`。全单已送和剩余分列为 `orderDeliveredGiftTimes` 和 `orderRemainingGiftTimes`，建单预计到账见 `estimatedReceivedHearts`。派单人从本单按次分工查看各份额已送次数并改派剩余。
+
+同一订单、承接人、执行号与业务日只接受一份首报或补报。原请求可按相同标识和内容重试。另用新标识重复同日、重用标识修改内容或基于过期版本更正时，返回 HTTP 409。待写记录通过订单履约版本与改派互斥，单节点 MongoDB 支持写入及恢复。

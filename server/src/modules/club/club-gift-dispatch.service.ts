@@ -5,6 +5,8 @@ import type {
 } from '@webapp-template/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
+import { ClubDailyReportStore } from './club-daily-report.store';
+import { giftDayFacts } from './club-gift-delivery';
 import {
   awardGiftShare, buildGiftSegments, directedGiftDays, emptyGiftDispatch, giftClaimFields, giftDispatchFingerprint, giftOfferView,
   giftMemberAllocations, giftSegmentView, giftShareView, publicGiftDays, transferGiftDays, type GiftDispatchState, type StoredGiftClaim,
@@ -113,6 +115,7 @@ export class ClubGiftDispatchService {
   constructor(
     @InjectModel(ClubOrder.name) private readonly orders: Model<ClubOrder>,
     private readonly directory: ClubDirectoryService,
+    private readonly dailyReports: ClubDailyReportStore,
   ) {}
 
   async prepareInitial(clubId: string, input: GiftSegmentDispatchInput[], quotes: GiftPriceSegment[]) {
@@ -133,19 +136,27 @@ export class ClubGiftDispatchService {
     const order = await this.getOrder(orderId, { ...publishedGiftOrder, clubId, dispatcherUserId: userId });
     const quotes = eligibleOrder(order);
     const acceptingClaims = acceptsGiftExecution(order);
-    const candidates = await this.candidates(clubId, userId);
-    const segments = await Promise.all((order.giftDispatch?.segments ?? []).map(async segment => {
+    await this.dailyReports.flushPendingReport(order);
+    const [candidates, facts] = await Promise.all([
+      this.candidates(clubId, userId),
+      giftDayFacts(this.orders.db.collection('club_daily_reports'), order),
+    ]);
+    const sentByShare = new Map<string, bigint>();
+    for (const row of facts) {
+      const id = row._id.shareId.toHexString();
+      sentByShare.set(id, (sentByShare.get(id) ?? 0n) + BigInt(row.giftTimes.toString()));
+    }
+    const segments = (order.giftDispatch?.segments ?? []).map(segment => {
       const view = giftSegmentView(segment, quotes[segment.segmentIndex], undefined, acceptingClaims);
       return {
         ...view,
         memberAllocations: giftMemberAllocations(segment.shares),
-        shares: await Promise.all(view.shares.map(async share => ({
-          ...share,
-          deliveredGiftTimes: [...(await this.sentGiftTimes(order._id, share.id, share.userId, segment.segmentIndex)).values()]
-            .reduce((sum, times) => sum + times, 0),
-        }))),
+        shares: view.shares.map(share => {
+          const sent = sentByShare.get(share.id) ?? 0n;
+          return { ...share, deliveredGiftTimes: sent > BigInt(share.netGiftTimes) ? share.netGiftTimes : Number(sent) };
+        }),
       };
-    }));
+    });
     const segmentsByIndex = new Map(segments.map(segment => [segment.segmentIndex, segment]));
     const segmentTotals = quotes.map(({ paidGiftTimes }, segmentIndex) => {
       const segment = segmentsByIndex.get(segmentIndex);
@@ -285,9 +296,12 @@ export class ClubGiftDispatchService {
       const share = segment?.shares.find(item => item.id === shareId);
       if (!segment || !share) throw new NotFoundException('本单没有此按次承接份额');
       if (share.userId === input.userId) throw new BadRequestException('请选择另一位接手团员');
-      if (order.pendingDailyReport) throw concurrentChange();
+      if (order.pendingDailyReport) {
+        await this.dailyReports.flushPendingReport(order);
+        continue;
+      }
       await this.directory.requireAssignmentCandidate(clubId, input.userId);
-      const sent = await this.sentGiftTimes(order._id, share.id, share.userId, segment.segmentIndex);
+      const sent = await this.sentGiftTimes(order, share.id, share.userId);
       const offer = transferGiftDays(share, sent, input.userId, input.giftTimes);
       const result = giftOfferView(offer);
       segment.offers.push(offer);
@@ -338,20 +352,12 @@ export class ClubGiftDispatchService {
     return saveGiftDispatch(this.orders, order, scope, state);
   }
 
-  private async sentGiftTimes(orderId: Types.ObjectId, shareId: string, userId: string, segmentIndex: number) {
-    // A pending write blocks reassignment until the report is durable.
-    // The latest version of each gift report carries the effective quantities.
-    const rows = await this.orders.db.collection('club_daily_reports').aggregate<{ _id: string; giftTimes: number }>([
-      { $match: { orderId, shareId: new Types.ObjectId(shareId), userId } },
-      { $sort: { version: -1 } },
-      { $group: { _id: { $ifNull: ['$originalId', '$_id'] }, lines: { $first: '$lines' }, businessDate: { $first: '$businessDate' } } },
-      { $unwind: '$lines' },
-      { $match: { 'lines.quoteSegment': { $in: [null, segmentIndex + 1] } } },
-      { $group: { _id: '$businessDate', giftTimes: { $sum: '$lines.giftTimes' } } },
-    ]).toArray();
-    const total = rows.reduce((sum, { giftTimes }) => sum + giftTimes, 0);
-    if (!Number.isSafeInteger(total) || rows.some(row => !Number.isSafeInteger(row.giftTimes) || row.giftTimes < 0))
+  private async sentGiftTimes(order: ClubOrder, shareId: string, userId: string) {
+    const rows = await giftDayFacts(this.orders.db.collection('club_daily_reports'), order, new Types.ObjectId(shareId), userId);
+    const counts = rows.map(row => [row._id.businessDate, Number(row.giftTimes.toString())] as const);
+    const total = counts.reduce((sum, [, times]) => sum + times, 0);
+    if (!Number.isSafeInteger(total) || counts.some(([, times]) => !Number.isSafeInteger(times) || times < 0))
       throw new ConflictException('该份额已送次数需要核对');
-    return new Map(rows.map(row => [row._id, row.giftTimes]));
+    return new Map(counts);
   }
 }

@@ -6,6 +6,7 @@ import { formatCentsAsYuan } from "@webapp-template/common";
 import type { GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
+import GiftDeliveryDiary from "./gift-delivery-diary";
 import { GiftSchedule } from "./club-dispatch/gift-allocation";
 import { GiftExecutionAccounts } from "./club-dispatch/gift-execution-accounts";
 
@@ -106,6 +107,7 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
   const [error, setError] = useState("");
   const [claimError, setClaimError] = useState("");
   const [target, setTarget] = useState<Target>();
+  const [diaryOrder, setDiaryOrder] = useState<GiftClaimOrder>();
   const [restored] = useState(() => readPending(prefix, orderId));
   const [pending, setPending] = useState(restored);
   const [receipts, setReceipts] = useState<ClaimReceipt[]>([]);
@@ -228,6 +230,8 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
           {order.recipientGameAccount ? ` · 接收游戏号 ${order.recipientGameAccount}` : ""}</p>
         {order.fulfillment && <p>本人实际新解锁 {order.fulfillment.actualCount} 次 · ¥{formatCentsAsYuan(order.fulfillment.actualAmountCents)}
           {order.fulfillment.unpricedCount > 0 && ` · ${order.fulfillment.unpricedCount} 次费用待核对`}</p>}
+        {order.segments.some(segment => segment.shares.length > 0) &&
+          <Button onClick={() => setDiaryOrder(order)}>我的日报</Button>}
         {order.segments.map(segment => {
           const previousDaily = segment.myPublicRequestedDailyGiftTimes ?? 0;
           const myGiftTimes = segment.shares.reduce((sum, share) => sum + share.netGiftTimes, 0);
@@ -292,5 +296,7 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
         </Button>
       </Form>}
     </Modal>
+    {diaryOrder && <GiftDeliveryDiary key={diaryOrder.id} order={diaryOrder}
+      orderRoute={`clubs/${clubId}/orders/${diaryOrder.id}`} onClose={() => setDiaryOrder(undefined)} />}
   </>;
 }

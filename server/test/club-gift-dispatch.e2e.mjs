@@ -247,18 +247,24 @@ test('已核款订单按计价段公开或定向承接，改派保留已送事�
     'giftDispatch.claims.$[claim].result.schedule': '',
   } }, { arrayFilters: [{ 'claim.requestId': acceptance.requestId }] });
 
-  // Persisted fulfillment facts use the existing report collection and share key.
-  const originalId = new mongoose.Types.ObjectId();
-  const where = { orderId: new mongoose.Types.ObjectId(customerOrder.id), shareId: new mongoose.Types.ObjectId(first.shareId),
-    userId: dispatcher.id, businessDate: firstDay, accountId: new mongoose.Types.ObjectId() };
+  await post(dispatcher, '/employee/songxinhao', { name: '改派日报用号' });
+  const [personal] = await get(dispatcher, '/employee/songxinhao/linkable');
+  const accountPath = `${orderPath(customerOrder.id)}/shares/${first.shareId}/execution-accounts`;
+  const account = await post(dispatcher, accountPath, { personalAccountId: personal.id });
+  const original = await post(dispatcher, `${accountPath}/${account.id}/daily-reports`, {
+    requestId: randomUUID(), kind: 'daily', businessDate: firstDay,
+    lines: [{ quoteSegment: 1, giftTimes: 2, receivedHearts: 4 }],
+  });
+  await post(dispatcher, `${orderPath(customerOrder.id)}/daily-reports/${original.originalId}/corrections`, {
+    requestId: randomUUID(), expectedVersion: 1, reason: '核对已送游戏记录',
+    lines: [{ quoteSegment: 1, giftTimes: 3, receivedHearts: 6 }],
+  });
+  const where = { orderId, originalId: new mongoose.Types.ObjectId(original.originalId) };
   const reports = db.collection('club_daily_reports');
-  await reports.insertMany([
-    { ...where, _id: originalId, originalId, requestId: randomUUID(), kind: 'daily', version: 1, lines: [{ quoteSegment: 1, giftTimes: 2, receivedHearts: 4 }] },
-    { ...where, _id: new mongoose.Types.ObjectId(), originalId, requestId: randomUUID(), kind: 'correction', version: 2, lines: [{ quoteSegment: 1, giftTimes: 3, receivedHearts: 6 }] },
-  ]);
   const transfer = { requestId: randomUUID(), shareId: first.shareId, userId: third.id };
   await post(executor, configRoute + '/reassign', transfer, 404);
   await post(dispatcher, configRoute + '/reassign', { ...transfer, userId: registered.id }, 400);
+  await post(dispatcher, configRoute + '/reassign', { ...transfer, giftTimes: 3 }, 409);
   const moved = await post(dispatcher, configRoute + '/reassign', transfer);
   assert.equal(moved.giftTimes, 2);
   assert.equal(moved.accepted, false);

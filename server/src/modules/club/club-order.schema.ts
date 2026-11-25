@@ -1,3 +1,4 @@
+import type { DailyReport } from './club-delivery.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
 import type { ContinuationQuote, DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
@@ -197,7 +198,7 @@ export class ClubOrder {
   fulfillmentRevision?: number;
 
   @Prop({ type: SchemaTypes.Mixed })
-  pendingDailyReport?: { _id: Types.ObjectId };
+  pendingDailyReport?: DailyReport;
 
   @Prop({ type: [ContinuationQuoteSchema], default: undefined })
   continuationQuotes?: ContinuationQuote[];
@@ -216,6 +217,7 @@ ClubOrderSchema.index(
   { unique: true },
 );
 ClubOrderSchema.index({ clubId: 1, _id: -1 });
+ClubOrderSchema.index({ 'pendingDailyReport._id': 1 }, { sparse: true });
 ClubOrderSchema.index(
   { clubId: 1, dispatchStatus: 1, _id: -1 },
   {

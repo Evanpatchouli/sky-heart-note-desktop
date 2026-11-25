@@ -1,3 +1,7 @@
+import { ClubDailyReportStore } from './club-daily-report.store';
+import { ClubDeliveryController } from './club-delivery.controller';
+import { DailyReport, DailyReportSchema } from './club-delivery.schema';
+import { ClubGiftDeliveryService } from './club-gift-delivery.service';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { EmployeeModule } from '../employee';
@@ -33,12 +37,14 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
       { name: Club.name, schema: ClubSchema },
       { name: ClubMember.name, schema: ClubMemberSchema },
       { name: ClubOrder.name, schema: ClubOrderSchema },
+      { name: DailyReport.name, schema: DailyReportSchema },
       { name: ClubMemberInvitation.name, schema: ClubMemberInvitationSchema },
     ]),
   ],
   controllers: [
     AdminClubController,
     ClubGiftDispatchController,
+    ClubDeliveryController,
     ClientClubInvitationController,
     EmployeeClubInvitationController,
     EmployeeClubController,
@@ -47,7 +53,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubOrderController,
     ClientOwnOrdersController,
   ],
-  providers: [ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService],
+  providers: [ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
   exports: [ClubDirectoryService, ClubOrderService],
 })
 export class ClubModule {}
