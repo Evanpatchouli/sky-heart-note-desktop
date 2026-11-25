@@ -57,7 +57,7 @@ body { background: #f4f6f5; }
 
 .client-orders .client-orders__primary { background: #196850; color: #fff; border-color: #196850; font-weight: 700; }
 .client-orders button:disabled { opacity: .55; cursor: default; }
-.client-orders__list { display: grid; gap: 12px; }
+.client-orders__list { display: grid; gap: 12px; margin-top: 12px; }
 
 .client-orders__card, .client-orders__panel {
   border: 1px solid #dce5df;
@@ -93,10 +93,10 @@ summary.client-orders__summary span { margin-inline-start: 18px; }
 .client-orders__field + .client-orders__field { margin-top: 16px; }
 .client-orders__field label { font-weight: 600; }
 
-.client-orders__form input, .client-orders__form select {
+.client-orders :is(input, select) {
   box-sizing: border-box;
-  width: 100%;
   min-width: 0;
+  max-width: 100%;
   min-height: 44px;
   padding: 8px 10px;
   border: 1px solid #b5c6be;
@@ -108,7 +108,8 @@ summary.client-orders__summary span { margin-inline-start: 18px; }
   font-weight: 400;
 }
 
-.client-orders__form :is(input, select):disabled { background: #f4f6f5; }
+.client-orders__form :is(input, select), .client-orders__dialog input { width: 100%; }
+.client-orders :is(input, select):disabled { background: #f4f6f5; }
 .client-orders__muted { color: #526477; font-size: .875rem; margin: 0; }
 .client-orders__error { color: #a23b40; }
 .client-orders__submit { align-self: start; margin-top: 10px; }
@@ -131,16 +132,6 @@ summary.client-orders__summary span { margin-inline-start: 18px; }
   border: 1px solid #ceddd3;
   border-radius: 12px;
   padding: 20px;
-}
-
-.client-orders__dialog input {
-  min-height: 44px;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid #b5c6be;
-  border-radius: 6px;
-  font: inherit;
 }
 
 .client-orders__dialog h3 { margin-top: 0; }

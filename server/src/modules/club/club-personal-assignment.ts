@@ -47,6 +47,7 @@ export function giftAssignment(
       pendingPromotionalGiftTimes: progress.pendingPromotionalGiftTimes,
       actualReceivedHearts: progress.actualReceivedHearts,
       knownReceivedHearts: progress.knownReceivedHearts,
+      knownReceivedLines: progress.knownReceivedLines,
       unknownReceivedLines: progress.unknownReceivedLines,
       reportSyncPending: pending,
       canSubmitDaily: progress.canSubmitDaily,

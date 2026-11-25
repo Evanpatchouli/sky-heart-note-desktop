@@ -36,6 +36,7 @@ export type GiftAssignmentProgress = {
   pendingPromotionalGiftTimes?: Count;
   actualReceivedHearts: Count | null;
   knownReceivedHearts: Count;
+  knownReceivedLines: number;
   unknownReceivedLines: number;
   reportSyncPending: boolean;
   canSubmitDaily: boolean;
@@ -62,7 +63,7 @@ export function isGiftAssignment(order: AssignmentRow): order is GiftAssignment 
 
 export function ownGiftHearts(progress: GiftAssignmentProgress) {
   if (progress.actualReceivedHearts !== null) return progress.actualReceivedHearts + " 颗";
-  return progress.knownReceivedHearts ? `未知（已知 ${progress.knownReceivedHearts} 颗）` : "未知";
+  return progress.knownReceivedLines ? `未知（已知 ${progress.knownReceivedHearts} 颗）` : "未知";
 }
 
 export type ScheduleDates = { startDate: string | null; endDate: string | null };

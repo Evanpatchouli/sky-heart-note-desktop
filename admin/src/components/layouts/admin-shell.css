@@ -1,0 +1,23 @@
+.admin-shell {
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+}
+
+.admin-shell #view-container {
+  min-width: 0;
+  min-height: 0;
+  margin: 24px 16px 0;
+  padding: 24px;
+}
+
+@media (max-width: 575px) {
+  .admin-shell #view-container {
+    margin: 8px 8px 0;
+    padding: 12px;
+  }
+
+  .admin-shell .ant-layout-footer {
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  }
+}

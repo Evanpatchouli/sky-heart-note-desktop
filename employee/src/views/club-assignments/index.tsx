@@ -199,10 +199,12 @@ function ClubOrders({ userId, clubName }: { userId: string; clubName: string }) 
     summary.accepted += BigInt(progress.acceptedGiftTimes);
     summary.delivered += BigInt(progress.deliveredGiftTimes);
     summary.hearts += BigInt(progress.knownReceivedHearts);
+    summary.known += progress.knownReceivedLines;
     summary.unknown += progress.unknownReceivedLines;
+    if (progress.actualReceivedHearts === null) summary.unknownOrders++;
     summary.giftOrders++;
     return summary;
-  }, { accepted: 0n, delivered: 0n, hearts: 0n, unknown: 0, giftOrders: 0 });
+  }, { accepted: 0n, delivered: 0n, hearts: 0n, known: 0, unknown: 0, unknownOrders: 0, giftOrders: 0 });
 
   return <main className="club-claim-page assignment-page" {...scroll}>
     {selectedId ? <div className="assignment-detail-page">
@@ -217,7 +219,7 @@ function ClubOrders({ userId, clubName }: { userId: string; clubName: string }) 
       <Flex className="assignment-summary" align="center" justify="space-between" gap="small" wrap>
         {counts && orders ? <p>{orders.length} 笔承接{counts.giftOrders > 0 && <>
           {" · "}本人已送 <strong>{String(counts.delivered)} / {String(counts.accepted)}</strong> 次
-          {" · "}{counts.unknown ? "已知到账" : "实际到账"} {String(counts.hearts)} 颗
+          {" · "}{counts.unknownOrders ? `实际到账未知${counts.known ? `（已知 ${String(counts.hearts)} 颗）` : ""}` : `实际到账 ${String(counts.hearts)} 颗`}
           {counts.unknown > 0 && ` · ${counts.unknown} 条到账未知`}
         </>}</p> : <span />}
         <Link className="assignment-workspace-link" to="/workspace">个人工作台</Link>
