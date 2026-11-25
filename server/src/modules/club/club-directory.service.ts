@@ -129,6 +129,11 @@ export class ClubDirectoryService implements OnModuleInit {
     }));
   }
 
+  async eligibleGiftMembers(clubId: string) {
+    const members = await this.members.distinct('userId', { clubId, active: true });
+    return (await this.enabledAppUserIds('employee', members)).sort();
+  }
+
   async requireAssignmentCandidate(clubId: string, userId: string) {
     if (!(await this.members.exists({ clubId, userId, active: true })) ||
         !(await this.enabledAppUserIds('employee', [userId])).length) {

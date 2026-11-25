@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Flex, Form, Input, InputNumber, Select, Spin, Typography } from "antd";
+import { Alert, Button, Card, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
 import {
   calculateGiftQuote, deliveryPeriodPreferenceLabel, formatCentsAsYuan, parseYuanAsCents,
-  type CommissionRule, type ContinuationQuote, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type GiftPriceSegment, type OrderPricing,
+  type CommissionRule, type ContinuationQuote, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type GiftPriceSegment, type GiftSegmentDispatchInput, type OrderPricing,
 } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { employeeRequest } from "#/service/request";
+import { GiftDispatchForm, PublishedGiftAllocation } from "./gift-allocation";
 
 type GiftOrder = {
   requestedGiftTimes: number;
@@ -121,6 +122,7 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
@@ -212,11 +214,12 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
     });
   }
 
-  function publish() {
+  function publish(giftDispatchSegments: GiftSegmentDispatchInput[]) {
     if (!ruleReady || !rule || !quote || !onPublished) return;
     void write("/publish", "POST", {
       pricingRevision: quote.revision, ruleVersion: rule.version, commissionReviewRevision: commissionReview?.revision ?? 0,
-    }, onPublished, true);
+      giftDispatchSegments,
+    }, () => { setPublishOpen(false); onPublished(); }, true);
   }
 
   function addQuote(fields: SegmentFields) {
@@ -249,6 +252,7 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
         {(frozen.giftSegments ?? []).map((segment, index) => <SegmentPrice key={index} segment={segment} />)}
         {quote ? <QuoteSummary quote={quote} /> : null}
         {receipt ? <ReceiptDetails receipt={receipt} /> : null}
+        <PublishedGiftAllocation route={route} />
         <Typography.Title level={5}>追加计价段报价</Typography.Title>
         {preparation.continuationQuotes.map(item => <div key={item.requestId}>
           <SegmentPrice segment={item.segment} />
@@ -301,12 +305,17 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
         </Form> : null}
         {onPublished && receipt ? <Flex gap="small" align="center" style={{ marginTop: 8 }}>
           <Button type="primary" loading={busy}
-            disabled={dirty || preparation.paymentStatus !== "paid_in_full" || commissionVersion !== rule.version} onClick={publish}>正式派发</Button>
+            disabled={dirty || preparation.paymentStatus !== "paid_in_full" || commissionVersion !== rule.version} onClick={() => { setError(""); setPublishOpen(true); }}>正式派发</Button>
           {preparation.paymentStatus !== "paid_in_full" ? <Typography.Text>实收与报价的差额待核对</Typography.Text>
             : commissionVersion !== rule.version ? <Typography.Text>规则已更新，请复核派抽</Typography.Text> : null}
         </Flex> : null}
       </>}
-    {error ? <Alert type="error" showIcon title={error} style={{ marginTop: 8 }}
+    <Modal open={publishOpen} destroyOnHidden title="正式派发与各段分工" footer={null} onCancel={() => !busy && setPublishOpen(false)}>
+      {error && <Alert type="error" showIcon title={error} />}
+      {quote?.giftSegments?.length ? <GiftDispatchForm quotes={quote.giftSegments} indices={quote.giftSegments.map((_, index) => index)}
+        clubRoute={route.split("/orders/")[0]} submitLabel="确认正式派发" busy={busy} onSubmit={publish} /> : null}
+    </Modal>
+    {!publishOpen && error ? <Alert type="error" showIcon title={error} style={{ marginTop: 8 }}
       action={<Button onClick={() => { setError(""); setAttempt(value => value + 1); }}>重新加载</Button>} /> : null}
   </Card>;
 }

@@ -15,6 +15,8 @@ import { isDuplicateKey } from '../user-module/user-id';
 import { ClubCustomerService } from './club-customer.service';
 import { UserDispatchActivationService } from '../user-module/user-dispatch-activation.service';
 import { ClubDirectoryService } from './club-directory.service';
+import { ClubGiftDispatchService } from './club-gift-dispatch.service';
+import { giftDispatchFingerprint, giftShareView } from './club-gift-allocation';
 import type {
   AssignDispatcherDto,
   ClubOrderQuery,
@@ -177,6 +179,11 @@ function employeeView(order: ClubOrder, userId: string) {
   return {
     ...orderSummary(order),
     ...(dispatches ? orderOwnership(order) : {}),
+    ...(order.giftDispatch ? {
+      giftShares: order.giftDispatch.segments.flatMap(({ segmentIndex, shares }) => shares
+        .filter(share => dispatches || share.userId === userId)
+        .map(share => ({ segmentIndex, ...giftShareView(share) }))),
+    } : {}),
     shares: order.shares
       .filter((share) => dispatches || share.userId === userId)
       .map((share) => ({
@@ -202,6 +209,7 @@ export class ClubOrderService implements OnModuleInit {
     private readonly directory: ClubDirectoryService,
     private readonly customers: ClubCustomerService,
     private readonly activation: UserDispatchActivationService,
+    private readonly giftDispatch: ClubGiftDispatchService,
   ) {}
 
   async onModuleInit() {
@@ -619,6 +627,9 @@ export class ClubOrderService implements OnModuleInit {
       throw new ConflictException('请重新核对最新的每次抽成规则');
 
     const { revision, priceUnit, giftSegments, segments, unlock, totalAmountCents } = receipt.quote;
+    const giftDispatch = input.giftDispatchSegments
+      ? await this.giftDispatch.prepareInitial(clubId, input.giftDispatchSegments, giftSegments ?? [])
+      : undefined;
     const dispatchPricing = {
       ...rule, revision, priceUnit, giftSegments, segments, unlock,
       dispatchFeeCents: commission.dispatchFeeCents,
@@ -637,6 +648,7 @@ export class ClubOrderService implements OnModuleInit {
         $set: {
           dispatchStatus: 'published', publishedAt: new Date(), dispatchPricing,
           giftPublicationRequestId: requestId,
+          ...(giftDispatch ? { giftDispatch, giftPublicationScheduleFingerprint: giftDispatchFingerprint(input.giftDispatchSegments!) } : {}),
         },
         $unset: { pricing: '' },
       },
@@ -657,7 +669,8 @@ export class ClubOrderService implements OnModuleInit {
       order.giftPublicationRequestId !== input.requestId ||
       order.dispatchPricing?.revision !== input.pricingRevision ||
       order.dispatchPricing.version !== input.ruleVersion ||
-      (order.commissionReview?.revision ?? 0) !== input.commissionReviewRevision
+      (order.commissionReview?.revision ?? 0) !== input.commissionReviewRevision ||
+      order.giftPublicationScheduleFingerprint !== (input.giftDispatchSegments && giftDispatchFingerprint(input.giftDispatchSegments))
     ) throw new ConflictException('订单已派发，提交标识或派发内容不同');
     return this.dispatchReceipt(order);
   }
@@ -753,6 +766,7 @@ export class ClubOrderService implements OnModuleInit {
       $or: [
         { dispatcherUserId: userId },
         { dispatchStatus: 'published', 'shares.userId': userId },
+        { dispatchStatus: 'published', 'giftDispatch.segments.shares.userId': userId },
       ],
     };
   }

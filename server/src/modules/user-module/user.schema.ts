@@ -82,6 +82,12 @@ export class User {
   @Prop({ type: SchemaFactory.createForClass(DispatchActivation), select: false })
   dispatchActivation?: DispatchActivation;
 
+  @Prop({ type: Types.ObjectId, immutable: true, select: false })
+  clubInvitationId?: Types.ObjectId;
+
+  @Prop({ type: Date, select: false })
+  clubInvitationConsumedAt?: Date;
+
   @Prop({
     type: Number,
     enum: [0, 1],
@@ -158,6 +164,7 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+UserSchema.index({ clubInvitationId: 1 }, { unique: true, sparse: true });
 
 // 虚拟字段：关联的权限列表
 UserSchema.virtual('roles', {

@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
 import { AuthGate, useAuthSession } from "@webapp-template/common/web-auth";
 import { CustomerActivation } from "./customer-activation";
+import ClubInvitation from "./club-invitation";
 import MyOrders, { OrderDetail } from "./my-orders";
 import { NewOrder } from "./new-order";
 import { readClientContext, rememberClientContext } from "./navigation";
@@ -48,5 +49,6 @@ function ClientApp() {
 createRoot(document.getElementById("root")!).render(
   /^\/activate\/?$/.test(window.location.pathname)
     ? <CustomerActivation />
+    : /^\/join-club\/?$/.test(window.location.pathname) ? <ClubInvitation />
     : <AuthGate app="client"><ClientApp /></AuthGate>,
 );

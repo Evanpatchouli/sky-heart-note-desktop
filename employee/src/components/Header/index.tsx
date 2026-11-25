@@ -33,7 +33,7 @@ export default function Header() {
       <div className="member-appbar__row">
         <MemberBrand compact />
         <nav className="member-appbar__views" aria-label="订单视图">
-          {pathname === "/club/dispatch" || pathname === "/club/dispatch/"
+          {pathname.startsWith("/club/")
             ? <Link className="member-appbar__dispatch-link" to="/">个人工作台</Link> : <Segmented
             aria-label="订单视图"
             options={views}
@@ -52,6 +52,7 @@ export default function Header() {
         </nav>
         <div className="member-appbar__account">
           {pathname === "/" ? <Link className="member-appbar__dispatch-link" to="/club/dispatch">派单准备</Link> : null}
+          {pathname !== "/club/gift-claims" && <Link className="member-appbar__dispatch-link" to="/club/gift-claims">按次接单</Link>}
           <Timenow />
           <Dropdown
             trigger={["click"]}

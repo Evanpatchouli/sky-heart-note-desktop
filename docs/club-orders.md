@@ -54,6 +54,29 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 
 现有会话在下次请求时按当前数据检查权限。成员授权和启停继续由运维命令处理。管理端通过 `GET /api/admin/clubs` 读取本账号已获业务授权的俱乐部及各俱乐部的权限码。运营订单视图只返回订单和份额信息。团抽与财务服务的接入点是 `ClubDirectoryService.requireAdminPermission`，传入管理端会话、目标俱乐部标识和对应权限码。服务在准入、当前成员状态或单项权限不满足时返回 403。测试用已登录账号和同一测试数据库验证授权及撤销。实际团抽修改与资金查询随对应任务接入。[开发任务](todo.md)
 
+## 按次派发、承接和注册邀请
+
+在团员端的「派单准备」核对已付报价，选择「正式派发」，为每段填写执行日期。每段可保留公开份额，也可为本团有效团员填写每日负责次数和各自的预期窗口。仅定向时须覆盖该段全部次数。通过旧版接口已核款并正式派发的按次订单，由原派单人在「按次派发与分工」补配。原派发状态、抽成和收款继续沿用。兼容补配沿用原派发记录。
+
+「按次接单」只列已派发且有公开份额或本人份额的订单。团员可填每日能赠送的次数，系统按领取顺序和逐日余量发放，预留的定向份额由受邀团员主动确认。每段只可领取一次公开份额。即使是本单派单人，也可领取公开份额或确认指定给自己的份额。双倍期预计到账、接单时实收爱心及现金实收分别记录。接单实收可留空，`0` 颗表示已记录为零。
+
+本单派单人可把尚未送出的次数全部或部分改派给本团另一位有效团员，接手人确认后获得该段的相应份额。已送次数按同一份额的最新日报版本核对，原日报和人员归属保留。改派网络结果不明时，可在原订单重试同一次请求。
+
+在「派单准备」选择俱乐部后可生成本团注册邀请。链接有效期为 24 小时，仅限创建一个新账号，直接进入该俱乐部的普通团员身份。新团员设置登录凭据并入团后可在团员端登录，派单人刷新选人列表后可选到该账号。
+
+| 方法 | 挂在 `/api` 下的路由 | 操作 |
+| --- | --- | --- |
+| `POST` | `/employee/clubs/:clubId/orders/:orderId/publish` | 原发布字段可附带 `giftDispatchSegments`，每项含 `segmentIndex`、`startDate`、`endDate`、`openToClaim` 和 `directed`。定向项含 `userId`、`dailyGiftTimes`、`startDate`、`endDate`。 |
+| `GET`、`POST` | `/employee/clubs/:clubId/orders/:orderId/gift-dispatch` | 当单派单人读分工或补配未配置的已付段。补配提交 `{ requestId, segments }`，每项与正式派发分工的结构相同。 |
+| `GET` | `/employee/clubs/:clubId/gift-claims`、`/employee/clubs/:clubId/gift-claims/:orderId` | 读取当前团员可见的按次派单。定向份额和已领取详情按身份裁剪，执行日期相连且日量相同的记录合并显示。 |
+| `POST` | `/employee/clubs/:clubId/gift-claims/:orderId` | 公开提交 `{ requestId, segmentIndex, kind: "public", dailyGiftTimes }`。定向提交 `{ requestId, segmentIndex, kind: "directed", offerId }`。两种承接均可传 `actualReceivedHearts`。回执包含获分 `giftTimes` 和 `dailyGiftTimes`。正份额另有 `shareId`。 |
+| `POST` | `/employee/clubs/:clubId/orders/:orderId/gift-dispatch/reassign` | 提交 `{ requestId, shareId, userId, giftTimes? }`。省略次数时改派全部未送次数，返回给新团员的待确认定向份额。 |
+| `GET` | `/employee/clubs/:clubId/gift-candidates` | 查询团内当前可接单的有效成员。 |
+| `POST` | `/employee/clubs/:clubId/member-invitations` | 有效团员取得本团一次性注册链接和截止时间。 |
+| `POST` | `/client/club-invitations/register` | 通过客户端来源提交 `{ token, username, password }`，完成新团员入团。 |
+
+段序号从 0 开始，执行日期为 `YYYY-MM-DD`，窗口包含首尾日。请求标识用 UUID v4。新增续段仍须先核款，待核款的续段报价不会进入可接单列表。历史按颗订单沿用既有数量、金额及已发记录。
+
 ## 写入与查询
 
 | 方法 | 路由 | 可执行的操作 |

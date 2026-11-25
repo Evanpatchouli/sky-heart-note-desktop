@@ -1,7 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
 import type { ContinuationQuote, DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
-import { Types } from 'mongoose';
+import { SchemaTypes, Types } from 'mongoose';
+import type { GiftDispatchState } from './club-gift-allocation';
 import {
   CommissionReviewSchema,
   DispatchPricingSchema,
@@ -185,6 +186,18 @@ export class ClubOrder {
 
   @Prop({ type: String })
   giftPublicationRequestId?: string;
+
+  @Prop({ type: SchemaTypes.Mixed })
+  giftDispatch?: GiftDispatchState;
+
+  @Prop({ type: String })
+  giftPublicationScheduleFingerprint?: string;
+
+  @Prop({ type: Number })
+  fulfillmentRevision?: number;
+
+  @Prop({ type: SchemaTypes.Mixed })
+  pendingDailyReport?: { _id: Types.ObjectId };
 
   @Prop({ type: [ContinuationQuoteSchema], default: undefined })
   continuationQuotes?: ContinuationQuote[];

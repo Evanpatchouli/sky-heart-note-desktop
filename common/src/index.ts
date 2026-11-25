@@ -8,3 +8,4 @@ export * from './utils';
 
 // export * from './components';
 export * from './club-pricing';
+export * from './club-gift-dispatch';

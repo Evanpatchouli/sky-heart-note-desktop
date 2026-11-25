@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsIn,
@@ -15,6 +16,7 @@ import {
 } from 'class-validator';
 import { PRICING_PERIODS } from '@webapp-template/common';
 import type { PricingPeriod } from '@webapp-template/common';
+import { GiftDispatchSegmentDto } from './club-gift-segment.dto';
 
 export class UpdateCommissionRuleDto {
   @IsInt()
@@ -171,4 +173,12 @@ export class PublishOrderDto {
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   commissionReviewRevision: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsObject({ each: true })
+  @ValidateNested({ each: true })
+  @Type(() => GiftDispatchSegmentDto)
+  giftDispatchSegments?: GiftDispatchSegmentDto[];
 }

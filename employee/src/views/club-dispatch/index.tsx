@@ -13,6 +13,7 @@ import NewDirectDraft from "./new-direct-draft";
 import CustomerActivation from "./customer-activation";
 import GiftDispatchPricing from "./gift-dispatch-pricing";
 import PendingAssignment from "./pending-assignment";
+import MemberInvitation from "./member-invitation";
 import type { DeliveryPeriodPreference } from "@webapp-template/common";
 
 type Club = { id: string; name: string; orderUrl: string; canAssignPendingOrders?: boolean };
@@ -78,6 +79,7 @@ export default function ClubDispatch() {
             <Typography.Text copyable={{ text: selected.orderUrl, tooltips: ["复制客户端下单链接", "已复制"] }}>
               <Typography.Link href={selected.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
             </Typography.Text>
+            <MemberInvitation key={selected.id} clubId={selected.id} />
             <ClubOrders key={selected.id} clubId={selected.id} canAssign={selected.canAssignPendingOrders} />
           </> : <Empty description="暂无可访问的俱乐部" />}
       </Flex>
