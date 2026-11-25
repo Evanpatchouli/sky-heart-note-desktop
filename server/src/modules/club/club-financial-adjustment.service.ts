@@ -1,0 +1,294 @@
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { USER_ID_PATTERN, type PersonalClubBalance } from '@webapp-template/common';
+import { isObjectIdOrHexString, Model, Types, type QueryFilter } from 'mongoose';
+import type { SessionUser } from '../../auth/app-access';
+import { isDuplicateKey } from '../user-module/user-id';
+import { AppNotificationService } from './app-notification.service';
+import { adjustmentBalance } from './club-adjustment-ledger';
+import { ClubDirectoryService } from './club-directory.service';
+import type { DecideClubAdjustmentDto, PublishClubPenaltyDto, RecordCompensationRefundDto, RequestClubAdjustmentDto } from './club-financial-adjustment.dto';
+import { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
+import { financialAdjustmentView, personalPenalty, type PostedOrderPenalties } from './club-gift-settlement-adjustments';
+import { ClubOrder } from './club-order.schema';
+import { CLUB_ID } from './club.schema';
+
+const durable = { writeConcern: { w: 'majority', j: true } } as const;
+
+@Injectable()
+export class ClubFinancialAdjustmentService implements OnModuleInit {
+  private readonly logger = new Logger(ClubFinancialAdjustmentService.name);
+
+  constructor(
+    @InjectModel(ClubFinancialAdjustment.name) private readonly adjustments: Model<ClubFinancialAdjustment>,
+    @InjectModel(ClubOrder.name) private readonly orders: Model<ClubOrder>,
+    private readonly directory: ClubDirectoryService,
+    private readonly notifications: AppNotificationService,
+  ) {}
+
+  async onModuleInit() {
+    await this.adjustments.init();
+  }
+
+  async listPenalties(actor: SessionUser) {
+    const club = await this.directory.getAdminClub(actor);
+    const canPublish = club.canDecideAdjustments;
+    if (!canPublish && !club.permissions.includes('CLUB_FINANCE_READ')) {
+      throw new ForbiddenException('需要团长、副团长或财务核对权限');
+    }
+    const [list, candidates] = await Promise.all([
+      this.list({ kind: 'member_penalty' }), canPublish ? this.candidates() : [],
+    ]);
+    return { ...list, candidates, canPublish };
+  }
+
+  async publishPenalty(actor: SessionUser, { orderId, ...input }: PublishClubPenaltyDto) {
+    await this.requireLeadership(actor);
+    const order = orderId ? await this.requireOrder(orderId) : undefined;
+    return this.create(actor.id, orderId, { ...input, kind: 'member_penalty' }, true, order);
+  }
+
+  async listOrder(actor: SessionUser, orderId: string) {
+    const order = await this.requireDispatchOrder(actor.id, orderId);
+    const canRequest = this.canRequest(order);
+    const canRequestPenalty = canRequest && !order.closedAt;
+    const [list, candidates] = await Promise.all([
+      this.list({ orderId: order._id }), canRequestPenalty ? this.candidates() : [],
+    ]);
+    return { ...list, candidates, canRequest, canRequestPenalty };
+  }
+
+  async requestAdjustment(actor: SessionUser, orderId: string, input: RequestClubAdjustmentDto) {
+    const order = await this.requireDispatchOrder(actor.id, orderId);
+    if (input.kind === 'customer_compensation' && (input.memberUserId !== undefined || !order.customerUserId)) {
+      throw new BadRequestException('额外补偿须以本单老板为退款对象');
+    }
+    return this.create(actor.id, order._id.toHexString(), input, false, order);
+  }
+
+  async listApprovals(actor: SessionUser) {
+    await this.requireLeadership(actor);
+    return this.list({ status: 'pending' });
+  }
+
+  async decide(actor: SessionUser, id: string, input: DecideClubAdjustmentDto) {
+    await this.requireLeadership(actor);
+    this.requireObjectId(id);
+    const key = { _id: id, clubId: CLUB_ID };
+    if (input.decision === 'approved') {
+      const pending = await this.adjustments.findOne({ ...key, status: 'pending', revision: input.expectedRevision,
+        kind: 'member_penalty', orderId: { $type: 'objectId' } }).select({ orderId: 1 }).lean();
+      if (pending?.orderId) {
+        const order = await this.requireOrder(pending.orderId.toHexString());
+        const issue = this.penaltyOrderIssue(order);
+        if (issue && await this.adjustments.exists({ ...key, status: 'pending' })) throw new ConflictException(issue);
+      }
+    }
+    const record = await this.adjustments.findOneAndUpdate({ ...key, status: 'pending', revision: input.expectedRevision }, {
+      $set: { status: input.decision, decidedByUserId: actor.id, decidedAt: new Date(), decisionReason: input.reason },
+      $inc: { revision: 1 },
+    }, { ...durable, returnDocument: 'after', runValidators: true }).lean();
+    const saved = record ?? await this.adjustments.findOne(key).readConcern('majority').lean();
+    if (!saved) throw new NotFoundException('调整记录不存在');
+    if (!record && (input.expectedRevision !== 1 || saved.status !== input.decision ||
+      saved.decidedByUserId !== actor.id || saved.decisionReason !== input.reason)) {
+      throw new ConflictException('调整状态已变更，请刷新后核对');
+    }
+    if (hasApprovedPenalty(saved)) this.notify(saved._id);
+    return this.adjustmentView(saved);
+  }
+
+  async refund(actor: SessionUser, orderId: string, id: string, input: RecordCompensationRefundDto) {
+    const order = await this.requireDispatchOrder(actor.id, orderId);
+    this.requireObjectId(id);
+    const key = { _id: id, clubId: CLUB_ID, orderId: order._id, kind: 'customer_compensation' as const };
+    const record = await this.adjustments.findOne(key).readConcern('majority').lean();
+    if (!record) throw new NotFoundException('额外补偿不存在');
+    if (record.status !== 'approved') throw new ConflictException('额外补偿获批后才能登记实退');
+
+    const { amountCents, expectedRevision, evidence } = input;
+    const occurredAt = new Date(input.occurredAt);
+    const recordedAt = new Date();
+    if (!Number.isFinite(occurredAt.getTime()) || occurredAt > recordedAt) {
+      throw new BadRequestException('实退时间须为已经发生的时间');
+    }
+    if (!order.receipt || occurredAt < order.receipt.receivedAt) {
+      throw new BadRequestException('实退时间不能早于本单首笔收款');
+    }
+    const requestId = `compensation:${id.toLowerCase()}:${input.requestId}`;
+    const replay = (adjustment: ClubFinancialAdjustment) => {
+      const receipt = adjustment.refunds?.find(refund => refund.requestId === requestId);
+      if (!receipt) return null;
+      if (receipt.amountCents !== amountCents || receipt.evidence !== evidence ||
+        receipt.occurredAt.getTime() !== occurredAt.getTime() || receipt.recordedByUserId !== actor.id) {
+        throw new ConflictException('该登记编号已用于另一笔实退');
+      }
+      return financialAdjustmentView(adjustment);
+    };
+    const repeated = replay(record);
+    if (repeated) return repeated;
+    if (record.revision !== expectedRevision) throw new ConflictException('补偿已更新，请刷新后核对');
+    const paid = (record.refunds ?? []).reduce((total, item) => total + BigInt(item.amountCents), 0n);
+    if (paid + BigInt(amountCents) > BigInt(record.amountCents)) {
+      throw new ConflictException('实退金额不能超过该补偿待退金额');
+    }
+    const saved = await this.adjustments.findOneAndUpdate({ ...key, status: 'approved', revision: expectedRevision }, {
+      $push: { refunds: { requestId, amountCents, occurredAt, recordedAt, recordedByUserId: actor.id, evidence } },
+      $inc: { revision: 1 },
+    }, { ...durable, returnDocument: 'after', runValidators: true }).lean();
+    if (saved) return financialAdjustmentView(saved);
+    const latest = await this.adjustments.findOne(key).readConcern('majority').lean();
+    const recovered = latest && replay(latest);
+    if (recovered) return recovered;
+    throw new ConflictException('补偿已更新，请刷新后核对');
+  }
+
+  async personalBalance(actor: SessionUser): Promise<PersonalClubBalance> {
+    await this.directory.requireMember(CLUB_ID, actor.id);
+    const records = await this.approvedRecords(actor.id);
+    const settlements = await this.settlementsFor(records);
+    return {
+      ...adjustmentBalance(records, actor.id, false, settlements),
+      pendingPenalties: records.flatMap(record => {
+        const view = financialAdjustmentView(record, settlements.get(record.orderId?.toHexString() ?? ''));
+        const { penaltyPosting } = view;
+        return penaltyPosting && penaltyPosting !== 'posted' ? [{ ...personalPenalty(view), penaltyPosting }] : [];
+      }),
+    };
+  }
+
+  async financeBalance(actor: SessionUser, userId?: string) {
+    await this.directory.requireAdminPermission(CLUB_ID, actor, 'CLUB_FINANCE_READ');
+    if (userId !== undefined && !USER_ID_PATTERN.test(userId)) throw new BadRequestException('请输入四位用户 ID');
+    const records = await this.approvedRecords(userId);
+    return adjustmentBalance(records, userId ?? null, true, await this.settlementsFor(records));
+  }
+
+  private approvedRecords(userId?: string) {
+    return this.adjustments.find({ clubId: CLUB_ID, status: 'approved',
+      ...(userId ? { kind: 'member_penalty', memberUserId: userId } : {}),
+    }).sort({ _id: -1 }).readConcern('majority').lean();
+  }
+
+  private async create(userId: string, orderId: string | undefined, input: RequestClubAdjustmentDto,
+    direct: boolean, order?: ClubOrder) {
+    const { kind, amountCents, reason, memberUserId, requestId } = input;
+    const key = { clubId: CLUB_ID, requestedByUserId: userId, requestId };
+    const replay = (record: ClubFinancialAdjustment) => {
+      if (record.kind !== kind || record.orderId?.toHexString() !== orderId?.toLowerCase() || record.amountCents !== amountCents ||
+        record.reason !== reason || record.memberUserId !== memberUserId || (record.status === 'approved' && record.revision === 1) !== direct) {
+        throw new ConflictException('该提交编号已用于另一笔调整');
+      }
+      if (hasApprovedPenalty(record)) this.notify(record._id);
+      return this.adjustmentView(record);
+    };
+    const previous = await this.adjustments.findOne(key).readConcern('majority').lean();
+    if (previous) return replay(previous);
+    if (kind === 'member_penalty' && order) {
+      const issue = this.penaltyOrderIssue(order);
+      if (issue) throw new ConflictException(issue);
+    }
+    if (!direct && order && !this.canRequest(order)) throw new ConflictException('订单收款并派发后才能发起调整');
+    if (memberUserId) await this.directory.requireAssignmentCandidate(CLUB_ID, memberUserId);
+    const now = new Date();
+    const adjustment = new this.adjustments({ ...key, orderId, kind, amountCents, reason, memberUserId,
+      ...(kind === 'customer_compensation' ? { customerUserId: order?.customerUserId } : {}),
+      status: direct ? 'approved' : 'pending', revision: 1, createdAt: now,
+      ...(direct ? { decidedByUserId: userId, decidedAt: now } : {}),
+    });
+    let saved: ClubFinancialAdjustment;
+    try {
+      saved = (await adjustment.save(durable.writeConcern)).toObject();
+    } catch (error) {
+      if (!isDuplicateKey(error, 'requestId')) throw error;
+      const concurrent = await this.adjustments.findOne(key).readConcern('majority').lean();
+      if (!concurrent) throw error;
+      return replay(concurrent);
+    }
+    if (direct) this.notify(saved._id);
+    return this.adjustmentView(saved);
+  }
+
+  private async list(scope: QueryFilter<ClubFinancialAdjustment>) {
+    const rows = await this.adjustments.find({ ...scope, clubId: CLUB_ID }).sort({ _id: -1 }).readConcern('majority').lean();
+    const users = new Set<string>();
+    for (const row of rows) {
+      for (const userId of [row.requestedByUserId, row.decidedByUserId, row.memberUserId, row.customerUserId]) {
+        if (userId) users.add(userId);
+      }
+    }
+    const [settlements, names] = await Promise.all([this.settlementsFor(rows), this.directory.memberNicknames([...users])]);
+    return {
+      records: rows.map(record => financialAdjustmentView(record, settlements.get(record.orderId?.toHexString() ?? ''))),
+      memberNames: Object.fromEntries(names),
+    };
+  }
+
+  private async adjustmentView(record: ClubFinancialAdjustment) {
+    const settlements = await this.settlementsFor([record]);
+    return financialAdjustmentView(record, settlements.get(record.orderId?.toHexString() ?? ''));
+  }
+
+  private async settlementsFor(records: ClubFinancialAdjustment[]) {
+    const ids = new Set<string>();
+    for (const row of records) {
+      if (hasApprovedPenalty(row) && row.orderId) ids.add(row.orderId.toHexString());
+    }
+    const settlements = new Map<string, PostedOrderPenalties>();
+    if (!ids.size) return settlements;
+    const orders = await this.orders.find({ clubId: CLUB_ID, _id: { $in: [...ids] }, closedAt: { $type: 'date' } })
+      .select({ closedAt: 1, settlementPenaltyIds: 1 }).readConcern('majority').lean();
+    for (const { _id, closedAt, settlementPenaltyIds } of orders) {
+      if (closedAt) settlements.set(_id.toHexString(), {
+        closedAt, adjustmentIds: new Set(settlementPenaltyIds?.map(id => id.toHexString())),
+      });
+    }
+    return settlements;
+  }
+
+  private async candidates() {
+    const userIds = await this.directory.eligibleGiftMembers(CLUB_ID);
+    const names = await this.directory.memberNicknames(userIds);
+    return userIds.map(userId => ({ userId, nickname: names.get(userId) ?? null }));
+  }
+
+  private async requireLeadership(actor: SessionUser) {
+    const club = actor.app === 'admin' ? await this.directory.getAdminClub(actor) : await this.directory.getEmployeeClub(actor.id);
+    if (!club?.canDecideAdjustments) throw new ForbiddenException('仅本团团长或副团长可办理');
+  }
+
+  private async requireOrder(id: string, dispatcherUserId?: string) {
+    this.requireObjectId(id);
+    const order = await this.orders.findOne({ _id: id, clubId: CLUB_ID, ...(dispatcherUserId ? { dispatcherUserId } : {}) }).lean();
+    if (!order) throw new NotFoundException('本单不存在或不归您经办');
+    return order;
+  }
+
+  private async requireDispatchOrder(userId: string, orderId: string) {
+    await this.directory.requireMember(CLUB_ID, userId);
+    return this.requireOrder(orderId, userId);
+  }
+
+  private canRequest(order: ClubOrder) {
+    return order.dispatchStatus === 'published' && order.receipt?.quote.priceUnit === 'gift_times';
+  }
+
+  private requireObjectId(id: string) {
+    if (!isObjectIdOrHexString(id)) throw new NotFoundException('记录不存在');
+  }
+
+  private penaltyOrderIssue(order: ClubOrder) {
+    if (order.closedAt) return '订单已结单，无法新增关联罚款';
+    if (order.dispatchStatus === 'cancelled') return '订单已取消，无法新增关联罚款';
+    if (order.dispatchStatus === 'pending_assignment' || !order.dispatcherUserId) return '订单尚未分配派单人，无法关联罚款';
+  }
+
+  private notify(id: Types.ObjectId) {
+    void this.notifications.publishApprovedPenalty(id.toHexString())
+      .catch(() => this.logger.warn('罚款通知待后台补送'));
+  }
+}
+
+function hasApprovedPenalty(record: ClubFinancialAdjustment) {
+  return record.kind === 'member_penalty' && record.status === 'approved';
+}

@@ -5,6 +5,7 @@ import { giftSettlementStatusLabel, type AdminGiftSettlement, type GiftSettlemen
 import { getSettlement, getSettlements } from "@/api/club.api";
 import type { AdminClubContext } from "../home";
 import GiftSettlementDetail from "./gift-settlement-detail";
+import ClubBalanceCard from "./club-balance";
 
 const sources = { direct_dispatch: "直接派单", client_order: "客户端下单" };
 const date = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN") : "—";
@@ -32,6 +33,7 @@ export default function Settlements() {
       : club === undefined ? <Spin aria-label="加载俱乐部" />
       : !selected ? <Empty description="当前账号未获财务查看权限" /> : <>
         <Typography.Text strong>{selected.name}</Typography.Text>
+        <ClubBalanceCard />
         <SettlementList onOpen={showOrder} />
         <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
           {orderId ? <SettlementDetail key={`${orderId}/${calculationId ?? ""}`}

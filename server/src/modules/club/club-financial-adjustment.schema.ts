@@ -3,7 +3,7 @@ import { Schema as MongooseSchema, Types } from 'mongoose';
 import type { GiftSettlementAdjustment } from '@webapp-template/common';
 
 @Schema({ _id: false })
-class CompensationRefund {
+export class CompensationRefund {
   @Prop({ type: String, required: true })
   requestId: string;
 
@@ -18,6 +18,9 @@ class CompensationRefund {
 
   @Prop({ type: String, required: true })
   recordedByUserId: string;
+
+  @Prop({ type: String })
+  evidence?: string;
 }
 
 // An order-linked penalty and its approval share one record. Writers must use
@@ -50,6 +53,9 @@ export class ClubFinancialAdjustment {
   @Prop({ type: String, required: true, immutable: true })
   requestedByUserId: string;
 
+  @Prop({ type: String, immutable: true })
+  requestId?: string;
+
   @Prop({ type: Date, required: true, immutable: true })
   createdAt: Date;
 
@@ -59,11 +65,17 @@ export class ClubFinancialAdjustment {
   @Prop({ type: Date })
   decidedAt?: Date;
 
+  @Prop({ type: String })
+  decisionReason?: string;
+
   @Prop({ type: Date })
   notificationPublishedAt?: Date;
 
   @Prop({ type: String })
   memberUserId?: string;
+
+  @Prop({ type: String, immutable: true })
+  customerUserId?: string;
 
   @Prop({ type: [SchemaFactory.createForClass(CompensationRefund)], default: undefined })
   refunds?: CompensationRefund[];
@@ -74,3 +86,7 @@ ClubFinancialAdjustmentSchema.index({ clubId: 1, orderId: 1, _id: 1 });
 ClubFinancialAdjustmentSchema.index({ clubId: 1, notificationPublishedAt: 1, _id: 1 }, {
   partialFilterExpression: { kind: 'member_penalty', status: 'approved' },
 });
+ClubFinancialAdjustmentSchema.index({ clubId: 1, requestedByUserId: 1, requestId: 1 }, {
+  unique: true, partialFilterExpression: { requestId: { $type: 'string' } },
+});
+ClubFinancialAdjustmentSchema.index({ clubId: 1, kind: 1, status: 1, memberUserId: 1 });

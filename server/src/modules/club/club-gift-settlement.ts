@@ -17,7 +17,7 @@ import {
 import { giftTerminationView } from './club-gift-termination';
 import type { ClubOrder } from './club-order.schema';
 
-export const GIFT_SETTLEMENT_CALCULATION_VERSION = 5;
+export const GIFT_SETTLEMENT_CALCULATION_VERSION = 6;
 
 type Pricing = NonNullable<ClubOrder['dispatchPricing']>;
 type PriceBasis = ReturnType<typeof giftPriceSegments>[number];
@@ -194,7 +194,11 @@ export function calculateGiftSettlement(
   if (overall.pendingPromotional) issues.add('promotion_pending');
 
   const { cash: originalCash, termination, stopped, amendments } = cashAndStop(order, deliveredBySegment);
-  const { adjustments, penalties, penaltyCents, compensation } = giftSettlementAdjustments(financialAdjustments, issues, termination?.refunds);
+  const settlement = order.closedAt ? {
+    closedAt: order.closedAt,
+    adjustmentIds: new Set(order.settlementPenaltyIds?.map(id => id.toHexString())),
+  } : undefined;
+  const { adjustments, penalties, penaltyCents, compensation } = giftSettlementAdjustments(financialAdjustments, issues, termination?.refunds, settlement);
   const cash = compensation.due ? {
     ...originalCash,
     refundDueCents: cents(BigInt(originalCash.refundDueCents!) + compensation.due),

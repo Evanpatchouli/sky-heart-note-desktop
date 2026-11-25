@@ -35,6 +35,12 @@ export const routeConfigs: RouteConfig[] = [
     component: lazy(() => import("@/views/club/settlements")),
   },
 
+  {
+    path: "/club/penalties",
+    label: "罚款管理",
+    component: lazy(() => import("@/views/club/penalties")),
+  },
+
   // ========== 系统管理模块 ==========
   {
     path: "/system",

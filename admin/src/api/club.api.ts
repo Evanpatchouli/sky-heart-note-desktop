@@ -7,6 +7,7 @@ const request = createAppRequest("/admin/club");
 export interface AdminClub {
   name: string;
   permissions: string[];
+  canDecideAdjustments: boolean;
 }
 
 export type DispatchPricingRow = CommissionRule & Partial<Pick<DispatchPricing, "dispatchFeeCents" | "segments" | "giftSegments" | "priceUnit">> & {

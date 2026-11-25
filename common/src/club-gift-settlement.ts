@@ -74,8 +74,10 @@ export interface GiftSettlementAdjustment {
   createdAt: string;
   decidedByUserId?: string;
   decidedAt?: string;
+  decisionReason?: string;
   memberUserId?: string;
-  refunds: { requestId: string; amountCents: number; occurredAt: string; recordedAt: string; recordedByUserId: string }[];
+  penaltyPosting?: 'awaiting_close' | 'posted' | 'not_in_settlement';
+  refunds: { requestId: string; amountCents: number; occurredAt: string; recordedAt: string; recordedByUserId: string; evidence?: string }[];
 }
 
 export type PersonalGiftPenalty = Pick<GiftSettlementAdjustment, 'id' | 'amountCents' | 'reason' | 'decidedAt'>;

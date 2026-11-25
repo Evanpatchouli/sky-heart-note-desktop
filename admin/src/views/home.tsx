@@ -44,6 +44,7 @@ function AuthorizedHome() {
   const clubChildren: MenuProps["items"] = [
     ...(mayConfigureRule ? [{ key: "/club/rules", label: "抽成规则" }] : []),
     ...(mayReadFinance ? [{ key: "/club/settlements", label: "结算核对" }] : []),
+    ...(club?.canDecideAdjustments || mayReadFinance ? [{ key: "/club/penalties", label: "罚款管理" }] : []),
   ];
   const clubItems: MenuProps["items"] = clubChildren.length ? [{
     key: "/club", label: "俱乐部管理", icon: <AuditOutlined />, children: clubChildren,

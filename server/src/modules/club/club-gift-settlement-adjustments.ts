@@ -1,4 +1,4 @@
-import { USER_ID_PATTERN, type GiftSettlementAdjustment, type GiftSettlementIssue, type PersonalGiftPenalty } from '@webapp-template/common';
+import { USER_ID_PATTERN, type ClubAdjustmentRecord, type GiftSettlementAdjustment, type GiftSettlementIssue, type PersonalGiftPenalty } from '@webapp-template/common';
 import type { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
 
 type AdjustmentDecision = Pick<GiftSettlementAdjustment, 'status' | 'amountCents' | 'decidedByUserId'> & {
@@ -8,7 +8,9 @@ type PenaltyDecision = AdjustmentDecision & Pick<GiftSettlementAdjustment, 'kind
   refunds?: readonly unknown[];
 };
 
-function hasConfirmedAdjustment(record: AdjustmentDecision) {
+export type PostedOrderPenalties = { closedAt: Date; adjustmentIds: ReadonlySet<string> };
+
+export function hasConfirmedAdjustment(record: AdjustmentDecision) {
   return record.status === 'approved' && !!record.decidedByUserId && !!record.decidedAt &&
     Number.isSafeInteger(record.amountCents) && record.amountCents > 0;
 }
@@ -33,8 +35,36 @@ export function personalPenalty({ id, amountCents, reason, decidedAt }: GiftSett
   return { id, amountCents, reason, decidedAt };
 }
 
+export function penaltyPostedAt(record: ClubFinancialAdjustment, settlement?: PostedOrderPenalties) {
+  if (!hasConfirmedMemberPenalty(record)) return undefined;
+  if (!record.orderId) return record.decidedAt;
+  if (settlement?.adjustmentIds.has(record._id.toHexString()) && settlement.closedAt >= record.decidedAt) {
+    return settlement.closedAt;
+  }
+}
+
+export function financialAdjustmentView(record: ClubFinancialAdjustment, settlement?: PostedOrderPenalties): ClubAdjustmentRecord {
+  const { _id, orderId, kind, status, revision, amountCents, reason, requestedByUserId,
+    createdAt, decidedByUserId, decidedAt, memberUserId, customerUserId, decisionReason, refunds } = record;
+  return {
+    id: _id.toHexString(), kind, status, revision, amountCents, reason, requestedByUserId, createdAt: createdAt.toISOString(),
+    ...(orderId ? { orderId: orderId.toHexString() } : {}),
+    ...(decidedByUserId ? { decidedByUserId } : {}),
+    ...(decidedAt instanceof Date && Number.isFinite(decidedAt.getTime()) ? { decidedAt: decidedAt.toISOString() } : {}),
+    ...(memberUserId ? { memberUserId } : {}),
+    ...(customerUserId ? { customerUserId } : {}),
+    ...(decisionReason ? { decisionReason } : {}),
+    ...(hasConfirmedMemberPenalty(record) ? { penaltyPosting: penaltyPostedAt(record, settlement)
+      ? 'posted' : settlement ? 'not_in_settlement' : 'awaiting_close' } : {}),
+    refunds: (Array.isArray(refunds) ? refunds : []).map(payment => ({
+      ...payment, occurredAt: payment.occurredAt.toISOString(), recordedAt: payment.recordedAt.toISOString(),
+    })),
+  };
+}
+
 export function giftSettlementAdjustments(
   records: readonly ClubFinancialAdjustment[], issues: Set<GiftSettlementIssue>, existingRefunds: readonly { requestId: string }[] = [],
+  settlement?: PostedOrderPenalties,
 ) {
   const adjustments: GiftSettlementAdjustment[] = [];
   const penalties = new Map<string, { sum: bigint; items: PersonalGiftPenalty[] }>();
@@ -46,17 +76,8 @@ export function giftSettlementAdjustments(
   let excess = 0n;
 
   for (const record of records) {
-    const { _id, kind, status, revision, amountCents, reason, requestedByUserId,
-      createdAt, decidedByUserId, decidedAt, memberUserId, refunds } = record;
-    const row: GiftSettlementAdjustment = {
-      id: _id.toHexString(), kind, status, revision, amountCents, reason, requestedByUserId, createdAt: createdAt.toISOString(),
-      ...(decidedByUserId ? { decidedByUserId } : {}),
-      ...(decidedAt instanceof Date && Number.isFinite(decidedAt.getTime()) ? { decidedAt: decidedAt.toISOString() } : {}),
-      ...(memberUserId ? { memberUserId } : {}),
-      refunds: (Array.isArray(refunds) ? refunds : []).map(payment => ({
-        ...payment, occurredAt: payment.occurredAt.toISOString(), recordedAt: payment.recordedAt.toISOString(),
-      })),
-    };
+    const row = financialAdjustmentView(record, settlement);
+    const { kind, memberUserId } = row;
     adjustments.push(row);
     if (row.status !== 'approved') continue;
     if (!(kind === 'member_penalty' ? hasConfirmedMemberPenalty(record) && !!row.decidedAt : hasConfirmedAdjustment(row))) {
@@ -65,6 +86,7 @@ export function giftSettlementAdjustments(
     }
     const amount = BigInt(row.amountCents);
     if (kind === 'member_penalty' && memberUserId) {
+      if (settlement && !penaltyPostedAt(record, settlement)) continue;
       const found = penalties.get(memberUserId) ?? { sum: 0n, items: [] };
       found.sum += amount;
       found.items.push(personalPenalty(row));

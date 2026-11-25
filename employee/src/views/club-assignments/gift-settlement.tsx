@@ -42,7 +42,7 @@ export default function GiftSettlementCard({ route, revision, role, showTerminat
             { key: "forecast", label: "按本人约定预计", children: money(member.plannedRewardCents) },
             { key: "reward", label: "按当前有效实绩", children: money(member.rewardCents) },
             ...(member.penaltyCents !== undefined ? [
-              { key: "penalty", label: "本人已生效扣款", children: money(member.penaltyCents) },
+              { key: "penalty", label: data.status === "closed" ? "本人扣款" : "本人已生效罚款（随结单扣记）", children: money(member.penaltyCents) },
               { key: "net", label: "本人实绩净额", children: money(member.netRewardCents ?? null) },
             ] : []),
             { key: "gifts", label: "计酬次数", children: `${member.deliveredGiftTimes} / ${member.agreedGiftTimes} 次` },
@@ -77,7 +77,7 @@ export default function GiftSettlementCard({ route, revision, role, showTerminat
           </div>)}
         </details> : null}
         {(member?.penalties ?? (role === "dispatcher" ? data.penalties : undefined))?.map(penalty =>
-          <Typography.Text key={penalty.id}>本人扣款 {money(penalty.amountCents)} · {penalty.reason}</Typography.Text>)}
+          <Typography.Text key={penalty.id}>本人罚款 {money(penalty.amountCents)} · {penalty.reason}</Typography.Text>)}
       </Flex>}
   </Card>;
 }

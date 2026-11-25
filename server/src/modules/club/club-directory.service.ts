@@ -112,6 +112,7 @@ export class ClubDirectoryService implements OnModuleInit {
     return {
       name: club.name,
       canAssignPendingOrders: membership.position === 'leader' || membership.position === 'deputy',
+      canDecideAdjustments: membership.position === 'leader' || membership.position === 'deputy',
       canManageAuthorizations: membership.position === 'leader',
       permissions: this.effectivePermissions(membership).filter(isClubOperationPermission),
     };
@@ -197,7 +198,10 @@ export class ClubDirectoryService implements OnModuleInit {
       this.requireClub(CLUB_ID),
       this.members.findOne({ clubId: CLUB_ID, userId: actor.id, active: true }).lean(),
     ]);
-    return { name: club.name, permissions: membership ? this.effectivePermissions(membership) : [] };
+    return {
+      name: club.name, permissions: membership ? this.effectivePermissions(membership) : [],
+      canDecideAdjustments: membership?.position === 'leader' || membership?.position === 'deputy',
+    };
   }
 
   async updateClubName(actor: SessionUser, name: string) {

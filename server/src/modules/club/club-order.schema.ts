@@ -263,6 +263,10 @@ export class ClubOrder {
   @Prop({ type: Date })
   closedAt?: Date;
 
+  // Frozen atomically with closedAt by the order settlement writer.
+  @Prop({ type: [SchemaTypes.ObjectId], default: undefined })
+  settlementPenaltyIds?: Types.ObjectId[];
+
   @Prop({ type: SchemaFactory.createForClass(HeartDelivery), required: true })
   heartDelivery: HeartDelivery;
 

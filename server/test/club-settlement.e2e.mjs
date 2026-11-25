@@ -109,7 +109,7 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   ]);
   assert.deepEqual(final, replay);
   assert.equal(final.status, 'ready_to_close');
-  assert.equal(final.finalCalculation.version, 5);
+  assert.equal(final.finalCalculation.version, 6);
   assert.deepEqual(final.issues, []);
   assert.equal(final.agreedGiftTimes, 100);
   assert.equal(final.deliveredGiftTimes, 100);

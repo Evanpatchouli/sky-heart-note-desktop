@@ -280,7 +280,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     await membership.updateOne({ clubId: 'club', userId: administrator.id }, { $unset: { permissions: '' } });
     await api('admin', adminClub, { status: 401 });
     await adminGet(adminClub, adminEmployee, 403);
-    assert.deepEqual(await adminGet(adminClub), { name: '送心俱乐部', permissions: [] });
+    assert.deepEqual(await adminGet(adminClub), { name: '送心俱乐部', permissions: [], canDecideAdjustments: false });
     await adminGet(adminOrders, administrator, 403);
     await adminGet(`${adminOrders}/${direct.id}`, administrator, 403);
     await adminGet(membersRoute, administrator, 403);
@@ -288,7 +288,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
 
     await grant(administrator, 'CLUB_ORDERS_READ');
     assert.deepEqual(await adminGet(adminClub), {
-      name: '送心俱乐部', permissions: ['CLUB_ORDERS_READ'],
+      name: '送心俱乐部', permissions: ['CLUB_ORDERS_READ'], canDecideAdjustments: false,
     });
     const monitored = (await adminGet(adminOrders)).items;
     assert.ok(monitored.length > 0 && monitored.every((order) => order.clubId === 'club'));

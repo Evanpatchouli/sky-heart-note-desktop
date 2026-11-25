@@ -321,7 +321,7 @@ pnpm --dir server club:configure notify employee important sample.event.001 00A1
 
 `planned` 和 `totals` 分列派抽原额、个人让利、派单人净额、团抽原额、平台优惠、促销赠送成本、团费净额与送心报酬。部分履约按原报价锁定的整分兑现优惠；已付款的续段和已实补的改价保留各自的价格与收款记录。`cash` 分列原实收、续段实收、改价实补、应退、实退、待退、超退和净实收。
 
-履约完成或已停送、有效实绩和账款核平后，状态为 `ready_to_close`（待结单）。仍有送心义务时状态为 `in_progress`（履约中）。退款未核平、已确认的续段未实收、改价未生效或依据存在差异时显示 `review_required`（待核对）。V5 计算单按完整有效依据生成编号，同一依据并发查询复用记录。有效补报或更正更新当前计算依据，历史计算单保留。查询计算单与生成快照不改写结单状态或余额。
+履约完成或已停送、有效实绩和账款核平后，状态为 `ready_to_close`（待结单）。仍有送心义务时状态为 `in_progress`（履约中）。退款未核平、已确认的续段未实收、改价未生效或依据存在差异时显示 `review_required`（待核对）。V6 计算单按完整有效依据生成编号，同一依据并发查询复用记录。有效补报或更正更新当前计算依据，历史计算单保留。查询计算单与生成快照不改写结单状态或余额。
 
 结算纳入已登记的续段收款、实补、已确认拒补及实退。未确认的改价与续段保留查阅，按阶段显示。
 
@@ -329,9 +329,27 @@ pnpm --dir server club:configure notify employee important sample.event.001 00A1
 
 额外客户补偿和责任扣款由结算查询读取同团同单的 `club_financial_adjustments`。一笔责任扣款用一条 `member_penalty` 记录，`status` 同时描述申请和生效状态。额外团费补偿使用 `customer_compensation`。财务可查申请与决议依据。只有 `approved` 记录计入分配，批准的补偿转为应退，按实际退款记录进入实退。待确认或驳回的记录不改变分配、待结状态或最终计算单。全团罚款按无 `orderId` 的独立记录处理。关联订单的责任扣款归入团费，目标团员有本人送心报酬时另列扣款及净额。对本单无派发或承接权限的责任团员，订单依然不可见。
 
-写入方使用 `clubId` 和关联订单的 MongoDB `orderId`，保存整分金额、原因、申请或发布人、决定人和发生时间。额外补偿的每笔实退保存独立请求标识、整分金额、实际发生与登记时间、登记人。`revision` 从 1 起，每次状态或退款变更原子递增。当前提供财务及个人计算查询，订单调整的申请、审批和登记入口由 P1-15 接续，确认结单和账户入账由 P1-17 接续。
+写入方使用 `clubId` 和关联订单的 MongoDB `orderId`，保存整分金额、原因、申请或发布人、决定人和发生时间。额外补偿的每笔实退保存独立请求标识、整分金额、实际发生与登记时间、登记人。`revision` 从 1 起，每次状态或退款变更原子递增。P1-15 提供调整申请、审批、实退登记和调整流水。结单确认及送心报酬、派抽和团抽入账由 P1-17 接续。
 
 通知由已持久化的 `member_penalty` 生效记录驱动。费用业务可在成功写入后调用 `AppNotificationService.publishApprovedPenalty(penaltyId)`，后台也会定期补齐未处理记录。通知与结算都要求已批准、有效的决定人与时间、正整数分、有效的被罚款人与提交人，并且没有退款记录。决定之后的职务变化不影响原决定。事件键为 `club.penalty.approved:<罚款ID>`，只向团员端的被罚款人和提交人各投递一次重要通知。核对字段 `notificationPublishedAt` 记录通知事件入库时间，沿用原罚款 `revision` 与结算依据。
+
+### 罚款与额外补偿经办
+
+| 请求 | 经办与数据 |
+| --- | --- |
+| `GET /api/admin/club/penalties` | 管理端团长、副团长或具备财务查看授权的账号读取本团罚款。`canPublish` 表示当前账号可发布。 |
+| `POST /api/admin/club/penalties` | 管理端团长或副团长提交 `{ requestId, memberUserId, amountCents, reason, orderId? }`，发布人与提交人为同一账号。可关联已分配派单人且未取消、未结单的订单。 |
+| `GET /api/employee/club/orders/:orderId/financial-adjustments` | 本单派单人查看各笔申请、决定和实退。`canRequest` 表示订单可申请额外补偿，`canRequestPenalty` 表示仍可申请关联罚款。 |
+| `POST /api/employee/club/orders/:orderId/financial-adjustments` | 本单派单人提交 `{ requestId, kind, amountCents, reason }`。`member_penalty` 另填 `memberUserId`，`customer_compensation` 以订单老板为对象。 |
+| `GET /api/employee/club/financial-adjustments` | 团长、副团长读取本团待确认调整。 |
+| `PATCH /api/employee/club/financial-adjustments/:id/decision` | 团长、副团长提交 `{ expectedRevision, decision, reason? }`。决定为 `approved` 或 `rejected`。 |
+| `POST /api/employee/club/orders/:orderId/financial-adjustments/:id/refunds` | 本单派单人登记获批补偿的实际退款，提交 `{ requestId, expectedRevision, amountCents, occurredAt, evidence? }`。实际时间带时区，介于首笔收款与当前时间之间。可分次退，合计不超过批准金额。 |
+| `GET /api/employee/club/balance` | 本人已入账余额、流水和随结单扣记的本人罚款。 |
+| `GET /api/admin/club/balance`、`GET /api/admin/club/balance/members/:userId` | 有财务授权的管理端账号核对团费或指定团员账户流水。 |
+
+`requestId` 为 UUID v4。同一提交人重试相同申请或发布请求时返回同一记录，同一补偿实退以补偿 ID 和请求 ID 识别重试。决定与实退使用 `revision` 条件写入。批准或驳回的决定、实退金额和时间、登记人及选填凭据均随原调整记录保存。
+
+独立罚款将有效决定作为本人借记与团费贷记的共同凭据，两项使用相同流水事件键 `club.penalty:<罚款ID>`。订单罚款生效后纳入核算，实际余额在结单时变化。结单写入方须在同一次 `club_orders` 原子更新中写入 `closedAt` 和 `settlementPenaltyIds`（本次核算冻结的本单生效罚款 ObjectId 数组）。`adjustmentPostings` 按确切 ID 与生效时间核对后生成个人借记和团费贷记。订单结单或取消后不再新增或批准该单的关联罚款，原生效操作可按原请求重试。团费补偿以每笔实退款为团费支出凭据，批准后的待退款进入订单应退，退款登记后进入实际流水。结单按扣罚前送心报酬入账，派抽、团抽、优惠与赠送成本按各自分录核算。已冻结罚款和已登记补偿由原记录提供入账依据。
 
 ## 本人承接与排期
 

@@ -92,7 +92,7 @@ test('单俱乐部启动、团长首次初始化及在线授权', { timeout: 120
   await assert.rejects(command('init-leader', deputy.id), /已经初始化/);
   assert.equal(await db.collection('club_members').countDocuments({ position: 'leader' }), 1);
   assert.deepEqual(await get('employee', staff, leader), {
-    name: '第一家俱乐部', orderUrl: origins.client + '/order', canAssignPendingOrders: true,
+    name: '第一家俱乐部', orderUrl: origins.client + '/order', canAssignPendingOrders: true, canDecideAdjustments: true,
     canManageAuthorizations: true, permissions: ['CLUB_MEMBERS_MANAGE', 'CLUB_COMMISSION_MANAGE'],
   });
 

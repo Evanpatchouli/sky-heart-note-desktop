@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { Alert, Avatar, Button, Dropdown, Segmented } from "antd";
 import {
@@ -7,6 +7,7 @@ import {
 } from "@ant-design/icons";
 import { useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
 import MemberBrand from "#/components/MemberBrand";
+import { employeeRequest } from "#/service/request";
 import DispatchNotices from "./DispatchNotices";
 import Timenow from "./timenow";
 
@@ -26,10 +27,22 @@ export default function Header() {
   const personalWorkspace = currentPath === "/" || currentPath === "/workspace";
   const [menuOpen, setMenuOpen] = useState(false);
   const user = useAuthSession();
+  const [club, setClub] = useState<{ token: typeof user.token; canDecideAdjustments: boolean }>();
   const { logout, loggingOut, logoutError } = useSessionActions();
   const name = user.nickname || user.username || "我的账号";
   const role = user.roles.includes("admin") ? "管理员" : "团员";
   const currentView = views.find(view => view.value === params.get("vtype"))?.value ?? "timeline";
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const controller = new AbortController();
+    employeeRequest<{ canDecideAdjustments: boolean } | null>("club", "GET", undefined, controller.signal)
+      .then(info => {
+        if (!controller.signal.aborted) setClub(info ? { token: user.token, canDecideAdjustments: info.canDecideAdjustments } : undefined);
+      }).catch(() => { if (!controller.signal.aborted) setClub(undefined); });
+    return () => controller.abort();
+  }, [menuOpen, user.token]);
+  const membership = club?.token === user.token ? club : undefined;
 
   return (
     <header className="member-appbar">
@@ -85,6 +98,8 @@ export default function Header() {
                   </span>,
                   children: [
                     { key: "club-operations", label: "俱乐部运营" },
+                    ...(membership?.canDecideAdjustments ? [{ key: "financial-adjustments", label: "调整审批" }] : []),
+                    ...(membership ? [{ key: "balance", label: "个人余额" }] : []),
                     { key: "logout", icon: <LogoutOutlined />, label: "退出登录", disabled: loggingOut },
                   ],
                 },
@@ -93,6 +108,10 @@ export default function Header() {
                 if (key === "club-operations") {
                   setMenuOpen(false);
                   void navigate("/club/operations");
+                }
+                if (key === "financial-adjustments" || key === "balance") {
+                  setMenuOpen(false);
+                  void navigate(`/club/${key}`);
                 }
                 if (key === "logout") {
                   setMenuOpen(false);

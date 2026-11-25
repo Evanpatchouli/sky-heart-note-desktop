@@ -1,6 +1,6 @@
 import { Alert, Button, Collapse, Descriptions, Flex, Table, Tag, Typography } from "antd";
 import {
-  formatCentsAsYuan, giftSettlementIssueLabel, giftSettlementStatusLabel,
+  clubPenaltyPostingLabel, formatCentsAsYuan, giftSettlementIssueLabel, giftSettlementStatusLabel,
   type AdminGiftSettlement, type GiftSettlementAmounts, type GiftSettlementProgress,
 } from "@webapp-template/common";
 
@@ -139,9 +139,10 @@ export default function GiftSettlementDetail({ data, history, compact, onChange,
         <Flex vertical gap="small">{data.adjustments.map(adjustment => <section key={adjustment.id}>
           <Typography.Text strong>{adjustment.kind === "customer_compensation" ? "额外补偿" : "责任扣款"} · {money(adjustment.amountCents)}
             {adjustment.memberUserId ? ` · ${name(adjustment.memberUserId)}` : ""} · {adjustmentStatus[adjustment.status]}</Typography.Text>
+          {adjustment.penaltyPosting ? <div>{clubPenaltyPostingLabel[adjustment.penaltyPosting]}</div> : null}
           <div>{adjustment.reason}</div>
-          {adjustment.decidedAt && adjustment.decidedByUserId ? <div>{name(adjustment.decidedByUserId)} · {datetime(adjustment.decidedAt)}</div> : null}
-          {adjustment.refunds.map(payment => <div key={payment.requestId}>实退 {money(payment.amountCents)} · {datetime(payment.occurredAt)} · {name(payment.recordedByUserId)}</div>)}
+          {adjustment.decidedAt && adjustment.decidedByUserId ? <div>{name(adjustment.decidedByUserId)} · {datetime(adjustment.decidedAt)}{adjustment.decisionReason ? ` · ${adjustment.decisionReason}` : ""}</div> : null}
+          {adjustment.refunds.map(payment => <div key={payment.requestId}>实退 {money(payment.amountCents)} · {datetime(payment.occurredAt)} · {name(payment.recordedByUserId)}{payment.evidence ? ` · ${payment.evidence}` : ""}</div>)}
         </section>)}</Flex>,
       }] : []),
       { key: "reports", label: `日报依据（${data.reports.length} 个版本）`, children:
