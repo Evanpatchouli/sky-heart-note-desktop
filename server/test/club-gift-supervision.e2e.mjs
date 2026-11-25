@@ -322,6 +322,7 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
     priceUnit: 'gift_times', agreedGiftTimes: 8, deliveredGiftTimes: 2, remainingGiftTimes: 6, actualReceivedHearts: null,
     estimatedReceivedHearts: 16, claimObservedReceivedHearts: [0], unknownClaimObservations: 1,
     knownReceivedHearts: 0, knownReceivedLines: 1, unknownReceivedLines: 1, closedAt: null, fulfillmentStatus: 'in_progress', canRequestContinuation: true,
+    canRequestTermination: true,
     observedGiftTimes: 2, excessGiftTimes: 0, estimatedDeliveredHearts: 4, heartAmountCents: 100, periodOnlyDifferenceCents: 0,
     periods: [{ period: 'double', observedGiftTimes: 2, deliveredGiftTimes: 2, estimatedDeliveredHearts: 4,
       actualReceivedHearts: null, knownReceivedHearts: 0, knownReceivedLines: 1, unknownReceivedLines: 1, heartAmountCents: 100 }],

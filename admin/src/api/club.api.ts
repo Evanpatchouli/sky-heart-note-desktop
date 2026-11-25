@@ -1,4 +1,4 @@
-import type { AdminGiftSettlement, ClubPromotionPolicy, CommissionRule, DispatchPricing, GiftSettlementRow, PlatformPromotionSource } from "@webapp-template/common";
+import type { AdminGiftSettlement, AdminSettlement, ClubPromotionPolicy, CommissionRule, DispatchPricing, GiftSettlementRow, PlatformPromotionSource, SettlementOrderRow } from "@webapp-template/common";
 import type Resp from "@/models/Resp";
 import { createAppRequest } from "./request";
 
@@ -32,6 +32,11 @@ export async function saveCommissionRule(input: { expectedVersion: number; clubF
   return response.getData() ?? null;
 }
 
+export async function getDispatchHistory(after?: string) {
+  const response: Resp<{ items: DispatchPricingRow[]; nextCursor: string | null }> = await request.get("/dispatch-pricing", { params: { limit: 5, after } });
+  return response.getData() ?? { items: [], nextCursor: null };
+}
+
 export async function getClubPromotions() {
   const response: Resp<ClubPromotionPolicy> = await request.get("/promotions");
   return response.getData();
@@ -50,19 +55,15 @@ export async function issueClubCoupon(input: {
   return response.getData();
 }
 
-export async function getDispatchHistory(after?: string) {
-  const response: Resp<{ items: DispatchPricingRow[]; nextCursor: string | null }> = await request.get("/dispatch-pricing", { params: { limit: 5, after } });
-  return response.getData() ?? { items: [], nextCursor: null };
-}
-
 export async function getSettlements(after?: string) {
-  const response: Resp<{ items: GiftSettlementRow[]; nextCursor: string | null }> =
+  const response: Resp<{ items: (SettlementOrderRow | GiftSettlementRow)[]; nextCursor: string | null }> =
     await request.get("/settlements", { params: { after } });
   return response.getData() ?? { items: [], nextCursor: null };
 }
 
 export async function getSettlement(orderId: string, calculationId?: string) {
   const route = `/orders/${orderId}/settlement`;
-  const response: Resp<AdminGiftSettlement> = await request.get(calculationId ? `${route}/calculations/${calculationId}` : route);
+  const response: Resp<AdminSettlement | AdminGiftSettlement> = await request.get(calculationId
+    ? `${route}/calculations/${calculationId}` : route);
   return response.getData();
 }

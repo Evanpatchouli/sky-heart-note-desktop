@@ -35,5 +35,5 @@ export default function App() {
   if (token !== verified) return <main className="sky-signin">
     {error ? <><p role="alert">{error}</p><button onClick={() => setAttempt(a => a + 1)}>重试</button></> : "正在验证登录…"}
   </main>;
-  return <RouterView />;
+  return <RouterView key={verified} />;
 }

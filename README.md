@@ -150,6 +150,7 @@ pnpm --dir server exec ts-node scripts/import-employee-db.ts <四位用户ID> "<
 ```sh
 pnpm build
 pnpm test
+pnpm test:pwa
 pnpm --dir server test:e2e
 ```
 

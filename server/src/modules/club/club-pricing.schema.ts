@@ -1,5 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { COMMISSION_BASES, PRICING_PERIODS, USER_ID_PATTERN } from '@webapp-template/common';
+import {
+  COMMISSION_BASES,
+  PRICING_PERIODS,
+  USER_ID_PATTERN,
+} from '@webapp-template/common';
 import type { CommissionBasis, GiftQuotePromotions, PricingPeriod } from '@webapp-template/common';
 import { SchemaTypes } from 'mongoose';
 
@@ -148,7 +152,10 @@ class PriceSegment {
   unitPriceCents: number;
 }
 
-const PriceSegmentSchema = SchemaFactory.createForClass(PriceSegment);
+const priceSegments = {
+  type: [SchemaFactory.createForClass(PriceSegment)],
+  required: true,
+};
 
 @Schema({ _id: false })
 class OrderPricing {
@@ -170,7 +177,7 @@ class OrderPricing {
   @Prop({ ...wholeNumber, min: 0 })
   dispatchFeeCents: number;
 
-  @Prop({ type: [PriceSegmentSchema], required: true })
+  @Prop(priceSegments)
   segments: PriceSegment[];
 
   @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
@@ -191,9 +198,6 @@ class DispatchPricing extends OrderPricing {
 
 @Schema({ _id: false })
 class CustomerQuote {
-  @Prop({ ...wholeNumber, min: 1 })
-  revision: number;
-
   @Prop({ type: String, enum: ['gift_times'] })
   priceUnit?: 'gift_times';
 
@@ -203,7 +207,10 @@ class CustomerQuote {
   @Prop({ type: SchemaTypes.Mixed })
   promotions?: GiftQuotePromotions;
 
-  @Prop({ type: [PriceSegmentSchema], required: true })
+  @Prop({ ...wholeNumber, min: 1 })
+  revision: number;
+
+  @Prop(priceSegments)
   segments: PriceSegment[];
 
   @Prop({ ...wholeNumber, min: 0 })
@@ -222,10 +229,10 @@ export class StoredOrderReceipt {
   requestId: string;
 
   @Prop({ type: String, required: true, match: USER_ID_PATTERN })
-  receivedByUserId: string;
+  recordedByUserId: string;
 
   @Prop({ type: String, required: true, match: USER_ID_PATTERN })
-  recordedByUserId: string;
+  receivedByUserId: string;
 
   @Prop({ type: Date, required: true })
   receivedAt: Date;
@@ -241,25 +248,26 @@ export class StoredOrderReceipt {
 }
 
 @Schema({ _id: false })
-export class CommissionReview {
+class CommissionReview {
   @Prop({ ...wholeNumber, min: 1 })
   revision: number;
 
   @Prop({ ...wholeNumber, min: 1 })
   ruleVersion: number;
 
-  @Prop({ type: String, enum: ['gift_times'], required: true })
-  basis: 'gift_times';
+  @Prop({ type: String, enum: COMMISSION_BASES, required: true })
+  basis: CommissionBasis;
 
   @Prop({ ...wholeNumber, min: 0 })
   dispatchFeeCents: number;
 }
-
-export const OrderReceiptSchema = SchemaFactory.createForClass(StoredOrderReceipt);
-export const CommissionReviewSchema = SchemaFactory.createForClass(CommissionReview);
 
 export const CommissionRuleSchema =
   SchemaFactory.createForClass(CommissionRule);
 export const OrderPricingSchema = SchemaFactory.createForClass(OrderPricing);
 export const DispatchPricingSchema =
   SchemaFactory.createForClass(DispatchPricing);
+export const OrderReceiptSchema =
+  SchemaFactory.createForClass(StoredOrderReceipt);
+export const CommissionReviewSchema =
+  SchemaFactory.createForClass(CommissionReview);

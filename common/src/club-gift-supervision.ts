@@ -1,7 +1,8 @@
 import type { GiftWindow } from './club-gift-dispatch';
 import type { GiftPerformance } from './club-gift-delivery';
 import type { GiftPriceSegment } from './club-pricing';
-import type { GiftPriceAdjustment } from './club-gift-price-adjustment';
+import type { CustomerGiftPriceAdjustment, GiftPriceAdjustment } from './club-gift-price-adjustment';
+import type { CustomerGiftTermination, GiftTermination } from './club-gift-termination';
 
 type ReportCount = number | string;
 
@@ -37,8 +38,10 @@ export interface CustomerGiftProgress extends GiftSupervisionTotals {
   closedAt: string | null;
   canRequestContinuation: boolean;
   periodOnlyDifferenceCents: 0;
-  priceAdjustment?: GiftPriceAdjustment;
-  priceAdjustmentHistory?: GiftPriceAdjustment[];
+  priceAdjustment?: CustomerGiftPriceAdjustment;
+  priceAdjustmentHistory?: CustomerGiftPriceAdjustment[];
+  canRequestTermination: boolean;
+  termination?: CustomerGiftTermination;
 }
 
 export function isGiftOrderProgress(value: object | null | undefined): value is CustomerGiftProgress {
@@ -71,7 +74,10 @@ export interface GiftMemberSupervision extends GiftSupervisionTotals {
   days: GiftSupervisionDay[];
 }
 
-export interface GiftDispatchSupervision extends Omit<CustomerGiftProgress, 'segments'> {
+export interface GiftDispatchSupervision extends Omit<CustomerGiftProgress, 'segments' | 'termination' | 'priceAdjustment' | 'priceAdjustmentHistory'> {
+  priceAdjustment?: GiftPriceAdjustment;
+  priceAdjustmentHistory?: GiftPriceAdjustment[];
+  termination?: GiftTermination;
   through: string | null;
   hasExceptions: boolean;
   promotionBasis?: {

@@ -46,13 +46,22 @@
 .member-appbar__views .ant-segmented-item-selected .ant-segmented-item-label { font-weight: 650; }
 .member-appbar__views .ant-segmented-item:has(input:focus-visible) { outline: 2px solid #326991; outline-offset: -2px; }
 
-.member-appbar__account {
+.member-appbar__account, .member-appbar__tools {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: clamp(10px, 1.15vw, 20px);
   min-width: 0;
 }
+.member-appbar__tools { gap: 8px; }
+.member-appbar__notices.ant-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: #245979;
+  font-size: 20px;
+}
+.member-appbar__notices .ant-badge { color: inherit; }
 .member-dispatch-notice-list { padding: 0; margin: 0; list-style: none; }
 .member-dispatch-notice-list li + li { border-top: 1px solid #e5edf2; }
 .member-dispatch-notice {
@@ -75,6 +84,8 @@
   white-space: nowrap;
 }
 .member-appbar__dispatch-link:hover { color: #173950; text-decoration: underline; }
+.member-appbar__club-nav { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 16px; }
+.member-appbar__dispatch-link[aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
 .member-clock {
   display: grid;
   flex: none;
@@ -119,23 +130,6 @@
 }
 .member-account-label strong { color: #213f54; font-size: 14px; }
 
-.member-appbar__tools {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: clamp(10px, 1.15vw, 20px);
-  min-width: 0;
-}
-.member-appbar__tools { display: flex; align-items: center; gap: 8px; }
-.member-appbar__notices.ant-btn {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  color: #245979;
-  font-size: 20px;
-}
-.member-appbar__notices .ant-badge { color: inherit; }
-
 .club-claim-page {
   flex: 1;
   overflow: auto;
@@ -144,12 +138,94 @@
   margin-inline: auto;
   padding: clamp(12px, 3vw, 32px);
 }
-.club-share-list { padding: 0; margin: 0; list-style: none; }
-.member-appbar__club-nav { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 16px; }
+.club-claim-header { margin-block-end: 16px; }
+.club-claim-dispatch {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 13px;
+  border-radius: 8px;
+  background: #355bc1;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 650;
+}
+.club-claim-dispatch:hover { background: #284da6; color: #fff; }
+.club-claim-filters { display: flex; flex-wrap: wrap; gap: 4px; padding-block-end: 9px; border-block-end: 1px solid #dbe2eb; }
+.club-claim-filters button {
+  min-height: 44px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #526477;
+  font: inherit;
+  cursor: pointer;
+}
+.club-claim-filters button[aria-pressed="true"] { color: #355bc1; background: #e8eefb; font-weight: 650; }
+.club-claim-filters button:focus-visible, .club-claim-dispatch:focus-visible { outline: 2px solid #355bc1; outline-offset: 2px; }
+.club-claim-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 2fr) minmax(0, 3fr);
+  gap: 16px;
+  align-items: start;
+}
+.club-claim-back.ant-btn { display: none; }
+.club-claim-list, .club-share-list { padding: 0; margin: 0; list-style: none; }
+.club-claim-list li + li, .club-share-list > li + li { border-top: 1px solid #e5edf2; }
+.club-claim-list button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #173950;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.club-claim-list button:hover, .club-claim-list button[aria-current] { background: #e7f0f6; }
+.club-claim-list button:focus-visible { outline: 2px solid #326991; outline-offset: -2px; }
+.club-claim-list__title, .club-claim-list__meta, .club-share-list > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.club-claim-list__meta { color: #546a78; font-size: 13px; }
 .club-order-number { color: #526477; font: 12px/1.4 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
 .club-share-list > li { padding-block: 8px; overflow-wrap: anywhere; }
+.dispatch-fulfillment-list > li { display: grid; gap: 6px; }
+.dispatch-fulfillment-days { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.dispatch-fulfillment-days > li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.dispatch-fulfillment-days time { font-variant-numeric: tabular-nums; }
+.dispatch-fulfillment-days .ant-tag { margin-inline-end: 0; white-space: normal; }
+.club-report-history > li { flex-wrap: wrap; }
+.club-report-terms { padding-inline-start: 20px; margin-block: 4px 0; }
+.club-report-terms .ant-tag { margin-inline-start: 6px; white-space: normal; }
+.club-report-period { min-inline-size: 0; margin: 0 0 12px; padding: 4px 12px 12px; border: 1px solid #dce6ec; border-radius: 8px; }
+.club-report-period legend { padding-inline: 4px; }
+.club-report-period .ant-form-item { margin-bottom: 12px; }
+.club-report-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(125px, 100%), 1fr)); column-gap: 12px; }
+.club-account-picker .ant-select { flex: 1 1 210px; min-width: 0; }
+.club-claim-list__title { overflow-wrap: anywhere; }
+.club-order-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
+  gap: 8px;
+  padding: 12px;
+  margin-block: 12px;
+  border-radius: 8px;
+  background: #f3f7fa;
+}
+.club-order-facts dt { color: #546a78; font-size: 13px; }
+.club-order-facts dd { margin: 4px 0 0; color: #173950; font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
+.club-directed-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; align-items: start; gap: 8px; }
+.club-directed-row > .ant-btn { margin-top: 30px; }
 
-.member-appbar__dispatch-link[aria-current="page"] { font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
 .member-bottom-tabs { display: none; }
 
 @media (max-width: 880px) {
@@ -185,6 +261,13 @@
   .member-appbar__account:has(.member-appbar__home-nav) { display: contents; }
   .member-appbar__home-nav { grid-column: 1 / -1; grid-row: 2; }
 }
+@media (max-width: 735px) {
+  .club-claim-layout { grid-template-columns: minmax(0, 1fr); }
+  .club-claim-layout[data-order-open="true"] .club-claim-queue,
+  .club-claim-layout[data-order-open="false"] .club-claim-detail { display: none; }
+  .club-claim-back.ant-btn { display: inline-flex; margin-block-end: 12px; }
+}
+
 @media (width < 600px) {
   .member-appbar__row {
     min-height: 54px;

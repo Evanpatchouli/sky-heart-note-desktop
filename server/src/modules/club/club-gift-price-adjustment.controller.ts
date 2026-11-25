@@ -8,6 +8,7 @@ import {
   RecordGiftPricePaymentDto, RecordOfflineGiftPriceDecisionDto,
 } from './club-gift-price-adjustment.dto';
 import { ClubGiftPriceAdjustmentService } from './club-gift-price-adjustment.service';
+import { customerGiftPriceAdjustment } from './club-gift-price-basis';
 
 const validation = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
 
@@ -52,6 +53,6 @@ export class ClientGiftPriceAdjustmentController {
 
   @Post('price-adjustment/decision')
   async decide(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: DecideGiftPriceAdjustmentDto) {
-    return Resp.success(await this.amendments.decide(CLUB_ID, user.id, orderId, input));
+    return Resp.success(customerGiftPriceAdjustment(await this.amendments.decide(CLUB_ID, user.id, orderId, input)));
   }
 }

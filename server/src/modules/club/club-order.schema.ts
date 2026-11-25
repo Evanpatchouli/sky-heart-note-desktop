@@ -1,29 +1,46 @@
-import type { DailyReport } from './club-delivery.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import {
+  BUSINESS_DATE_PATTERN,
+  DELIVERY_PERIOD_PREFERENCES,
+  USER_ID_PATTERN,
+} from '@webapp-template/common';
+import type {
+  CommissionReview,
+  DeliveryPeriodPreference,
+  DispatchPricing,
+  OrderPricing,
+} from '@webapp-template/common';
+import { Schema as MongooseSchema, SchemaTypes, Types } from 'mongoose';
+import type { GiftDispatchState } from './club-gift-allocation';
+import type { StoredGiftPriceAdjustment } from './club-gift-price-basis';
 import type { StoredGiftTermination } from './club-gift-termination';
 import type { StoredSettlementClose } from './club-settlement-close';
 import type { OrderAdjustmentCommand } from './club-financial-adjustment.schema';
 import type { StoredSettlementCorrection } from './club-settlement-correction.service';
-import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
-import type { DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
-import { SchemaTypes, Types } from 'mongoose';
-import { DispatchPublication, DispatchPublicationSchema } from './club-dispatch-notice.schema';
-import type { GiftDispatchState } from './club-gift-allocation';
-import type { StoredGiftPriceAdjustment } from './club-gift-price-basis';
+import { CLAIM_KINDS, type ClaimKind } from './club-allocation.dto';
 import {
-  CommissionReviewSchema,
+  DispatchAllocation,
+  DispatchAllocationSchema,
+} from './club-allocation.schema';
+import {
+  DispatchPublication,
+  DispatchPublicationSchema,
+} from './club-dispatch-notice.schema';
+import {
   DispatchPricingSchema,
   ContinuationQuoteSchema,
   ContinuationRequestSchema,
   StoredContinuationQuote,
   StoredContinuationRequest,
+  CommissionReviewSchema,
   OrderPricingSchema,
   OrderReceiptSchema,
-  type CommissionReview,
-  type StoredOrderReceipt,
+  StoredOrderReceipt,
 } from './club-pricing.schema';
 import { CLUB_ID_PATTERN } from './club.schema';
-import { giftBusinessDatePattern } from './club-gift-segment.dto';
+import type { DailyReport } from './club-delivery.schema';
+import type { StoredPriceAdjustment, StoredPriceAdjustmentReview } from './club-price-adjustment';
+import type { StoredTermination } from './club-termination';
 
 export const ORDER_SOURCES = ['direct_dispatch', 'client_order'] as const;
 export type OrderSource = (typeof ORDER_SOURCES)[number];
@@ -52,7 +69,7 @@ class HeartDelivery {
   @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
   doubleGiftTimes?: number;
 
-  @Prop({ type: String })
+  @Prop({ type: String, match: BUSINESS_DATE_PATTERN })
   agreedDeadline?: string;
 }
 
@@ -60,8 +77,17 @@ class HeartDelivery {
 export class ExecutionGameAccount {
   _id: Types.ObjectId;
 
-  @Prop({ type: String, required: true, trim: true, maxlength: 120 })
+  @Prop({ type: String, required: true, trim: true })
   name: string;
+
+  @Prop({ type: String, match: /^[a-f0-9]{32}$/ })
+  personalAccountId?: string;
+
+  @Prop({ type: String, match: /^-?\d+$/ })
+  localAccountId?: string;
+
+  @Prop({ type: Date })
+  linkedAt?: Date;
 }
 
 @Schema()
@@ -79,6 +105,18 @@ export class ClubOrderShare {
   })
   hearts: number;
 
+  @Prop({ type: String })
+  claimRequestId?: string;
+
+  @Prop({ type: String, enum: CLAIM_KINDS })
+  claimKind?: ClaimKind;
+
+  @Prop({ type: Date })
+  claimedAt?: Date;
+
+  @Prop({ type: [String], default: undefined })
+  agreedReportDates?: string[];
+
   @Prop({
     type: [SchemaFactory.createForClass(ExecutionGameAccount)],
     default: [],
@@ -91,10 +129,10 @@ export class PersonalSchedule {
   @Prop({ type: String, required: true, match: USER_ID_PATTERN })
   userId: string;
 
-  @Prop({ type: String, match: giftBusinessDatePattern, default: null })
+  @Prop({ type: String, match: BUSINESS_DATE_PATTERN, default: null })
   startDate: string | null;
 
-  @Prop({ type: String, match: giftBusinessDatePattern, default: null })
+  @Prop({ type: String, match: BUSINESS_DATE_PATTERN, default: null })
   endDate: string | null;
 
   @Prop({ type: Number, required: true, min: 1, validate: Number.isSafeInteger })
@@ -185,6 +223,9 @@ export class ClubOrder {
   @Prop({ type: String, immutable: true })
   requestedPromotionCouponId?: string;
 
+  @Prop({ type: String })
+  activePromotionCouponId?: string;
+
   @Prop({
     type: String,
     enum: ['creator', 'customer_selected', 'random', 'manual'],
@@ -204,28 +245,24 @@ export class ClubOrder {
   @Prop({ type: Date })
   publishedAt?: Date;
 
+  // Closing admissions preserves the original publication and existing shares.
+  @Prop({ type: Date })
+  dispatchWithdrawnAt?: Date;
+
   @Prop({ type: DispatchPublicationSchema })
   publication?: DispatchPublication;
 
   @Prop({ type: Date })
   intakeNoticePendingAt?: Date;
 
+  @Prop({ type: DispatchAllocationSchema })
+  allocation?: DispatchAllocation;
+
   @Prop({ type: OrderPricingSchema })
   pricing?: OrderPricing;
 
   @Prop({ type: DispatchPricingSchema })
   dispatchPricing?: DispatchPricing;
-
-  @Prop({ type: OrderReceiptSchema })
-  receipt?: StoredOrderReceipt;
-
-  // The active use is changed in the same atomic write as the receipt. The
-  // original coupon identity remains in the receipt if a later refund returns it.
-  @Prop({ type: String })
-  activePromotionCouponId?: string;
-
-  @Prop({ type: CommissionReviewSchema })
-  commissionReview?: CommissionReview;
 
   @Prop({ type: String })
   giftPublicationRequestId?: string;
@@ -247,12 +284,6 @@ export class ClubOrder {
 
   @Prop({ type: String })
   giftPublicationScheduleFingerprint?: string;
-
-  @Prop({ type: Number })
-  fulfillmentRevision?: number;
-
-  @Prop({ type: SchemaTypes.Mixed })
-  pendingDailyReport?: DailyReport;
 
   @Prop({ type: [ContinuationQuoteSchema], default: undefined })
   continuationQuotes?: StoredContinuationQuote[];
@@ -285,6 +316,12 @@ export class ClubOrder {
   @Prop({ type: [SchemaTypes.ObjectId], default: undefined })
   settlementPenaltyIds?: Types.ObjectId[];
 
+  @Prop({ type: OrderReceiptSchema })
+  receipt?: StoredOrderReceipt;
+
+  @Prop({ type: CommissionReviewSchema })
+  commissionReview?: CommissionReview;
+
   @Prop({ type: SchemaFactory.createForClass(HeartDelivery), required: true })
   heartDelivery: HeartDelivery;
 
@@ -293,6 +330,24 @@ export class ClubOrder {
 
   @Prop({ type: [SchemaFactory.createForClass(PersonalSchedule)], default: undefined })
   personalSchedules?: PersonalSchedule[];
+
+  @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
+  fulfillmentRevision?: number;
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  pendingDailyReport?: DailyReport;
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  priceAdjustment?: StoredPriceAdjustment;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: undefined })
+  priceAdjustmentHistory?: StoredPriceAdjustment[];
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: undefined })
+  priceAdjustmentReviews?: StoredPriceAdjustmentReview[];
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  termination?: StoredTermination;
 }
 
 export const ClubOrderSchema = SchemaFactory.createForClass(ClubOrder);
@@ -310,18 +365,38 @@ ClubOrderSchema.index({ clubId: 1, _id: -1 });
 ClubOrderSchema.index({ clubId: 1, closedAt: 1 }, { partialFilterExpression: { closedAt: { $type: 'date' } } });
 ClubOrderSchema.index({ 'pendingFinancialAdjustment.id': 1 }, { sparse: true });
 ClubOrderSchema.index({ clubId: 1, 'settlementCorrections.status': 1 }, { sparse: true });
+ClubOrderSchema.index(
+  { 'pendingDailyReport._id': 1 },
+  { sparse: true },
+);
 ClubOrderSchema.index({ 'publication.id': 1 }, { unique: true, sparse: true });
 ClubOrderSchema.index({ intakeNoticePendingAt: 1 }, { sparse: true });
-ClubOrderSchema.index({ 'publication.pushNextAttemptAt': 1 }, { sparse: true });
 ClubOrderSchema.index(
   { 'publication.nextAttemptAt': 1, _id: 1 },
   { partialFilterExpression: { 'publication.pending': true } },
 );
-ClubOrderSchema.index({ 'pendingDailyReport._id': 1 }, { sparse: true });
+ClubOrderSchema.index(
+  { 'publication.pushNextAttemptAt': 1 },
+  { partialFilterExpression: {
+    'publication.pending': false,
+    'publication.pushNextAttemptAt': { $exists: true },
+  } },
+);
 ClubOrderSchema.index(
   { clubId: 1, dispatchStatus: 1, _id: -1 },
   {
     partialFilterExpression: { 'dispatchPricing.version': { $exists: true } },
+  },
+);
+ClubOrderSchema.index(
+  {
+    clubId: 1,
+    dispatchStatus: 1,
+    _id: -1,
+  },
+  {
+    name: 'club_claim_board',
+    partialFilterExpression: { 'allocation.requestId': { $exists: true } },
   },
 );
 ClubOrderSchema.index({

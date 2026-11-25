@@ -66,3 +66,10 @@ export interface GiftPriceAdjustment {
   refundedCents: number;
   netReceivedCents: number;
 }
+
+export type CustomerGiftPriceAdjustment = Omit<GiftPriceAdjustment,
+  'submittedByUserId' | 'requestId' | 'decision' | 'latestFactChange' | 'resumed' | 'payments'> & {
+  decision?: Pick<GiftPriceDecision, 'source' | 'value' | 'decidedAt'>;
+  latestFactChange?: { recordedAt: string };
+  payments: Pick<GiftPricePayment, 'kind' | 'amountCents' | 'occurredAt'>[];
+};

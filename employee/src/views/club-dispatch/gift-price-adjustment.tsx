@@ -71,7 +71,8 @@ export function GiftPriceAdjustmentPanel({ route, progress, reload }: {
   const segmentOptions = progress.segments.filter(segment => segment.paidGiftTimes && segment.remainingGiftTimes);
   const [selected, setSelected] = useState(segmentOptions[0]?.segmentIndex);
   const segment = segmentOptions.find(item => item.segmentIndex === selected) ?? segmentOptions[0];
-  const mayPropose = (progress.canRequestContinuation || current?.state === "needs_requote") && !!segment;
+  const canChange = !progress.closedAt && (!progress.termination || progress.termination.origin === "declined_adjustment");
+  const mayPropose = canChange && (progress.canRequestContinuation || current?.state === "needs_requote") && !!segment;
   const actions = current && { adjustmentId: current.id, expectedRevision: current.revision };
   const storageKey = `sky-heart.employee.gift-price:${id}:${route}`;
 
@@ -139,8 +140,8 @@ export function GiftPriceAdjustmentPanel({ route, progress, reload }: {
   }
 
   if (!current && !mayPropose) return null;
-  const paymentKind = current?.state === "awaiting_supplement" ? "supplement" :
-    current?.state === "stopped" && current.refundDueCents > current.refundedCents ? "refund" : null;
+  const paymentKind = canChange && current?.state === "awaiting_supplement" ? "supplement" :
+    canChange && current?.state === "stopped" && current.refundDueCents > current.refundedCents ? "refund" : null;
   const payable = paymentKind === "supplement" ? current!.preview.differenceCents! :
     current ? current.refundDueCents - current.refundedCents : 0;
   return <section aria-label="已付款订单改价">
@@ -153,7 +154,7 @@ export function GiftPriceAdjustmentPanel({ route, progress, reload }: {
     {mayPropose && <Button onClick={() => setOpen(value => !value)} aria-expanded={open}>
       {open ? "收起改价试算" : current?.state === "needs_requote" ? "重新试算改价" : "试算剩余次数改价"}
     </Button>}
-    {current?.state === "needs_requote" && <Popconfirm title="按现有约定恢复履约？" okText="恢复履约" cancelText="取消"
+    {canChange && current?.state === "needs_requote" && <Popconfirm title="按现有约定恢复履约？" okText="恢复履约" cancelText="取消"
       onConfirm={() => submit("/price-adjustment/resume", actions!, reload, true)}>
       <Button loading={busy}>按现有约定恢复履约</Button>
     </Popconfirm>}
@@ -179,7 +180,7 @@ export function GiftPriceAdjustmentPanel({ route, progress, reload }: {
         <Button type="primary" htmlType="submit" loading={busy}>提交改价协商</Button>
       </form>}
     </>}
-    {current?.state === "awaiting_decision" && <details>
+    {canChange && current?.state === "awaiting_decision" && <details>
       <summary>登记实际发生的线下协商</summary>
       <form onSubmit={event => {
         event.preventDefault();

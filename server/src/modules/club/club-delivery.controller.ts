@@ -16,9 +16,8 @@ import {
   CreateDailyReportDto,
   CreateReportCorrectionDto,
 } from './club-delivery.dto';
+import { ClubDeliveryService } from './club-delivery.service';
 import { ClubGiftDeliveryService } from './club-gift-delivery.service';
-import { ClubGiftSettlementService } from './club-gift-settlement.service';
-import { CloseGiftSettlementDto } from './club-settlement-close.dto';
 
 @AppAccess('employee')
 @UsePipes(
@@ -32,18 +31,8 @@ import { CloseGiftSettlementDto } from './club-settlement-close.dto';
 export class ClubDeliveryController {
   constructor(
     private readonly delivery: ClubGiftDeliveryService,
-    private readonly settlements: ClubGiftSettlementService,
+    private readonly legacyDelivery: ClubDeliveryService,
   ) {}
-
-  @Get('settlement')
-  async settlement(@AuthUser() user: SessionUser, @Param('orderId') orderId: string) {
-    return Resp.success(await this.settlements.personal(CLUB_ID, user.id, orderId));
-  }
-
-  @Post('settlement/close')
-  async close(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: CloseGiftSettlementDto) {
-    return Resp.success(await this.settlements.close(CLUB_ID, user.id, orderId, input));
-  }
 
   @Get('daily-reports')
   async history(
@@ -64,7 +53,8 @@ export class ClubDeliveryController {
     @Param('accountId') accountId: string,
     @Body() input: CreateDailyReportDto,
   ) {
-    return Resp.success(await this.delivery.submit(CLUB_ID, user.id, orderId, { ...input, shareId, accountId }));
+    const service = await this.deliveryFor(user.id, orderId);
+    return Resp.success(await service.submit(CLUB_ID, user.id, orderId, { ...input, shareId, accountId }));
   }
 
   @Post('daily-reports/:reportId/corrections')
@@ -74,6 +64,12 @@ export class ClubDeliveryController {
     @Param('reportId') reportId: string,
     @Body() input: CreateReportCorrectionDto,
   ) {
-    return Resp.success(await this.delivery.submit(CLUB_ID, user.id, orderId, { ...input, kind: 'correction', reportId }));
+    const service = await this.deliveryFor(user.id, orderId);
+    return Resp.success(await service.submit(CLUB_ID, user.id, orderId, { ...input, kind: 'correction', reportId }));
+  }
+
+  private async deliveryFor(userId: string, orderId: string) {
+    const order = await this.delivery.orderForMember(CLUB_ID, userId, orderId);
+    return order.dispatchPricing?.priceUnit === 'gift_times' ? this.delivery : this.legacyDelivery;
   }
 }

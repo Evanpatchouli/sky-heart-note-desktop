@@ -9,6 +9,7 @@ import { moveRepricedGifts } from './club-gift-allocation';
 import { emptyCounts, addCounts, deliveredGiftTimesBySegment, factCounts, giftDayFacts, receivedHearts, type GiftDayFact } from './club-gift-delivery';
 import { canProposeGiftPrice } from './club-gift-execution.service';
 import { giftPriceAmendmentView, giftPriceSegments, giftUnfulfilledAmount, type StoredGiftPriceAdjustment } from './club-gift-price-basis';
+import { couponCanBeReturned } from './club-gift-termination';
 import type { DecideGiftPriceAdjustmentDto, GiftPriceAdjustmentActionDto, ProposeGiftPriceAdjustmentDto, RecordGiftPricePaymentDto } from './club-gift-price-adjustment.dto';
 import { ClubOrder } from './club-order.schema';
 
@@ -121,6 +122,8 @@ export class ClubGiftPriceAdjustmentService {
   }
 
   private async replay(order: ClubOrder, id: string, hash: string) {
+    if (order.giftTermination?.requests.some(request => request.id === id))
+      throw new ConflictException('同一请求标识已用于本单的停送或退款登记');
     const history = order.giftPriceAdjustments ?? [];
     const index = history.findIndex(adjustment => adjustment.requests.some(request => request.id === id));
     if (index < 0) return;
@@ -133,13 +136,20 @@ export class ClubGiftPriceAdjustmentService {
   private async write(order: ClubOrder, scope: QueryFilter<ClubOrder>,
     history: StoredGiftPriceAdjustment[], requestId: string, hash: string, giftDispatch = order.giftDispatch) {
     const state = history.at(-1)!.state;
+    const stoppedAt = state === 'stopped' && order.giftPriceAdjustmentState !== 'stopped' &&
+      order.activePromotionCouponId && couponCanBeReturned(order, await this.facts(order)) ? history.at(-1)!.decision!.recordedAt : undefined;
     const { modifiedCount } = await this.orders.updateOne({
       ...scope, _id: order._id, dispatchStatus: 'published', 'dispatchPricing.priceUnit': 'gift_times',
       customerUserId: order.customerUserId ?? null, customerLinkStatus: order.customerLinkStatus,
-      closedAt: null, pendingDailyReport: null,
+      closedAt: null, giftTermination: null, pendingDailyReport: null,
       fulfillmentRevision: order.fulfillmentRevision ?? { $in: [null, 0] },
       continuationRevision: order.continuationRevision ?? { $in: [null, 0] },
-    }, { $set: { giftPriceAdjustments: history, giftPriceAdjustmentState: state, giftDispatch }, $inc: { fulfillmentRevision: 1 } }, durable);
+    }, {
+      $set: { giftPriceAdjustments: history, giftPriceAdjustmentState: state, giftDispatch,
+        ...(stoppedAt ? { promotionCouponReturnedAt: stoppedAt } : {}) },
+      ...(stoppedAt ? { $unset: { activePromotionCouponId: 1 } } : {}),
+      $inc: { fulfillmentRevision: 1 },
+    }, durable);
     if (modifiedCount) return (await this.view({ ...order, giftPriceAdjustments: history, giftPriceAdjustmentState: state })).priceAdjustment!;
     const latest = await this.find(scope, order._id.toHexString());
     const replay = await this.replay(latest, requestId, hash);
@@ -206,9 +216,11 @@ export class ClubGiftPriceAdjustmentService {
     await this.directory.requireMember(clubId, userId);
     const scope = { clubId, dispatcherUserId: userId };
     const { kind, amountCents, reason, occurredAt, requestId } = input;
-    return this.change(scope, orderId, input, digest(['payment', userId, actionInput(input), kind, amountCents, reason, occurredAt]),
+    const occurred = pastTime(occurredAt);
+    return this.change(scope, orderId, input, digest(['payment', userId, actionInput(input), kind, amountCents, reason, occurred]),
       async (order, change) => {
-        const occurred = pastTime(occurredAt);
+        if (kind === 'refund' && Date.parse(occurred) < order.receipt!.receivedAt.getTime())
+          throw new BadRequestException('实际退款时间须在原收款与当前时间之间');
         if (change.payments.some(item => item.kind === kind && item.amountCents === amountCents && item.occurredAt === occurred))
           throw new ConflictException('此时间及金额的款项已登记，请勿重复记录');
         let refundDueAtRecordingCents: number | undefined;
@@ -253,7 +265,7 @@ export class ClubGiftPriceAdjustmentService {
     if (prior) return prior;
     const history = order.giftPriceAdjustments ?? [];
     const change = history.at(-1);
-    if (!change || change.id !== adjustmentId || change.revision !== expectedRevision || order.closedAt)
+    if (!change || change.id !== adjustmentId || change.revision !== expectedRevision || order.closedAt || order.giftTermination)
       throw new ConflictException('改价已有更新，请刷新后核对');
     await mutate(order, change);
     change.revision += 1;

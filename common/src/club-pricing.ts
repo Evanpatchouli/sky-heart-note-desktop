@@ -7,29 +7,6 @@ export type CommissionBasis = (typeof COMMISSION_BASES)[number];
 export const PRICING_PERIODS = ['normal', 'double'] as const;
 export type PricingPeriod = (typeof PRICING_PERIODS)[number];
 
-export const DELIVERY_PERIOD_PREFERENCES = [...PRICING_PERIODS, 'split'] as const;
-export type DeliveryPeriodPreference = (typeof DELIVERY_PERIOD_PREFERENCES)[number];
-
-export const deliveryPeriodPreferenceLabel = {
-  normal: '普通期',
-  double: '双倍期',
-  split: '普通期与双倍期分段',
-} satisfies Record<DeliveryPeriodPreference, string>;
-
-export function estimateReceivedHearts(
-  giftTimes: number,
-  period?: DeliveryPeriodPreference,
-  doubleGiftTimes?: number,
-) {
-  if (!Number.isSafeInteger(giftTimes) || giftTimes < 1) return undefined;
-  if (period === 'normal') return giftTimes;
-  const doubleTimes = period === 'double' ? giftTimes : doubleGiftTimes;
-  if (doubleTimes === undefined || !Number.isSafeInteger(doubleTimes) || doubleTimes < 1) return undefined;
-  if (period !== 'double' && (period !== 'split' || doubleTimes >= giftTimes)) return undefined;
-  const estimate = giftTimes + doubleTimes;
-  return Number.isSafeInteger(estimate) ? estimate : undefined;
-}
-
 export interface GiftPriceSegment {
   period: PricingPeriod;
   paidGiftTimes: number;
@@ -80,6 +57,29 @@ export interface GiftOrderPricing {
   promotions?: GiftQuotePromotions;
 }
 
+export const DELIVERY_PERIOD_PREFERENCES = [...PRICING_PERIODS, 'split'] as const;
+export type DeliveryPeriodPreference = (typeof DELIVERY_PERIOD_PREFERENCES)[number];
+
+export const deliveryPeriodPreferenceLabel = {
+  normal: '普通期',
+  double: '双倍期',
+  split: '普通期与双倍期分段',
+} satisfies Record<DeliveryPeriodPreference, string>;
+
+export function estimateReceivedHearts(
+  giftTimes: number,
+  period?: DeliveryPeriodPreference,
+  doubleGiftTimes?: number,
+) {
+  if (!Number.isSafeInteger(giftTimes) || giftTimes < 1) return undefined;
+  if (period === 'normal') return giftTimes;
+  const doubleTimes = period === 'double' ? giftTimes : doubleGiftTimes;
+  if (doubleTimes === undefined || !Number.isSafeInteger(doubleTimes) || doubleTimes < 1) return undefined;
+  if (period !== 'double' && (period !== 'split' || doubleTimes >= giftTimes)) return undefined;
+  const estimate = giftTimes + doubleTimes;
+  return Number.isSafeInteger(estimate) ? estimate : undefined;
+}
+
 export interface CommissionRule {
   version: number;
   basis: CommissionBasis;
@@ -88,46 +88,21 @@ export interface CommissionRule {
 
 export interface PriceSegment {
   period: PricingPeriod;
+  /** Paid hearts in this segment. */
   hearts: number;
   giftHearts?: number;
   unitPriceCents: number;
 }
 
-export interface CustomerQuote extends GiftOrderPricing {
-  revision: number;
-  segments: PriceSegment[];
-  originalHeartsAmountCents?: number;
+export interface QuoteAmounts {
   heartsAmountCents: number;
+  originalHeartsAmountCents?: number;
   totalAmountCents: number;
 }
 
-export function calculateQuoteAmounts(
-  segments: readonly PriceSegment[],
-  discountedHeartsAmountCents?: number,
-) {
-  if (!segments.length) return null;
-  let originalHeartsAmountCents = 0;
-  for (const { hearts, giftHearts = 0, unitPriceCents } of segments) {
-    if (
-      !Number.isSafeInteger(hearts) || hearts < 0 ||
-      !Number.isSafeInteger(giftHearts) || giftHearts < 0 || (hearts === 0 && giftHearts === 0) ||
-      !Number.isSafeInteger(unitPriceCents) || unitPriceCents < 1
-    ) return null;
-    originalHeartsAmountCents += hearts * unitPriceCents;
-    if (!Number.isSafeInteger(originalHeartsAmountCents)) return null;
-  }
-  if (
-    (discountedHeartsAmountCents !== undefined && (
-      !Number.isSafeInteger(discountedHeartsAmountCents) || discountedHeartsAmountCents < 0 ||
-      discountedHeartsAmountCents >= originalHeartsAmountCents
-    ))
-  ) return null;
-  const heartsAmountCents = discountedHeartsAmountCents ?? originalHeartsAmountCents;
-  return {
-    heartsAmountCents,
-    totalAmountCents: heartsAmountCents,
-    ...(discountedHeartsAmountCents === undefined ? {} : { originalHeartsAmountCents }),
-  };
+export interface CustomerQuote extends QuoteAmounts, GiftOrderPricing {
+  revision: number;
+  segments: PriceSegment[];
 }
 
 export interface OrderPricing extends GiftOrderPricing {
@@ -139,7 +114,85 @@ export interface OrderPricing extends GiftOrderPricing {
   revision: number;
 }
 
+export interface PendingQuoteActivity {
+  reason: 'stacking_pending';
+  proposedDiscountedHeartsAmountCents: number;
+}
+
 export interface DispatchPricing extends CommissionRule, OrderPricing {}
+
+export interface CommissionReview {
+  revision: number;
+  ruleVersion: number;
+  basis: CommissionBasis;
+  dispatchFeeCents: number;
+}
+
+export interface CustomerReceipt {
+  receivedAmountCents: number;
+  receivedAt: string;
+}
+
+export interface OrderReceipt extends CustomerReceipt {
+  requestId: string;
+  recordedByUserId: string;
+  receivedByUserId: string;
+  recordedAt: string;
+  quote: CustomerQuote;
+}
+
+export type PaymentStatus = 'not_registered' | 'underpaid' | 'paid_in_full' | 'overpaid';
+
+export const paymentStatusLabel = {
+  not_registered: '未登记实收',
+  underpaid: '实收少于报价，差额待核对',
+  paid_in_full: '已登记足额实收',
+  overpaid: '实收多于报价，差额待核对',
+} satisfies Record<PaymentStatus, string>;
+
+export function quoteHeartCounts(segments: readonly PriceSegment[]) {
+  let paidHearts = 0;
+  let giftHearts = 0;
+  for (const segment of segments) {
+    const gifts = segment.giftHearts ?? 0;
+    if (
+      !Number.isSafeInteger(segment.hearts) || segment.hearts < 0 ||
+      !Number.isSafeInteger(gifts) || gifts < 0 ||
+      (segment.hearts === 0 && gifts === 0)
+    ) return null;
+    paidHearts += segment.hearts;
+    giftHearts += gifts;
+    if (!Number.isSafeInteger(paidHearts + giftHearts)) return null;
+  }
+  return { paidHearts, giftHearts, fulfillmentHearts: paidHearts + giftHearts };
+}
+
+export function calculateQuoteAmounts(
+  segments: readonly PriceSegment[],
+  discountedHeartsAmountCents?: number,
+): QuoteAmounts | null {
+  const counts = quoteHeartCounts(segments);
+  if (!counts) return null;
+  let originalHeartsAmountCents = 0;
+  let fulfillmentAmountCents = 0;
+  for (const { hearts, giftHearts = 0, unitPriceCents } of segments) {
+    if (!Number.isSafeInteger(unitPriceCents) || unitPriceCents < 1) return null;
+    originalHeartsAmountCents += hearts * unitPriceCents;
+    fulfillmentAmountCents += (hearts + giftHearts) * unitPriceCents;
+    if (!Number.isSafeInteger(fulfillmentAmountCents)) return null;
+  }
+  if (discountedHeartsAmountCents !== undefined && (
+    counts.giftHearts > 0 ||
+    !Number.isSafeInteger(discountedHeartsAmountCents) || discountedHeartsAmountCents < 0 ||
+    discountedHeartsAmountCents >= originalHeartsAmountCents
+  )) return null;
+  const heartsAmountCents = discountedHeartsAmountCents ?? originalHeartsAmountCents;
+  return {
+    heartsAmountCents,
+    totalAmountCents: heartsAmountCents,
+    ...(discountedHeartsAmountCents === undefined ? {} : { originalHeartsAmountCents }),
+  };
+}
 
 export const commissionBasisLabel = {
   received_hearts: '到账颗数',

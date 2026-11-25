@@ -1,6 +1,5 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsIn,
@@ -16,7 +15,7 @@ import {
 } from 'class-validator';
 import { PRICING_PERIODS } from '@webapp-template/common';
 import type { PricingPeriod } from '@webapp-template/common';
-import { giftBusinessDatePattern, GiftDispatchSegmentDto } from './club-gift-segment.dto';
+import { giftBusinessDatePattern } from './club-gift-segment.dto';
 
 export class UpdateCommissionRuleDto {
   @IsInt()
@@ -171,7 +170,9 @@ export class UpdateOrderPricingDto {
 }
 
 export class RecordOrderReceiptDto {
-  @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
   @IsUUID('4')
   requestId: string;
 
@@ -186,7 +187,9 @@ export class RecordOrderReceiptDto {
   receivedAmountCents: number;
 
   @IsISO8601({ strict: true, strictSeparator: true })
-  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/)
+  @Matches(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/,
+  )
   receivedAt: string;
 }
 
@@ -210,33 +213,4 @@ export class ReviewDispatchCommissionDto {
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   dispatchFeeCents: number;
-}
-
-export class PublishOrderDto {
-  @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
-  @IsUUID('4')
-  requestId: string;
-
-  @IsInt()
-  @Min(1)
-  @Max(Number.MAX_SAFE_INTEGER)
-  pricingRevision: number;
-
-  @IsInt()
-  @Min(1)
-  @Max(Number.MAX_SAFE_INTEGER)
-  ruleVersion: number;
-
-  @IsInt()
-  @Min(0)
-  @Max(Number.MAX_SAFE_INTEGER)
-  commissionReviewRevision: number;
-
-  @ValidateIf((_, value) => value !== undefined)
-  @IsArray()
-  @ArrayMaxSize(100)
-  @IsObject({ each: true })
-  @ValidateNested({ each: true })
-  @Type(() => GiftDispatchSegmentDto)
-  giftDispatchSegments?: GiftDispatchSegmentDto[];
 }

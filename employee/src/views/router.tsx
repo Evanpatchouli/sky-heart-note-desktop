@@ -10,6 +10,7 @@ const AdjustmentApprovals = lazy(() => import("./club-financial/approvals"));
 const MemberBalance = lazy(() => import("./club-financial/balance"));
 const ClubDispatch = lazy(() => import("./club-dispatch"));
 const GiftClaims = lazy(() => import("./gift-claims"));
+const ClaimBoard = lazy(() => import("./claim-board"));
 const ClubAssignments = lazy(() => import("./club-assignments"));
 const errorElement = <><Header /><ErrorPage /></>;
 
@@ -18,13 +19,8 @@ export default createBrowserRouter([
   { index: true, element: <MemberHome />, errorElement },
   { path: "/workspace", element: <Root />, errorElement },
   {
-    path: "/claim-board",
-    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims /></Suspense>,
-    errorElement,
-  },
-  {
     path: "/club/gift-claims",
-    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims /></Suspense>,
+    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载按次接单…</p></>}><GiftClaims /></Suspense>,
     errorElement,
   },
   {
@@ -45,6 +41,16 @@ export default createBrowserRouter([
   {
     path: "/club/dispatch",
     element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载派单准备…</p></>}><ClubDispatch /></Suspense>,
+    errorElement,
+  },
+  {
+    path: "/claim-board",
+    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims legacyClaimPath="/club/heart-claims" /></Suspense>,
+    errorElement,
+  },
+  {
+    path: "/club/heart-claims",
+    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><ClaimBoard /></Suspense>,
     errorElement,
   },
   {

@@ -5,6 +5,7 @@ import { RequestError } from "@webapp-template/common/web-auth";
 import { GiftPeriodFacts, giftHearts as hearts, giftMoney, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
 import { GiftPriceAdjustmentPanel } from "./gift-price-adjustment";
+import { GiftTerminationPanel } from "./gift-termination";
 
 const dayLabels: Record<GiftSupervisionDay["status"], string> = {
   not_checked: "尚未核对",
@@ -53,7 +54,10 @@ export function GiftSupervisionCard({ route, through, revision, onRefresh, onSho
     </Flex> : <p>在异常队列选择已结束业务日后，可核对漏报、少送和窗口到期情况。</p>}
     {error ? <Alert type="error" showIcon title={error} /> : !data ? <Spin aria-label="加载履约监督" />
       : data.priceUnit === "gift_times" ? <>
-        {!through && <GiftPriceAdjustmentPanel route={route} progress={data} reload={onRefresh} />}
+        {!through && <>
+          <GiftTerminationPanel route={route} progress={data} reload={onRefresh} />
+          <GiftPriceAdjustmentPanel route={route} progress={data} reload={onRefresh} />
+        </>}
         <GiftSupervisionFacts progress={data} />
       </>
         : <><p>历史按颗 · 实际到账 {data.observedHearts} 颗 · 已履约 {data.creditedHearts} 颗 · 剩余 {data.remainingHearts} 颗
@@ -77,7 +81,7 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
     {progress.pendingPromotionalGiftTimes ? <p>促销赠送有 {progress.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p> : null}
     {!compact && <>
       <p>建单预计到账 {hearts(progress.estimatedReceivedHearts)} · 按实际时段预计到账 {hearts(progress.estimatedDeliveredHearts)}</p>
-      <p>按已送次数核对爱心款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。实际履约按适用段的单价核对。</p>
+      <p>已送折前价款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。实际履约按适用段的单价核对。</p>
       <GiftPeriodFacts performance={progress} />
     </>}
     {!compact && <p>{progress.closedAt && !["completed", "stopped"].includes(progress.fulfillmentStatus) ? "履约已结束" : fulfillment[progress.fulfillmentStatus]}
@@ -90,7 +94,7 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
         {" · "}已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次</p>
       {!compact && <>
         <p>本段预计到账 {hearts(segment.estimatedReceivedHearts)} · 日报到账 {hearts(segment.actualReceivedHearts)}
-          {" · "}已送爱心款依据 {giftMoney(segment.heartAmountCents)}</p>
+          {" · "}已送折前价款 {giftMoney(segment.heartAmountCents)}</p>
         <GiftPeriodFacts performance={segment} />
       </>}
       {segment.overdueUnclaimedGiftTimes > 0 && <p>已过期未承接 {segment.overdueUnclaimedGiftTimes} 次</p>}
@@ -100,7 +104,7 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
           {" · "}已送 {member.deliveredGiftTimes} 次 · 剩余 {member.remainingGiftTimes} 次
           {member.overdueGiftTimes ? ` · 已过期未补 ${member.overdueGiftTimes} 次` : ""}</summary>
         {!compact && <>
-          <p>已送爱心款依据 {giftMoney(member.heartAmountCents)}</p>
+          <p>已送折前价款 {giftMoney(member.heartAmountCents)}</p>
           <GiftPeriodFacts performance={member} />
           <GiftDays days={member.days} />
         </>}

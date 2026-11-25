@@ -1,5 +1,7 @@
 import type { CustomerGiftTermination, GiftPricePayment, GiftTermination, GiftTerminationChange } from '@webapp-template/common';
+import { factCounts, type GiftDayFact } from './club-gift-delivery';
 import { giftPaidAmounts, giftPriceSegments } from './club-gift-price-basis';
+import { giftSegmentTimes } from '@webapp-template/common';
 import type { ClubOrder } from './club-order.schema';
 
 export type GiftTerminationRequest = { id: string; hash: string };
@@ -10,6 +12,24 @@ export type StoredGiftTermination = Pick<GiftTermination, 'id' | 'stoppedAt' | '
   refunds: GiftPricePayment[];
   requests: GiftTerminationRequest[];
 };
+
+export function remainingContractedGiftTimes(order: ClubOrder, delivered: ReadonlyMap<number, number>) {
+  return giftPriceSegments(order).reduce((total, { segment }, index) =>
+    total + giftSegmentTimes(segment) - (delivered.get(index) ?? 0), 0);
+}
+
+export function canTerminateGiftOrder(order: ClubOrder, remainingGiftTimes: number) {
+  return (order.dispatchStatus === 'published' || order.dispatchStatus === 'pending' || order.dispatchStatus === 'draft') &&
+    !!order.dispatcherUserId && order.receipt?.quote.priceUnit === 'gift_times' &&
+    order.receipt.receivedAmountCents === order.receipt.quote.totalAmountCents &&
+    !order.closedAt && !order.giftTermination && order.giftPriceAdjustmentState !== 'stopped' && remainingGiftTimes > 0;
+}
+
+// Use observed gift times even if the number of hearts received is unknown.
+export function couponCanBeReturned(order: ClubOrder, facts: GiftDayFact[]) {
+  return !!order.activePromotionCouponId && !order.promotionCouponReturnedAt &&
+    facts.every(fact => factCounts(fact).times === 0n);
+}
 
 export function customerGiftTermination({ customerRequestReference: _evidence, change, refunds, ...summary }: GiftTermination): CustomerGiftTermination {
   return {

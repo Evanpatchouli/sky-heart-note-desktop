@@ -65,7 +65,10 @@ export class ClubDirectoryService implements OnModuleInit {
     const nicknames = await this.memberNicknames(userIds);
     return {
       clubName: club.name,
-      dispatchers: userIds.map((userId) => ({ userId, nickname: nicknames.get(userId) ?? null })),
+      dispatchers: userIds.map((userId) => ({
+        userId,
+        nickname: nicknames.get(userId) ?? null,
+      })),
     };
   }
 
@@ -139,11 +142,6 @@ export class ClubDirectoryService implements OnModuleInit {
     return members.filter(({ userId }) => eligible.has(userId)).map(({ userId, dispatcher }) => ({
       userId, dispatcher, nickname: nicknames.get(userId) ?? null,
     }));
-  }
-
-  async eligibleGiftMembers(clubId: string) {
-    const members = await this.members.distinct('userId', { clubId, active: true });
-    return (await this.enabledAppUserIds('employee', members)).sort();
   }
 
   async requireAssignmentCandidate(clubId: string, userId: string) {
@@ -258,6 +256,30 @@ export class ClubDirectoryService implements OnModuleInit {
       ...(requestedUserId === undefined ? {} : { userId: requestedUserId }),
     });
     return this.enabledAppUserIds('employee', userIds);
+  }
+
+  async eligibleGiftMembers(clubId: string) {
+    return (await this.eligibleRecipients(clubId)).sort();
+  }
+
+  async eligibleRecipients(clubId: string) {
+    const ids = await this.members.distinct('userId', {
+      clubId,
+      active: true,
+    });
+    return this.enabledAppUserIds('employee', ids);
+  }
+
+  async listDispatchRecipients(clubId: string, dispatcherUserId: string) {
+    await this.requireMember(clubId, dispatcherUserId);
+    const userIds = (await this.eligibleRecipients(clubId))
+      .filter((id) => id !== dispatcherUserId)
+      .sort();
+    const nicknames = await this.memberNicknames(userIds);
+    return userIds.map((userId) => ({
+      userId,
+      nickname: nicknames.get(userId) ?? null,
+    }));
   }
 
   async initializeLeader(userId: string) {
@@ -380,6 +402,7 @@ export class ClubDirectoryService implements OnModuleInit {
   }
 
   async memberNicknames(userIds: string[]) {
+    if (!userIds.length) return new Map<string, string>();
     const users = await this.users
       .find({ _id: { $in: userIds } })
       .select({ _id: 1, nickname: 1 })

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isObjectIdOrHexString, Model, Types } from 'mongoose';
+import { ClubClaimService } from './club-claim.service';
 import { ClubDirectoryService } from './club-directory.service';
 import {
   ClubDispatchNotice,
@@ -36,6 +37,7 @@ export class ClubDispatchNoticeService
     @InjectModel(ClubDispatchNotice.name)
     private readonly notices: Model<ClubDispatchNotice>,
     private readonly directory: ClubDirectoryService,
+    private readonly claims: ClubClaimService,
   ) {}
 
   async onModuleInit() {
@@ -131,11 +133,11 @@ export class ClubDispatchNoticeService
     return { ...target, readAt: notice.readAt?.toISOString() ?? null };
   }
 
-  private locateOrder(order: (ClubOrder & { dispatchWithdrawnAt?: Date }) | null, clubId: string, userId: string) {
+  private locateOrder(order: ClubOrder | null, clubId: string, userId: string) {
     if (!order) return { clubId, status: 'unavailable' as const };
     if (order.dispatchWithdrawnAt || order.dispatchStatus !== 'published') return { clubId, status: 'withdrawn' as const };
     if (order.dispatchPricing?.priceUnit === 'gift_times') return locateGiftClaimOrder(order, userId);
-    return { clubId, status: 'unavailable' as const };
+    return this.claims.locateLegacyOrder(order, userId);
   }
 
   async markRead(userId: string, noticeId: string) {

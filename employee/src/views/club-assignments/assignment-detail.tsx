@@ -6,6 +6,7 @@ import GiftDeliveryDiary from "../gift-delivery-diary";
 import { GiftExecutionAccounts } from "../club-dispatch/gift-execution-accounts";
 import { GiftSchedule } from "../club-dispatch/gift-allocation";
 import GiftSettlementCard from "./gift-settlement";
+import HistoricalAssignmentDetail from "./historical-assignment-detail";
 import PersonalScheduleDialog from "./personal-schedule";
 import { PersonalProgress, StatusLabel } from "./record-views";
 import {
@@ -47,6 +48,8 @@ export default function AssignmentDetail(props: Props) {
     setAttempt(value => value + 1);
     onSaved();
   }
+
+  if (order && !isGiftAssignment(order)) return <HistoricalAssignmentDetail {...props} />;
 
   return <Card title="承接详情" extra={<Button onClick={reload}>刷新详情</Button>}>
     {error ? <Alert type="error" showIcon title={error} /> : !order ? <Spin aria-label="加载承接详情" /> : <Flex vertical gap="middle">

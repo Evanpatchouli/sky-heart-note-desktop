@@ -40,7 +40,7 @@ async function startChild(cleanup, executable, args, options) {
   const check = () => {
     if (child.exitCode !== null || child.signalCode !== null) throw new Error(`子进程已退出\n${output}`);
   };
-  return { check, stop };
+  return { stop, check };
 }
 
 export async function startSystem(t, { database, origins, adminUsername, extraFixtures = '', initialCache = {}, extraEnv = {}, concurrentStarts = false }) {
@@ -121,7 +121,7 @@ export async function startSystem(t, { database, origins, adminUsername, extraFi
     },
     windowsHide: true,
   };
-  const launch = async (appPort, overrides = {}) => {
+  const launchServer = async (appPort, overrides = {}) => {
     const running = await startChild(cleanup, process.execPath, ['--require', './fixtures.cjs', ...entry], {
       ...options,
       env: { ...options.env, APP_PORT: String(appPort), ...overrides },
@@ -130,20 +130,26 @@ export async function startSystem(t, { database, origins, adminUsername, extraFi
     for (let i = 0; i < 180; i++) {
       running.check();
       const response = await fetch(appBase + '/captcha/login?app=client', { headers: { origin: origins.client } }).catch(() => null);
-      if (response?.ok) return { ...running, base: appBase };
+      if (response?.ok) return running;
       await sleep(250);
     }
     throw new Error('等待服务启动超时');
   };
   const peerPort = concurrentStarts ? await freePort() : undefined;
-  let [running] = await Promise.all([launch(port), ...(peerPort ? [launch(peerPort)] : [])]);
+  let [running] = await Promise.all([
+    launchServer(port), ...(peerPort ? [launchServer(peerPort)] : []),
+  ]);
   return {
     db, base, password, seedClub,
     runCommand: (...args) => exec(process.execPath, args, options),
     restartServer: async (overrides) => {
       await running.stop();
-      running = await launch(port, overrides);
+      running = await launchServer(port, overrides);
     },
-    startPeer: async (overrides) => (await launch(await freePort(), overrides)).base,
+    startPeer: async (overrides) => {
+      const peerPort = await freePort();
+      await launchServer(peerPort, overrides);
+      return `http://127.0.0.1:${peerPort}/api`;
+    },
   };
 }

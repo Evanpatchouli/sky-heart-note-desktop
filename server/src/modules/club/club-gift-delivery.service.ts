@@ -128,6 +128,10 @@ export class ClubGiftDeliveryService {
       const id = new Types.ObjectId();
       const businessDate = correction ? previous!.businessDate : input.businessDate;
       const submittedAt = new Date();
+      if (order.giftTermination && input.kind === 'supplement') {
+        const stoppedDate = new Date(Date.parse(order.giftTermination.stoppedAt) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        if (businessDate > stoppedDate) throw new ConflictException('停送后只可补报停送前的实际履约');
+      }
       let priceAdjustment: Pick<ClubOrder, 'giftPriceAdjustments' | 'giftPriceAdjustmentState'> | undefined;
       const previousByShare = new Map<string, { times: bigint; scope?: number[] }>();
       for (const line of previous?.lines ?? []) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { DeliveryPeriodPreference } from "@webapp-template/common";
+import type { ContinuationQuote, ContinuationRequest, CustomerGiftProgress, CustomerQuote, CustomerReceipt, DeliveryPeriodPreference, OrderFulfillment, OrderTermination, PaymentStatus, PendingQuoteActivity, PriceAdjustment, PriceSegment } from "@webapp-template/common";
+import type { CustomerGiftSettlement } from "@webapp-template/common";
 import { authRequest, getAppToken, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 
 export const sourceLabel = { direct_dispatch: "直接派单", client_order: "客户端下单" };
@@ -19,7 +20,25 @@ export type OrderSummary = {
   requestedGiftTimes?: number;
   estimatedReceivedHearts?: number;
   doubleGiftTimes?: number;
+  fulfillmentHearts?: number;
+  giftHearts?: number;
   deliveryPeriodPreference?: DeliveryPeriodPreference;
+};
+
+export type Order = OrderSummary & {
+  deliveryProgress: OrderFulfillment | CustomerGiftProgress | null;
+  closedAt?: string | null;
+  quote: CustomerQuote | null;
+  continuationQuotes?: ContinuationQuote[];
+  continuationRequests?: ContinuationRequest[];
+  pendingActivity?: PendingQuoteActivity;
+  quoteSegments?: PriceSegment[];
+  receipt: CustomerReceipt | null;
+  paymentStatus: PaymentStatus;
+  priceAdjustment?: PriceAdjustment;
+  priceAdjustmentHistory?: PriceAdjustment[];
+  termination?: OrderTermination;
+  settlement?: CustomerGiftSettlement;
 };
 
 export const clientOrdersPath = "/client/orders";

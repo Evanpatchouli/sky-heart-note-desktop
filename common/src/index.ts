@@ -17,3 +17,5 @@ export * from './club-gift-settlement';
 export * from './club-financial-adjustments';
 export * from './club-settlement-corrections';
 export * from './club-gift-termination';
+export * from './club-fulfillment';
+export * from './club-settlement';

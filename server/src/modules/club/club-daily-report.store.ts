@@ -4,6 +4,8 @@ import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { isDuplicateKey } from '../user-module/user-id';
 import { dailyReportView } from './club-daily-report-view';
 import { DailyReport } from './club-delivery.schema';
+import { giftDayFacts } from './club-gift-delivery';
+import { couponCanBeReturned } from './club-gift-termination';
 import { ClubOrder } from './club-order.schema';
 
 const durable = { writeConcern: { w: 'majority', j: true } } as const;
@@ -128,10 +130,16 @@ export class ClubDailyReportStore implements OnModuleInit {
       )
         throw error;
     }
-    await this.orders.updateOne({
-      _id,
-      'pendingDailyReport._id': pendingDailyReport._id,
-    }, { $unset: { pendingDailyReport: 1 } }, durable);
+    const scope = { _id, 'pendingDailyReport._id': pendingDailyReport._id };
+    const stopped = pendingDailyReport.priceUnit === 'gift_times' && await this.orders.findOne({
+      ...scope, activePromotionCouponId: { $type: 'string' },
+      $or: [{ giftTermination: { $exists: true } }, { giftPriceAdjustmentState: 'stopped' }],
+    }).lean();
+    const refundedCoupon = stopped && couponCanBeReturned(stopped, await giftDayFacts(this.reports.collection, stopped));
+    await this.orders.updateOne(scope, {
+      $unset: { pendingDailyReport: 1, ...(refundedCoupon ? { activePromotionCouponId: 1 } : {}) },
+      ...(refundedCoupon ? { $set: { promotionCouponReturnedAt: new Date().toISOString() } } : {}),
+    }, durable);
   }
 
   async replay(

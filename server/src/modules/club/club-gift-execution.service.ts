@@ -23,6 +23,7 @@ export const writableGiftDispatch = {
   ...publishedGiftOrder,
   dispatchWithdrawnAt: null,
   termination: null,
+  giftTermination: null,
   'priceAdjustment.state': { $in: [null, 'continuing'] },
   giftPriceAdjustmentState: { $in: [null, 'continuing', 'superseded'] },
   closedAt: null,
@@ -33,7 +34,7 @@ export function acceptsGiftExecution(order: ClubOrder & {
   termination?: unknown;
   priceAdjustment?: { state: string };
 }) {
-  return order.closedAt == null && order.dispatchWithdrawnAt == null && order.termination == null && !order.giftTermination &&
+  return order.closedAt == null && order.dispatchWithdrawnAt == null && order.termination == null && order.giftTermination == null &&
     (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing') &&
     (order.giftPriceAdjustmentState == null || order.giftPriceAdjustmentState === 'continuing' ||
       order.giftPriceAdjustmentState === 'superseded');

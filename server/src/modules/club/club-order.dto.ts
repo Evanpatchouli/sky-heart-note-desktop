@@ -11,7 +11,11 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
-import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, type DeliveryPeriodPreference } from '@webapp-template/common';
+import {
+  DELIVERY_PERIOD_PREFERENCES,
+  USER_ID_PATTERN,
+  type DeliveryPeriodPreference,
+} from '@webapp-template/common';
 import { ORDER_SOURCES, type OrderSource } from './club-order.schema';
 
 export class OrderRequestDto {
@@ -96,6 +100,7 @@ export class CreateClientOrderDto extends CreateOrderDto {
   @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
   @IsUUID('4')
   platformCouponId?: string;
+
 }
 
 export class ClubOrderQuery {
@@ -119,4 +124,10 @@ export class EmployeeClubOrderQuery extends ClubOrderQuery {
   @ValidateIf((_, value) => value !== undefined)
   @IsIn(['dispatcher', 'executor'])
   responsibility?: 'dispatcher' | 'executor';
+}
+
+export class ClaimBoardQuery extends ClubOrderQuery {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['public', 'directed'])
+  claimKind?: 'public' | 'directed';
 }

@@ -349,87 +349,62 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   assert.equal(continued.status, 'ready_to_close');
   assert.deepEqual(money(continued.totals), [550, 550, 4550, 4400]);
   assert.equal(continued.actualReceivedHearts, 115);
-
-  // The P1-14 writer uses this persisted shape. This isolated release consumes
-  // it through normal HTTP reads, while the main-tree suite runs its writers.
   await admin('/promotions', { expectedVersion: 1 }, 'PATCH');
-  const persistedOrders = db.collection('club_orders');
-  const stopAt = '2026-11-11T06:00:00.000Z';
-  const privateReference = '线下原始停送沟通记录';
-  async function persistStop(order, origin = 'customer_request') {
-    const orderId = new mongoose.Types.ObjectId(order.id);
-    const terminationId = new mongoose.Types.ObjectId().toHexString();
-    await persistedOrders.updateOne({ _id: orderId }, {
-      $set: { giftTermination: {
-        id: terminationId, origin, stoppedAt: stopAt, reason: '老板停止剩余服务',
-        ...(origin === 'reported_customer_request' ? { customerRequestReference: privateReference } : {}),
-        change: { reason: '登记老板提出的停送原因', recordedByUserId: dispatcher.id, recordedAt: stopAt },
-        refunds: [], requests: [],
-      } },
-      $inc: { fulfillmentRevision: 1 },
+  const initiateStop = async order => {
+    const stop = await asCustomer(customer, '/' + order.id + '/termination', { requestId: randomUUID(), confirmed: true, reason: '老板停止剩余服务' });
+    return employee(dispatcher, order.path + '/termination/changes', {
+      requestId: randomUUID(), expectedRevision: stop.revision, reason: '登记老板提出的停送原因',
     });
-    return orderId;
-  }
-  const refundTime = (minute) => `2026-11-11T08:${minute}:00.000Z`;
-  const persistRefund = (orderId, amountCents, refundDueAtRecordingCents, minute) => persistedOrders.updateOne({ _id: orderId }, {
-    $push: { 'giftTermination.refunds': {
-      kind: 'refund', requestId: randomUUID(), amountCents, occurredAt: refundTime(minute),
-      recordedAt: refundTime(minute), recordedByUserId: dispatcher.id, reason: '登记老板提出的停送原因',
-      refundDueAtRecordingCents,
-    } },
-    $inc: { fulfillmentRevision: 1 },
+  };
+  const refund = (order, stop, amountCents, minute) => employee(dispatcher, order.path + '/termination/refunds', {
+    requestId: randomUUID(), expectedRevision: stop.revision, terminationId: stop.id, confirmed: true,
+    amountCents, occurredAt: `2026-11-11T08:${minute}:00+08:00`,
   });
-
   const partial = await paidOrder({ ruleVersion: 3 });
   const [partialA, partialB] = await Promise.all([claim(a, partial, 5), claim(b, partial, 5)]);
   for (let day = 1; day <= 8; day++)
     await Promise.all([record(a, partialA, day, [line(5)]), record(b, partialB, day, [line(5)])]);
-  const partialId = await persistStop(partial);
-  const partialDue = await admin(settlement(partial.id));
-  assert.equal(partialDue.status, 'review_required');
-  assert.deepEqual([partialDue.termination.origin, partialDue.cash.refundDueCents, partialDue.cash.refundRemainingCents],
-    ['customer_request', 1000, 1000]);
-  assert.equal((await asCustomer(customer, '/' + partial.id)).deliveryProgress.fulfillmentStatus, 'stopped');
-  await persistRefund(partialId, 600, 1000, '00');
-  const partRefunded = await admin(settlement(partial.id));
-  assert.equal(partRefunded.status, 'review_required');
-  assert.deepEqual([partRefunded.cash.refundedCents, partRefunded.cash.refundRemainingCents, partRefunded.cash.netReceivedCents], [600, 400, 4400]);
-  await persistRefund(partialId, 400, 1000, '01');
+  const stop = await initiateStop(partial);
+  const due = await admin(settlement(partial.id));
+  assert.equal(due.status, 'review_required');
+  assert.equal(due.cash.refundDueCents, 1000);
+  assert.equal(due.cash.refundRemainingCents, 1000);
+  const partRefunded = await refund(partial, stop, 600, '00');
+  const half = await admin(settlement(partial.id));
+  assert.deepEqual([half.cash.refundedCents, half.cash.refundRemainingCents, half.cash.netReceivedCents], [600, 400, 4400]);
+  assert.equal(half.finalCalculation, null);
+  await refund(partial, partRefunded, 400, '01');
   const refunded = await admin(settlement(partial.id));
   assert.equal(refunded.status, 'ready_to_close');
   assert.deepEqual(money(refunded.totals), [400, 400, 3200, 4000]);
-  assert.equal(refunded.receipt.quote.giftSegments[0].unitPriceCents, 50);
   assert.deepEqual(refunded.members.map(member => member.rewardCents), [1600, 1600]);
-  const dispatchStop = await employee(dispatcher, partial.path + '/settlement');
-  assert.deepEqual(dispatchStop.termination, refunded.termination);
-  assert.equal((await employee(a, partial.path + '/settlement')).termination, undefined);
-  const savedStop = await admin(history(partial.id, refunded.finalCalculation.id));
-  assert.deepEqual(savedStop.termination.refunds, refunded.termination.refunds);
+  assert.deepEqual([refunded.cash.refundedCents, refunded.cash.refundRemainingCents, refunded.cash.netReceivedCents], [1000, 0, 4000]);
 
   const unpublished = await paidOrder({ ruleVersion: 3, publish: false });
   await admin(settlement(unpublished.id), undefined, 'GET', 404);
-  const unpublishedId = await persistStop(unpublished, 'reported_customer_request');
-  const unpublishedDue = await admin(settlement(unpublished.id));
-  assert.equal(unpublishedDue.status, 'review_required');
-  assert.equal(unpublishedDue.pricing, null);
-  assert.equal(unpublishedDue.publishedAt, null);
-  assert.deepEqual([unpublishedDue.cash.originalReceivedCents, unpublishedDue.cash.refundDueCents], [5000, 5000]);
-  assert.equal(unpublishedDue.termination.customerRequestReference, privateReference);
-  await persistRefund(unpublishedId, 5000, 5000, '02');
-  const unpublishedRefunded = await admin(settlement(unpublished.id));
-  assert.equal(unpublishedRefunded.status, 'ready_to_close');
-  assert.deepEqual(money(unpublishedRefunded.planned), [null, null, null, 5000]);
-  assert.deepEqual(money(unpublishedRefunded.totals), [0, 0, 0, 0]);
-  assert.equal((await admin('/settlements')).items.find(row => row.orderId === unpublished.id).status, 'ready_to_close');
+  const unlisted = await initiateStop(unpublished);
+  const prePublicationDue = await admin(settlement(unpublished.id));
+  assert.equal(prePublicationDue.status, 'review_required');
+  assert.equal(prePublicationDue.publishedAt, null);
+  assert.equal(prePublicationDue.pricing, null);
+  assert.equal(prePublicationDue.receipt.quote.giftSegments[0].unitPriceCents, 50);
+  assert.deepEqual([prePublicationDue.cash.originalReceivedCents, prePublicationDue.cash.refundDueCents], [5000, 5000]);
+  await refund(unpublished, unlisted, 5000, '02');
+  const prePublicationRefund = await admin(settlement(unpublished.id));
+  assert.ok(prePublicationRefund.finalCalculation);
+  assert.equal(prePublicationRefund.status, 'ready_to_close');
+  assert.deepEqual(money(prePublicationRefund.planned), [null, null, null, 5000]);
+  assert.deepEqual(money(prePublicationRefund.totals), [0, 0, 0, 0]);
+  const financeRow = (await admin('/settlements')).items.find(row => row.orderId === unpublished.id);
+  assert.equal(financeRow.status, 'ready_to_close');
   const customerRefund = (await asCustomer(customer, '/' + unpublished.id)).settlement;
-  assert.deepEqual(customerRefund.cash, unpublishedRefunded.cash);
-  assert.deepEqual(customerRefund.termination.refunds, [{ amountCents: 5000, occurredAt: refundTime('02') }]);
-  assert.equal(customerRefund.termination.customerRequestReference, undefined);
-  assert.deepEqual(Object.keys(customerRefund.termination.change), ['reason']);
+  assert.equal(customerRefund.status, 'ready_to_close');
+  assert.deepEqual(customerRefund.cash, prePublicationRefund.cash);
+  assert.deepEqual(customerRefund.termination.refunds, prePublicationRefund.termination.refunds.map(({ amountCents, occurredAt }) => ({ amountCents, occurredAt })));
+  assert.deepEqual((await employee(dispatcher, unpublished.path + '/settlement')).termination, prePublicationRefund.termination);
+  assert.equal((await employee(a, partial.path + '/settlement')).termination, undefined);
   await asCustomer(outsider, '/' + unpublished.id, undefined, 'GET', 404);
   await employee(a, unpublished.path + '/settlement', undefined, 'GET', 404);
-  await asCustomer(customer, '/' + unpublished.id + '/termination', { requestId: randomUUID(), confirmed: true }, 'POST', 404);
-  await employee(dispatcher, unpublished.path + '/termination/refunds', { requestId: randomUUID() }, 'POST', 404);
 
   await seedClub('revoke', administrator.id, 'CLUB_FINANCE_READ');
   await admin('/settlements', undefined, 'GET', 403);

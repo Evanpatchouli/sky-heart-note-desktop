@@ -12,7 +12,7 @@
     "dev:site": "pnpm --dir site dev",
     "dev:server": "pnpm --dir server start:dev",
     "build": "pnpm -r --if-present run build",
-    "test": "pnpm --dir server test --runInBand",
+    "test": "pnpm --dir server test --runInBand && node --test employee/test/pending-claims.test.mjs",
     "test:pwa": "node --test scripts/test-pwa.mjs"
   }
 }

@@ -6,10 +6,10 @@ import { NotificationBell } from "@webapp-template/common/notifications";
 import { CustomerActivation } from "./customer-activation";
 import ClubInvitation from "./club-invitation";
 import { NavigationIcon, useMobileViewport } from "@webapp-template/common/mobile-navigation";
-import MyOrders, { OrderDetail } from "./my-orders";
+import { MyOrders, OrderDetail } from "./my-orders";
 import { NewOrder } from "./new-order";
 import { orderCursor, orderListHref, orderSource, readClientContext, readClientNavigationOwner, rememberClientContext, rememberClientNavigationOwner, rememberedOrderList } from "./navigation";
-import "./order.css";
+import "./my-orders.css";
 
 const orderIdPattern = /^[a-f0-9]{24}$/i;
 
@@ -58,7 +58,7 @@ function ClientApp() {
 
   return <main className="client-orders">
     <header className="client-orders__header">
-      <a href="/" className="client-orders__brand">送心手记 <span>· 客户端</span></a>
+      <a href="/" className="client-orders__brand"><img src="/pwa/icon-192.png" alt="" width="28" height="28" />送心手记 <span>· 客户端</span></a>
       <nav aria-label="客户端导航">
         <a href={list} aria-current={isOrderList || isDetail ? "page" : undefined}>我的订单</a>
         <a href="/order" aria-current={isCreate ? "page" : undefined}>下单</a>

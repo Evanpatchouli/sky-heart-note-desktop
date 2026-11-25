@@ -34,7 +34,6 @@ export const routeConfigs: RouteConfig[] = [
     label: "结算核对",
     component: lazy(() => import("@/views/club/settlements")),
   },
-
   {
     path: "/club/penalties",
     label: "罚款管理",

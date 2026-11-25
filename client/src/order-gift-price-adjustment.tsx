@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { formatCentsAsYuan, type GiftPriceAdjustment } from "@webapp-template/common";
+import { formatCentsAsYuan, type CustomerGiftPriceAdjustment } from "@webapp-template/common";
 import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { clientRequest } from "./order-api";
 
@@ -15,7 +15,7 @@ function money(cents: number | null) {
   return cents === null ? "待核对" : `¥${formatCentsAsYuan(cents)}`;
 }
 
-function Summary({ value }: { value: GiftPriceAdjustment }) {
+function Summary({ value }: { value: CustomerGiftPriceAdjustment }) {
   const { preview, decision } = value;
   return <>
     <p>{stateLabels[value.state]} · 提出于 {new Date(value.submittedAt).toLocaleString("zh-CN")}</p>
@@ -26,20 +26,20 @@ function Summary({ value }: { value: GiftPriceAdjustment }) {
     <p>拟总价 {money(preview.proposedTotalCents)} · 拟补款 {money(preview.differenceCents)} · 如拒绝并停送，应退 {money(preview.refundIfDeclinedCents)}</p>
     {decision && <p>{decision.source === "customer" ? "老板本人答复" : "派单人登记的线下协商"}
       {" · "}{decision.value === "accept" ? "同意补差" : "拒绝补差并停送"} · {new Date(decision.decidedAt).toLocaleString("zh-CN")}
-      {decision.evidence && ` · ${decision.evidence}`}</p>}
+    </p>}
     <p>原实收 {money(value.originalReceivedCents)} · 累计实补 {money(value.supplementReceivedCents)} · 应退 {money(value.refundDueCents)}
       {" · "}实退 {money(value.refundedCents)} · 净实收 {money(value.netReceivedCents)}</p>
     {value.state === "stopped" && value.latestFactChange && <p>已按最新有效日报重新核对应退。</p>}
     {value.state === "stopped" && value.refundedCents > value.refundDueCents &&
       <p>已退超出最新应退 {money(value.refundedCents - value.refundDueCents)}，实际退款记录仍可核对。</p>}
-    {!!value.payments.length && <ul>{value.payments.map(payment => <li key={payment.requestId}>
+    {!!value.payments.length && <ul>{value.payments.map(payment => <li key={`${payment.kind}:${payment.occurredAt}:${payment.amountCents}`}>
       {payment.kind === "supplement" ? "实补" : "实退"} {money(payment.amountCents)} · {new Date(payment.occurredAt).toLocaleString("zh-CN")}
     </li>)}</ul>}
   </>;
 }
 
-export function OrderGiftPriceAdjustment({ route, value, history, reload }: {
-  route: string; value: GiftPriceAdjustment; history?: GiftPriceAdjustment[]; reload: () => void;
+export function OrderGiftPriceAdjustment({ route, value, history, stopped, reload }: {
+  route: string; value: CustomerGiftPriceAdjustment; history?: CustomerGiftPriceAdjustment[]; stopped: boolean; reload: () => void;
 }) {
   const { id, token } = useAuthSession();
   const [decision, setDecision] = useState<"accept" | "decline">();
@@ -80,7 +80,7 @@ export function OrderGiftPriceAdjustment({ route, value, history, reload }: {
   return <section aria-label="已付款订单改价">
     <h2>已付款订单改价</h2>
     <Summary value={value} />
-    {value.state === "awaiting_decision" && (!decision ? <div className="client-orders__actions">
+    {!stopped && value.state === "awaiting_decision" && (!decision ? <div className="client-orders__actions">
       <button type="button" onClick={() => setDecision("accept")}>同意补差</button>
       <button type="button" onClick={() => setDecision("decline")}>拒绝补差并停送</button>
     </div> : <div>

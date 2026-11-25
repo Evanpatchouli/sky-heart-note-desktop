@@ -11,7 +11,8 @@ import {
   giftFactsByShare, giftPerformanceView, giftSharePerformance, receivedHearts, type GiftDayFact,
 } from './club-gift-delivery';
 import { acceptsGiftExecution } from './club-gift-execution.service';
-import { giftPaidAmounts, giftPriceAmendmentView, giftPriceSegments, giftUnfulfilledAmount } from './club-gift-price-basis';
+import { customerGiftPriceAdjustment, giftPaidAmounts, giftPriceAmendmentView, giftPriceSegments } from './club-gift-price-basis';
+import { canTerminateGiftOrder, customerGiftTermination, giftTerminationView } from './club-gift-termination';
 import { ClubOrder } from './club-order.schema';
 
 function progress(agreedGiftTimes: number, performance: ReturnType<typeof emptyGiftPerformance>) {
@@ -149,9 +150,9 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
   const promotional = segments.filter(segment => segment.customer.promotionalGiftTimes);
   const promotionalGiftTimes = promotional.reduce((sum, segment) => sum + segment.customer.promotionalGiftTimes!, 0);
   const deliveredPromotionalGiftTimes = promotional.reduce((sum, segment) => sum + segment.customer.deliveredGiftTimes, 0);
-  const refundDue = !through && order.giftPriceAdjustmentState === 'stopped'
-    ? giftUnfulfilledAmount(order, new Map(segments.map(({ customer }) => [customer.segmentIndex, customer.deliveredGiftTimes])))
-    : undefined;
+  const deliveredBySegment = new Map(segments.map(({ customer }) => [customer.segmentIndex, customer.deliveredGiftTimes]));
+  const termination = !through ? giftTerminationView(order, deliveredBySegment) : undefined;
+  const amendments = !through ? giftPriceAmendmentView(order, termination?.refundDueCents) : undefined;
   const customer: CustomerGiftProgress = {
     priceUnit: 'gift_times', ...progress(agreed, orderPerformance),
     ...(promotionalGiftTimes ? {
@@ -166,16 +167,21 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
     fulfillmentStatus: stopped ? 'stopped' : orderPerformance.delivered === agreed ? 'completed' :
       order.dispatchStatus === 'published' ? 'in_progress' : 'not_started',
     canRequestContinuation: canContinueGiftOrder(order),
+    canRequestTermination: !through && canTerminateGiftOrder(order, agreed - orderPerformance.delivered),
+    ...(termination ? { termination: customerGiftTermination(termination) } : {}),
     periodOnlyDifferenceCents: 0,
-    ...(!through && giftPriceAmendmentView(order, refundDue)),
+    ...(amendments?.priceAdjustment ? {
+      priceAdjustment: customerGiftPriceAdjustment(amendments.priceAdjustment),
+      priceAdjustmentHistory: amendments.priceAdjustmentHistory.map(customerGiftPriceAdjustment),
+    } : {}),
   };
-  return { customer, segments };
+  return { customer, segments, termination, amendments };
 }
 
 function promotionBasis(order: ClubOrder, segments: CustomerGiftProgress['segments']): GiftDispatchSupervision['promotionBasis'] {
   const quote = order.receipt?.quote;
   const pricing = order.dispatchPricing;
-  if ((!quote?.promotions && !order.giftPriceAdjustments?.length) || !pricing) return undefined;
+  if ((!quote?.promotions && !order.giftPriceAdjustments?.length && !order.giftTermination) || !pricing) return undefined;
   const bySegment = giftPriceSegments(order);
   const total = {
     grossServiceCents: 0, customerServiceCents: 0, personalDiscountCents: 0,
@@ -253,7 +259,9 @@ export class ClubGiftSupervision {
       segment.members.some(member => member.shares.some(share => share.overdueGiftTimes || share.days.some(isGiftExceptionDay))),
     );
     const basis = promotionBasis(order, result.customer.segments);
-    return { ...result.customer, through: through ?? null, hasExceptions, segments, ...(basis ? { promotionBasis: basis } : {}) };
+    const { priceAdjustment: _amendment, priceAdjustmentHistory: _history, ...customer } = result.customer;
+    return { ...customer, ...result.amendments, termination: result.termination, through: through ?? null, hasExceptions, segments,
+      ...(basis ? { promotionBasis: basis } : {}) };
   }
 
   async exceptions(order: ClubOrder, through: string) {

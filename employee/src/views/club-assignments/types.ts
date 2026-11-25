@@ -1,4 +1,4 @@
-import type { GiftDispatchSegment } from "@webapp-template/common";
+import type { DeliveryPeriodBreakdown, GiftDispatchSegment, PricingPeriod } from "@webapp-template/common";
 import { RequestError } from "@webapp-template/common/web-auth";
 
 export type ExecutionAccount = {
@@ -20,6 +20,8 @@ export type AssignmentShare = {
 export type AssignedOrder = {
   id: string;
   recipientGameAccount: string;
+  requestedHearts: number;
+  fulfillmentHearts?: number;
   delivery?: DeliveryProgress;
   personalSchedule: PersonalSchedule;
   shares: AssignmentShare[];
@@ -67,16 +69,55 @@ export type ScheduleDates = { startDate: string | null; endDate: string | null }
 export type PersonalSchedule = ScheduleDates & { revision: number };
 
 type Count = number | string;
-type DeliveryProgress = {
-  myGiftTimes?: Count;
+export type QuoteSegment = { number: number; period: PricingPeriod; hearts: number; paidHearts?: number; giftHearts?: number; adjusted?: true };
+export type DeliveryProgress = {
+  myGiftTimes: Count;
   myObservedHearts: Count;
   myCreditedHearts: number;
   myRemainingHearts: number;
   myExcessHearts: Count;
+  orderCreditedHearts: number;
+  orderRemainingHearts: number;
+  orderStoppedHearts?: number;
   myStoppedHearts?: number;
   myPendingReports?: number;
   myReportSyncPending?: boolean;
+  shares: { id: string; observedHearts: Count; creditedHearts: number; remainingHearts: number; stoppedHearts?: number; excessHearts: Count }[];
+  quoteSegments?: QuoteSegment[];
+  segmentsOverPlan?: number[];
+  periodBreakdown?: DeliveryPeriodBreakdown;
   holdReason?: string;
+};
+export type ReportLine = {
+  period: PricingPeriod | "unconfirmed";
+  quoteSegment?: number;
+  giftTimes: number;
+  receivedHearts: number;
+};
+export type ReportRecord = {
+  id: string;
+  originalId: string;
+  userId: string;
+  shareId: string;
+  accountId: string;
+  accountName: string;
+  accountLocalId: string | null;
+  recipientGameAccount: string;
+  businessDate: string;
+  submittedAt: string;
+  kind: "daily" | "supplement" | "correction";
+  version: number;
+  latestVersion?: number;
+  status: "recorded" | "pending_review";
+  reason: string | null;
+  lines: ReportLine[];
+  giftTimes: Count;
+  receivedHearts: number;
+  checks: ("unmatched_period" | "quantity_mismatch")[];
+  previous: {
+    version: number; kind: ReportRecord["kind"]; status: ReportRecord["status"];
+    lines: ReportLine[]; giftTimes: Count; receivedHearts: number;
+  } | null;
 };
 
 export function requestMessage(error: unknown) {

@@ -1,6 +1,6 @@
 import {
   giftFulfillmentSegments, giftServiceAmounts,
-  type GiftPriceAdjustment, type GiftPriceSegment, type QuoteDiscountShare,
+  type CustomerGiftPriceAdjustment, type GiftPriceAdjustment, type GiftPriceSegment, type QuoteDiscountShare,
 } from '@webapp-template/common';
 import type { ClubOrder } from './club-order.schema';
 
@@ -87,4 +87,15 @@ export function giftPriceAmendmentView(order: ClubOrder, refundDue?: number) {
     };
   });
   return { priceAdjustment: amendments.at(-1)!, priceAdjustmentHistory: amendments.slice(0, -1) };
+}
+
+export function customerGiftPriceAdjustment({
+  submittedByUserId: _submittedBy, requestId: _request, decision, latestFactChange, resumed: _resumed, payments, ...summary
+}: GiftPriceAdjustment): CustomerGiftPriceAdjustment {
+  return {
+    ...summary,
+    ...(decision ? { decision: { source: decision.source, value: decision.value, decidedAt: decision.decidedAt } } : {}),
+    ...(latestFactChange ? { latestFactChange: { recordedAt: latestFactChange.recordedAt } } : {}),
+    payments: payments.map(({ kind, amountCents, occurredAt }) => ({ kind, amountCents, occurredAt })),
+  };
 }

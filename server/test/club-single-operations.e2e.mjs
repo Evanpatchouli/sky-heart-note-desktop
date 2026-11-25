@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { captchaCode, startSystem } from './start-system.mjs';
 
 const origins = Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, `https://${app}.single.test`]));
@@ -178,6 +179,24 @@ test('单俱乐部启动、团长首次初始化及在线授权', { timeout: 120
     requestId: randomUUID(), segmentIndex: 0, kind: 'public', dailyGiftTimes: 5,
   });
   assert.equal(accepted.giftTimes, 5);
+  const inboxPath = '/employee/dispatch-notices';
+  for (const actor of [leader, deputy, member, financeEmployee]) {
+    let notice;
+    for (let attempt = 0; attempt < 40 && !notice; attempt++) {
+      notice = (await get('employee', inboxPath, actor)).items.find(({ orderId }) => orderId === clientOrder.id);
+      if (!notice) await sleep(200);
+    }
+    assert.ok(notice, `本团成员 ${actor.id} 应收到本次发布通知`);
+    if (actor !== member) {
+      const foreign = await get('employee', `${inboxPath}/${notice.id}/claim-board`, member);
+      assert.equal(foreign.status, 'missing');
+    }
+  }
+  assert.deepEqual((await get('employee', inboxPath, systemEmployee)).items, []);
+  await membership(leader, financeEmployee, false);
+  assert.deepEqual((await get('employee', inboxPath, financeEmployee)).items, []);
+  await membership(leader, financeEmployee, true);
+  for (const permission of ['CLUB_ORDERS_READ', 'CLUB_COMMISSION_MANAGE']) await grant(leader, financeEmployee, permission, true);
   const financeHistory = () => get('admin', admin + '/dispatch-pricing', financeAdmin);
   assert.equal((await financeHistory()).items[0].dispatchFeeCents, undefined);
   await grant(leader, financeEmployee, 'CLUB_FINANCE_READ', true);

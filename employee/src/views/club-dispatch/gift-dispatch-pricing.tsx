@@ -9,6 +9,7 @@ import { getAppToken, RequestError, useAuthSession } from "@webapp-template/comm
 import { employeeRequest } from "#/service/request";
 import { GiftDispatchForm, PublishedGiftAllocation } from "./gift-allocation";
 import { GiftContinuationManagement } from "./gift-continuations";
+import { GiftSupervisionCard } from "./gift-supervision";
 
 type GiftOrder = {
   requestedGiftTimes: number;
@@ -284,14 +285,10 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
       订购赠送 {requestedGiftTimes} 次 · 建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "待确认" : `${order.estimatedReceivedHearts} 颗`}
       {deliveryPeriodPreference ? ` · ${deliveryPeriodPreferenceLabel[deliveryPeriodPreference]}` : ""}
     </Typography.Paragraph>
+    {!isPublished && preparation?.giftDeliveryStopped && receipt ?
+      <GiftSettlementCard route={route} revision={attempt} role="dispatcher" showTerminationEvidence={false} onClosed={onFulfillmentChanged} /> : null}
     {loadError ? <Alert type="error" showIcon title={loadError} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
       : !preparation ? <Spin aria-label="加载报价" />
-      : preparation.giftDeliveryStopped && !isPublished ? <Flex vertical gap="middle">
-        <Alert type="info" showIcon title="已停送" />
-        {quote ? <QuoteSummary quote={quote} /> : null}
-        {receipt ? <ReceiptDetails receipt={receipt} /> : null}
-        <GiftSettlementCard route={route} revision={attempt} role="dispatcher" onClosed={onFulfillmentChanged} />
-      </Flex>
       : isPublished && frozen ? <>
         <Typography.Paragraph>首段规则 V{frozen.version} · 派抽 {money(frozen.dispatchFeeCents)}/次 · 团抽 {money(frozen.clubFeeCents)}/次</Typography.Paragraph>
         {(frozen.giftSegments ?? []).map((segment, index) => <SegmentPrice key={index} segment={segment} />)}
@@ -344,10 +341,10 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
         </Form> : <>
           {quote?.giftSegments?.map((segment, index) => <SegmentPrice key={index} segment={segment} />)}
           <ReceiptDetails receipt={receipt} />
-          <Form form={form} layout="vertical" onFinish={review} onValuesChange={() => setDirty(true)}>
+          {!preparation.giftDeliveryStopped && <Form form={form} layout="vertical" onFinish={review} onValuesChange={() => setDirty(true)}>
             <Form.Item name="dispatchFee" label="复核每次派抽（元/次）"><Input inputMode="decimal" /></Form.Item>
             <Button htmlType="submit" loading={busy}>保存派抽复核</Button>
-          </Form>
+          </Form>}
         </>}
         {quote ? <QuoteSummary quote={quote} /> : null}
         {quote?.promotions?.couponIssue && <Alert type="warning" showIcon
@@ -365,13 +362,15 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
           </Flex>
           <Button htmlType="submit" loading={busy}>登记实收</Button>
         </Form> : null}
-        {onPublished && receipt ? <Flex gap="small" align="center" style={{ marginTop: 8 }}>
+        {onPublished && receipt && !preparation.giftDeliveryStopped ? <Flex gap="small" align="center" style={{ marginTop: 8 }}>
           <Button type="primary" loading={busy}
             disabled={dirty || preparation.paymentStatus !== "paid_in_full" || commissionVersion !== rule.version} onClick={() => { setError(""); setPublishOpen(true); }}>正式派发</Button>
           {preparation.paymentStatus !== "paid_in_full" ? <Typography.Text>实收与报价的差额待核对</Typography.Text>
             : commissionVersion !== rule.version ? <Typography.Text>规则已更新，请复核派抽</Typography.Text> : null}
         </Flex> : null}
       </>}
+    {!isPublished && preparation?.paymentStatus === "paid_in_full" && <GiftSupervisionCard route={route} revision={attempt}
+      onRefresh={() => { setAttempt(value => value + 1); onFulfillmentChanged?.(); }} onShowCurrent={() => {}} />}
     <Modal open={publishOpen} destroyOnHidden title="正式派发与各段分工" footer={null} onCancel={() => !busy && setPublishOpen(false)}>
       {error && <Alert type="error" showIcon title={error} />}
       {executionSegments?.length ? <GiftDispatchForm quotes={executionSegments} indices={executionSegments.map((_, index) => index)}

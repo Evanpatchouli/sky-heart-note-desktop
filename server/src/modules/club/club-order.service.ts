@@ -1,10 +1,6 @@
-import type { PersonalScheduleDto } from './club-personal-schedule.dto';
 import { giftDayFacts, giftFactsByShare, giftFactsForOrders } from './club-gift-delivery';
 import { giftAssignment, giftAssignmentDetail, personalAssignmentScope, personalScheduleView } from './club-personal-assignment';
 import { CLUB_ID } from './club.schema';
-import { ClubGiftSupervision, canContinueGiftOrder, giftExceptionScope } from './club-gift-supervision';
-import { continuationView } from './club-continuation.service';
-import { jsonReportCount } from './club-daily-report-view';
 import {
   BadRequestException,
   ConflictException,
@@ -14,16 +10,57 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments, type CommissionRule, type CustomerGiftProgress, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
+import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments } from '@webapp-template/common';
+import type {
+  CommissionRule,
+  CustomerQuote,
+  CustomerGiftProgress,
+  DeliveryPeriodShift,
+  DispatchFulfillment,
+  GiftDispatchSupervision,
+  OrderPricing,
+  PaymentStatus,
+} from '@webapp-template/common';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';
+import type { PublishOrderDto } from './club-allocation.dto';
+import {
+  dispatchAllocationView,
+  makeAllocation,
+  sortDirectedShares,
+} from './club-allocation';
 import { ClubCustomerService } from './club-customer.service';
 import { UserDispatchActivationService } from '../user-module/user-dispatch-activation.service';
 import { ClubDirectoryService } from './club-directory.service';
 import { ClubGiftDispatchService } from './club-gift-dispatch.service';
+import { continuationView } from './club-continuation.service';
+import { ClubGiftSupervision, canContinueGiftOrder, giftExceptionScope } from './club-gift-supervision';
 import { giftDispatchFingerprint, giftShareView } from './club-gift-allocation';
+import { ClubDispatchPushService } from './club-dispatch-push.service';
+import { ClubDeliveryService } from './club-delivery.service';
+import { compareDeliveryPrice, summarizeDeliveryPeriods, type DeliveryPeriodRow } from './club-delivery-review';
+import { ClubPriceAdjustmentService } from './club-price-adjustment.service';
+import { adjustmentDeliveryHold, priceAdjustmentHistoryView, priceAdjustmentReviewsView, priceAdjustmentView } from './club-price-adjustment';
+import { deliveryStoppedAt, dispatchTerminationView, terminationView } from './club-termination';
+import {
+  customerFulfillmentView,
+  deliveryProgressView,
+  dispatchFulfillmentView,
+  quotedDeliverySegments,
+  type AgreedDayReport,
+  type ShareDelivery,
+} from './club-delivery';
+import type {
+  AgreedReportDatesDto,
+  AgreementDeadlineDto,
+  FulfillmentExceptionsQuery,
+  PersonalScheduleDto,
+} from './club-fulfillment.dto';
+import {
+  executionAccountView,
+} from './club-execution.service';
 import type {
   AssignDispatcherDto,
   ClubOrderQuery,
@@ -32,32 +69,33 @@ import type {
   EmployeeClubOrderQuery,
 } from './club-order.dto';
 import type {
-  PublishOrderDto,
   RecordOrderReceiptDto,
   ReviewDispatchCommissionDto,
   UpdateOrderPricingDto,
 } from './club-pricing.dto';
 import type { StoredOrderReceipt } from './club-pricing.schema';
-import { ClubOrder, type PendingAssignmentDecision } from './club-order.schema';
 import { ClubPromotionService } from './club-promotion.service';
-import { ClubDispatchPushService } from './club-dispatch-push.service';
+import { activityQuantities, pendingQuoteActivity } from './club-order-pricing';
+import { ClubOrder, type PendingAssignmentDecision } from './club-order.schema';
 
 const clientOrderScope = {
   source: 'client_order',
   customerLinkStatus: 'verified',
 } as const;
 
+const PRE_DISPATCH_STATUSES = ['draft', 'pending'];
 const incompleteCustomerLink = {
   newCustomerNickname: { $exists: true },
   customerLinkStatus: 'pending_verification',
 };
-const PRE_DISPATCH_STATUSES = ['draft', 'pending'];
 
 type Submission =
   | { source: 'direct_dispatch'; input: CreateDirectOrderDto }
   | { source: 'client_order'; input: CreateClientOrderDto };
 
 function orderSummary(order: ClubOrder) {
+  const { deliveryPeriodPreference } = order.heartDelivery;
+  const stoppedAt = deliveryStoppedAt(order);
   return {
     id: order._id.toHexString(),
     clubId: order.clubId,
@@ -71,12 +109,136 @@ function orderSummary(order: ClubOrder) {
           estimatedReceivedHearts: order.heartDelivery.estimatedReceivedHearts,
           doubleGiftTimes: order.heartDelivery.doubleGiftTimes,
         }),
-    deliveryPeriodPreference: order.heartDelivery.deliveryPeriodPreference,
+    ...activityQuantities(order),
+    deliveryPeriodPreference,
     dispatcherUserId: order.dispatcherUserId ?? null,
     dispatcherAssignment: order.dispatcherAssignment ?? null,
     dispatchStatus: order.dispatchStatus,
     publishedAt: order.publishedAt ?? null,
     createdAt: order.createdAt,
+    ...(stoppedAt ? { stoppedAt } : {}),
+  };
+}
+
+function calculateCustomerQuote(pricing?: OrderPricing): CustomerQuote | null {
+  if (!pricing) return null;
+  const { revision, segments, discountedHeartsAmountCents, promotions } = pricing;
+  if (pricing.priceUnit === 'gift_times') {
+    const { giftSegments } = pricing;
+    const giftQuote = giftSegments && calculateGiftQuote(giftSegments);
+    if (!giftQuote) return null;
+    const original = giftQuote.amountCents;
+    const heartsAmountCents = promotions ? original - (promotions.platform?.amountCents ?? 0) - (promotions.personal?.amountCents ?? 0) :
+      discountedHeartsAmountCents ?? original;
+    const totalAmountCents = heartsAmountCents;
+    if (
+      !Number.isSafeInteger(totalAmountCents) ||
+      (discountedHeartsAmountCents !== undefined && heartsAmountCents >= original)
+    ) return null;
+    return {
+      revision,
+      priceUnit: pricing.priceUnit,
+      giftSegments,
+      segments,
+      ...(promotions ? { promotions } : {}),
+      heartsAmountCents,
+      totalAmountCents,
+      ...(discountedHeartsAmountCents === undefined && !promotions ? {} : { originalHeartsAmountCents: original }),
+    };
+  }
+  const amounts = calculateQuoteAmounts(segments, discountedHeartsAmountCents);
+  return amounts && { revision, segments, ...amounts };
+}
+
+function paymentStatus(receipt?: StoredOrderReceipt): PaymentStatus {
+  if (!receipt) return 'not_registered';
+  if (receipt.receivedAmountCents < receipt.quote.totalAmountCents)
+    return 'underpaid';
+  if (receipt.receivedAmountCents > receipt.quote.totalAmountCents)
+    return 'overpaid';
+  return 'paid_in_full';
+}
+
+function customerOrderView(
+  order: ClubOrder,
+  dispatcherNickname: string | null,
+  totals: readonly ShareDelivery[],
+  giftProgress?: CustomerGiftProgress,
+  lateReports = false,
+) {
+  const { receipt } = order;
+  const pricing = order.pricing ?? order.dispatchPricing;
+  const quote = receipt?.quote ?? calculateCustomerQuote(pricing);
+  const pendingActivity = pendingQuoteActivity(pricing);
+  return {
+    ...orderSummary(order),
+    dispatcherNickname,
+    deliveryProgress: giftProgress ?? customerFulfillmentView(order, totals),
+    closedAt: order.closedAt ?? null,
+    quote,
+    ...continuationView(order),
+    ...(pendingActivity ? { pendingActivity } : {}),
+    ...(!quote && pricing && pricing.priceUnit !== 'gift_times'
+      ? {
+          quoteSegments: pricing.segments.map(({ period, hearts, giftHearts, unitPriceCents }) => ({
+            period,
+            hearts,
+            unitPriceCents,
+            ...(giftHearts ? { giftHearts } : {}),
+          })),
+        }
+      : {}),
+    receipt: receipt
+      ? {
+          receivedAmountCents: receipt.receivedAmountCents,
+          receivedAt: receipt.receivedAt,
+        }
+      : null,
+    paymentStatus: paymentStatus(receipt),
+    priceAdjustment: priceAdjustmentView(order),
+    priceAdjustmentHistory: priceAdjustmentHistoryView(order),
+    termination: terminationView(order, lateReports),
+  };
+}
+
+function byDeliveryOrder<T extends ShareDelivery | AgreedDayReport>(
+  records: readonly T[],
+) {
+  const groups = new Map<string, T[]>();
+  for (const item of records) {
+    const id = item._id.orderId.toHexString();
+    const group = groups.get(id);
+    if (group) group.push(item);
+    else groups.set(id, [item]);
+  }
+  return groups;
+}
+
+function dispatchPreparation(
+  order: ClubOrder,
+  rule: CommissionRule | null,
+  names?: Map<string, string>,
+) {
+  const pendingActivity = pendingQuoteActivity(order.pricing);
+  return {
+    pricing: order.pricing ?? null,
+    rule,
+    dispatchPricing: order.dispatchPricing ?? null,
+    ...continuationView(order),
+    canManageContinuation: canContinueGiftOrder(order),
+    dispatchStatus: order.dispatchStatus,
+    quote:
+      order.receipt?.quote ??
+      calculateCustomerQuote(order.pricing ?? order.dispatchPricing),
+    receipt: order.receipt ?? null,
+    ...(order.requestedPromotionCouponId ? { requestedPromotionCouponId: order.requestedPromotionCouponId } : {}),
+    paymentStatus: paymentStatus(order.receipt),
+    ...(pendingActivity ? { pendingActivity } : {}),
+    giftDeliveryStopped: !!order.giftTermination,
+    commissionReview: order.commissionReview ?? null,
+    ...(order.allocation
+      ? { allocation: dispatchAllocationView(order, names) }
+      : {}),
   };
 }
 
@@ -101,84 +263,6 @@ function assignmentResult(order: ClubOrder, decision: PendingAssignmentDecision)
   };
 }
 
-function calculateCustomerQuote(pricing?: OrderPricing): CustomerQuote | null {
-  if (!pricing) return null;
-  const { revision, priceUnit, giftSegments, segments } = pricing;
-  if (priceUnit !== 'gift_times') {
-    const { discountedHeartsAmountCents } = pricing;
-    const amounts = calculateQuoteAmounts(segments, discountedHeartsAmountCents);
-    return amounts && { revision, segments, ...amounts };
-  }
-  const amounts = giftSegments && calculateGiftQuote(giftSegments);
-  if (!amounts) return null;
-  const { promotions, discountedHeartsAmountCents } = pricing;
-  const heartsAmountCents = promotions
-    ? amounts.amountCents - (promotions.platform?.amountCents ?? 0) - (promotions.personal?.amountCents ?? 0)
-    : discountedHeartsAmountCents ?? amounts.amountCents;
-  const totalAmountCents = heartsAmountCents;
-  if (!Number.isSafeInteger(totalAmountCents) || (!promotions && discountedHeartsAmountCents !== undefined &&
-      (!Number.isSafeInteger(discountedHeartsAmountCents) || heartsAmountCents < 0 || heartsAmountCents >= amounts.amountCents))) return null;
-  return {
-    revision, priceUnit, giftSegments, segments,
-    ...(promotions ? { promotions } : {}),
-    ...(promotions || discountedHeartsAmountCents !== undefined ? { originalHeartsAmountCents: amounts.amountCents } : {}),
-    heartsAmountCents, totalAmountCents,
-  };
-}
-
-function paymentStatus(receipt?: StoredOrderReceipt) {
-  if (!receipt) return 'not_registered';
-  if (receipt.receivedAmountCents < receipt.quote.totalAmountCents) return 'underpaid';
-  if (receipt.receivedAmountCents > receipt.quote.totalAmountCents) return 'overpaid';
-  return 'paid_in_full';
-}
-
-function dispatchPreparation(order: ClubOrder, rule: CommissionRule | null) {
-  const quote = order.receipt?.quote ?? calculateCustomerQuote(order.pricing ?? order.dispatchPricing);
-  return {
-    pricing: order.pricing ?? null,
-    rule,
-    dispatchPricing: order.dispatchPricing ?? null,
-    ...continuationView(order),
-    canManageContinuation: canContinueGiftOrder(order),
-    dispatchStatus: order.dispatchStatus,
-    quote,
-    ...(order.requestedPromotionCouponId ? { requestedPromotionCouponId: order.requestedPromotionCouponId } : {}),
-    receipt: order.receipt ?? null,
-    commissionReview: order.commissionReview ?? null,
-    paymentStatus: paymentStatus(order.receipt),
-    giftDeliveryStopped: !!order.giftTermination,
-  };
-}
-
-type HistoricalProgress = {
-  priceUnit: 'received_hearts';
-  agreedDeadline: string | null;
-  observedHearts: number | string;
-  creditedHearts: number;
-  remainingHearts: number;
-};
-
-function customerOrderView(order: ClubOrder, names: Map<string, string>, deliveryProgress: CustomerGiftProgress | HistoricalProgress) {
-  const pricing = order.dispatchPricing ?? order.pricing;
-  const segments = pricing?.segments;
-  const giftSegments = pricing?.giftSegments;
-  const quote = order.receipt?.quote ?? calculateCustomerQuote(pricing);
-  return {
-    ...orderSummary(order),
-    dispatcherNickname: order.dispatcherUserId ? names.get(order.dispatcherUserId) ?? null : null,
-    ...(pricing?.priceUnit === 'gift_times' ? { giftSegments } : segments ? { segments } : {}),
-    ...(quote ? { quote } : {}),
-    ...(order.receipt ? { receipt: {
-      receivedAmountCents: order.receipt.receivedAmountCents,
-      receivedAt: order.receipt.receivedAt,
-    }, paymentStatus: paymentStatus(order.receipt) } : {}),
-    ...continuationView(order),
-    deliveryProgress,
-    closedAt: order.closedAt ?? null,
-  };
-}
-
 function shareSummary(share: ClubOrder['shares'][number]) {
   return {
     id: share._id.toHexString(),
@@ -195,14 +279,43 @@ function adminOrderView(order: ClubOrder) {
       ? { assignmentDecision: assignmentResult(order, order.pendingAssignmentDecision) }
       : {}),
     shares: order.shares.map(shareSummary),
+    ...(order.allocation ? { allocation: dispatchAllocationView(order) } : {}),
   };
 }
 
-function employeeView(order: ClubOrder, userId: string) {
-  const dispatches = order.dispatcherUserId === userId;
+function employeeView(
+  order: ClubOrder,
+  userId: string,
+  totals: readonly ShareDelivery[] = [],
+  review?: ReturnType<typeof summarizeDeliveryPeriods>,
+  pendingPersonalReports?: number,
+) {
+  const assignment = pendingPersonalReports !== undefined;
+  const dispatches = !assignment && order.dispatcherUserId === userId;
+  const mine = order.shares.filter((share) => share.userId === userId);
   return {
     ...orderSummary(order),
     ...(dispatches ? orderOwnership(order) : {}),
+    ...(assignment ? { personalSchedule: personalScheduleView(order, userId) } : {}),
+    ...(mine.length
+      ? {
+          delivery: {
+            ...deliveryProgressView(order, userId, totals),
+            holdReason: adjustmentDeliveryHold(order),
+            ...(assignment ? {
+              myPendingReports: pendingPersonalReports,
+              myReportSyncPending: order.pendingDailyReport?.userId === userId,
+            } : {}),
+            ...(review
+              ? {
+                  quoteSegments: quotedDeliverySegments(order),
+                  segmentsOverPlan: review.segmentsOverPlan,
+                  periodBreakdown: review.breakdown,
+                }
+              : {}),
+          },
+        }
+      : {}),
     ...(order.giftDispatch ? {
       giftShares: order.giftDispatch.segments.flatMap(({ segmentIndex, shares }) => shares
         .filter(share => dispatches || share.userId === userId)
@@ -214,11 +327,10 @@ function employeeView(order: ClubOrder, userId: string) {
         ...shareSummary(share),
         ...(share.userId === userId
           ? {
-              executionGameAccounts: share.executionGameAccounts.map(
-                (account) => ({
-                  id: account._id.toHexString(),
-                  name: account.name,
-                }),
+              claimKind: share.claimKind,
+              claimedAt: share.claimedAt,
+              executionGameAccounts: (share.executionGameAccounts ?? []).map(
+                executionAccountView,
               ),
             }
           : {}),
@@ -237,6 +349,8 @@ export class ClubOrderService implements OnModuleInit {
     private readonly giftSupervision: ClubGiftSupervision,
     private readonly promotions: ClubPromotionService,
     private readonly dispatchPush: ClubDispatchPushService,
+    private readonly delivery: ClubDeliveryService,
+    private readonly adjustments: ClubPriceAdjustmentService,
   ) {}
 
   async onModuleInit() {
@@ -301,8 +415,13 @@ export class ClubOrderService implements OnModuleInit {
     input: CreateClientOrderDto,
   ) {
     await this.directory.requireClub(clubId);
-    const order = await this.create(clubId, userId, { source: 'client_order', input });
-    const names = await this.directory.memberNicknames(order.dispatcherUserId ? [order.dispatcherUserId] : []);
+    const order = await this.create(clubId, userId, {
+      source: 'client_order',
+      input,
+    });
+    const names = await this.directory.memberNicknames(
+      order.dispatcherUserId ? [order.dispatcherUserId] : [],
+    );
     return {
       ...orderSummary(order),
       dispatcherNickname: order.dispatcherUserId ? names.get(order.dispatcherUserId) ?? null : null,
@@ -395,16 +514,32 @@ export class ClubOrderService implements OnModuleInit {
   async listCustomerOrders(clubId: string, userId: string, query: ClubOrderQuery) {
     await this.directory.requireClub(clubId);
     const { orders, nextCursor } = await this.list(
-      { clubId, customerUserId: userId, customerLinkStatus: 'verified' },
+      {
+        clubId,
+        customerUserId: userId,
+        customerLinkStatus: 'verified',
+      },
       query,
     );
-    const [names, progress] = await Promise.all([
+    const [names, totals, giftProgress] = await Promise.all([
       this.directory.memberNicknames([
         ...new Set(orders.flatMap(({ dispatcherUserId }) => dispatcherUserId ? [dispatcherUserId] : [])),
       ]),
-      Promise.all(orders.map(order => this.customerProgress(order))),
+      this.delivery.totals(orders.filter(order => order.heartDelivery.requestedGiftTimes === undefined).map(order => order._id)),
+      Promise.all(orders.map(order => this.giftSupervision.customer(order))),
     ]);
-    return { items: orders.map((order, index) => customerOrderView(order, names, progress[index])), nextCursor };
+    const byOrder = byDeliveryOrder(totals);
+    return {
+      items: orders.map((order, index) =>
+        customerOrderView(
+          order,
+          order.dispatcherUserId ? names.get(order.dispatcherUserId) ?? null : null,
+          byOrder.get(order._id.toHexString()) ?? [],
+          giftProgress[index],
+        ),
+      ),
+      nextCursor,
+    };
   }
 
   async getCustomerOrder(clubId: string, userId: string, orderId: string) {
@@ -414,80 +549,19 @@ export class ClubOrderService implements OnModuleInit {
       customerUserId: userId,
       customerLinkStatus: 'verified',
     });
-    const [names, progress] = await Promise.all([
+    const [names, totals, rows, giftProgress] = await Promise.all([
       this.directory.memberNicknames(order.dispatcherUserId ? [order.dispatcherUserId] : []),
-      this.customerProgress(order),
+      this.delivery.totals(order.heartDelivery.requestedGiftTimes === undefined ? [order._id] : []),
+      deliveryStoppedAt(order) ? this.delivery.periodRows(order, undefined, true) : Promise.resolve<DeliveryPeriodRow[]>([]),
+      this.giftSupervision.customer(order),
     ]);
-    return customerOrderView(order, names, progress);
-  }
-
-  private async customerProgress(order: ClubOrder) {
-    return await this.giftSupervision.customer(order) ?? (await this.historicalProgress(order)).progress;
-  }
-
-  private async historicalProgress(order: ClubOrder, through?: string) {
-    const quote = order.receipt?.quote ?? order.dispatchPricing ?? order.pricing;
-    const agreed = quote?.segments.length
-      ? quote.segments.reduce((sum, segment) => sum + segment.hearts + (segment.giftHearts ?? 0), 0)
-      : order.heartDelivery.requestedHearts ?? 0;
-    const facts = order.shares.length ? await this.orders.db.collection('club_daily_reports').aggregate<{
-      _id: Types.ObjectId; hearts: Types.Decimal128;
-    }>([
-      { $match: { orderId: order._id, shareId: { $in: order.shares.map(share => share._id) }, priceUnit: null,
-        kind: 'daily', ...(through ? { businessDate: { $lte: through } } : {}) } },
-      { $group: { _id: '$shareId', hearts: { $sum: { $toDecimal: { $toLong: '$receivedHearts' } } } } },
-    ]).toArray() : [];
-    const byShare = new Map(facts.map(row => [row._id.toHexString(), BigInt(row.hearts.toString())]));
-    let observed = 0n;
-    let credited = 0;
-    const shares = order.shares.map(share => {
-      const actual = byShare.get(share._id.toHexString()) ?? 0n;
-      observed += actual;
-      const delivered = actual > BigInt(share.hearts) ? share.hearts : Number(actual);
-      credited += delivered;
-      return { id: share._id.toHexString(), userId: share.userId, promisedHearts: share.hearts,
-        observedHearts: jsonReportCount(actual), remainingHearts: share.hearts - delivered };
-    });
-    credited = Math.min(agreed, credited);
-    const progress: HistoricalProgress = {
-      priceUnit: 'received_hearts', agreedDeadline: order.heartDelivery.agreedDeadline ?? null,
-      observedHearts: jsonReportCount(observed),
-      creditedHearts: credited, remainingHearts: agreed - credited };
-    return { progress, shares };
-  }
-
-  async getDispatchFulfillment(clubId: string, userId: string, orderId: string, through?: string) {
-    await this.directory.requireMember(clubId, userId);
-    const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
-    if (order.heartDelivery.requestedGiftTimes !== undefined)
-      return { ...await this.giftSupervision.dispatch(order, through), ...continuationView(order) };
-    const [{ progress, shares }, names] = await Promise.all([
-      this.historicalProgress(order, through),
-      this.directory.memberNicknames([...new Set(order.shares.map(share => share.userId))]),
-    ]);
-    return {
-      ...progress, closedAt: order.closedAt ?? null,
-      shares: shares.map(share => ({ ...share, nickname: names.get(share.userId) ?? null })),
-    };
-  }
-
-  async listFulfillmentExceptions(clubId: string, userId: string, query: ClubOrderQuery & { through: string }) {
-    await this.directory.requireMember(clubId, userId);
-    const { through, source, limit = 15 } = query;
-    const scope = { clubId, dispatcherUserId: userId, ...giftExceptionScope(through) };
-    const items: { order: ReturnType<typeof orderSummary>; fulfillment: NonNullable<Awaited<ReturnType<ClubGiftSupervision['exceptions']>>> }[] = [];
-    let after = query.after;
-    do {
-      const { orders, nextCursor } = await this.list(scope, { source, after, limit: 25 });
-      const exceptions = await Promise.all(orders.map(order => this.giftSupervision.exceptions(order, through)));
-      for (const [index, fulfillment] of exceptions.entries()) {
-        if (!fulfillment) continue;
-        if (items.length === limit) return { items, nextCursor: items.at(-1)!.order.id };
-        items.push({ order: orderSummary(orders[index]), fulfillment });
-      }
-      after = nextCursor ?? undefined;
-    } while (after);
-    return { items, nextCursor: null };
+    return customerOrderView(
+      order,
+      order.dispatcherUserId ? names.get(order.dispatcherUserId) ?? null : null,
+      totals,
+      giftProgress,
+      rows.some((row) => row._id === null),
+    );
   }
 
   async listEmployeeOrders(
@@ -503,21 +577,28 @@ export class ClubOrderService implements OnModuleInit {
           ? personalAssignmentScope(clubId, userId)
           : this.employeeScope(clubId, userId);
     const { orders, nextCursor } = await this.list(scope, query);
-    if (query.responsibility === 'executor') {
-      const giftFacts = giftFactsByShare(await giftFactsForOrders(this.orders.db.collection('club_daily_reports'), orders));
-      return {
-        items: await Promise.all(orders.map(order => order.dispatchPricing?.priceUnit === 'gift_times'
-          ? giftAssignment(order, userId, giftFacts)
-          : this.historicalAssignment(order, userId))),
-        nextCursor,
-      };
-    }
-    const activationOrders = await this.customerActivationOrders(orders, userId);
+    const claimedOrderIds = orders
+      .filter((order) => order.shares.some((share) => share.userId === userId))
+      .map((order) => order._id);
+    const personal = query.responsibility === 'executor';
+    const [totals, pendingReports, activationOrders, giftFacts] = await Promise.all([
+      this.delivery.totals(claimedOrderIds),
+      personal ? this.delivery.pendingPersonalReports(orders, userId) : undefined,
+      personal ? undefined : this.customerActivationOrders(orders, userId),
+      personal ? giftFactsForOrders(this.orders.db.collection('club_daily_reports'), orders) : [],
+    ]);
+    const totalsByOrder = byDeliveryOrder(totals);
+    const giftFactsById = giftFactsByShare(giftFacts);
     return {
-      items: orders.map((order) => ({
-        ...employeeView(order, userId),
-        ...(activationOrders.has(order._id.toHexString()) ? { customerActivationAvailable: true } : {}),
-      })),
+      items: orders.map((order) => {
+        if (personal && order.dispatchPricing?.priceUnit === 'gift_times') return giftAssignment(order, userId, giftFactsById);
+        const orderId = order._id.toHexString();
+        return {
+          ...employeeView(order, userId, totalsByOrder.get(orderId), undefined,
+            pendingReports ? pendingReports.get(orderId) ?? 0 : undefined),
+          ...(activationOrders?.has(orderId) ? { customerActivationAvailable: true } : {}),
+        };
+      }),
       nextCursor,
     };
   }
@@ -525,38 +606,25 @@ export class ClubOrderService implements OnModuleInit {
   async getEmployeeOrder(clubId: string, userId: string, orderId: string) {
     await this.directory.requireMember(clubId, userId);
     const scope = this.employeeScope(clubId, userId);
-    return employeeView(await this.get(orderId, scope), userId);
+    const order = await this.get(orderId, scope);
+    if (!order.shares.some((share) => share.userId === userId))
+      return employeeView(order, userId);
+    const review = summarizeDeliveryPeriods(order, await this.delivery.periodRows(order), userId);
+    return employeeView(order, userId, review.totals, review);
   }
 
   async getPersonalAssignment(clubId: string, userId: string, orderId: string) {
     await this.directory.requireMember(clubId, userId);
     const order = await this.get(orderId, personalAssignmentScope(clubId, userId));
-    if (order.dispatchPricing?.priceUnit !== 'gift_times') return this.historicalAssignment(order, userId);
-    const facts = await giftDayFacts(this.orders.db.collection('club_daily_reports'), order);
-    return giftAssignmentDetail(order, userId, giftFactsByShare(facts));
-  }
-
-  private async historicalAssignment(order: ClubOrder, userId: string) {
-    const { shares } = await this.historicalProgress(order);
-    const ownShares = shares.filter(share => share.userId === userId);
-    const own = order.shares.filter(share => share.userId === userId);
-    const observed = ownShares.reduce((sum, share) => sum + BigInt(share.observedHearts), 0n);
-    const remaining = ownShares.reduce((sum, share) => sum + share.remainingHearts, 0);
-    const credited = ownShares.reduce((sum, share) => sum + share.promisedHearts - share.remainingHearts, 0);
-    return {
-      id: order._id.toHexString(),
-      priceUnit: 'received_hearts' as const,
-      recipientGameAccount: order.recipientGameAccount,
-      personalSchedule: personalScheduleView(order, userId),
-      shares: own.map(share => ({
-        ...shareSummary(share),
-        executionGameAccounts: (share.executionGameAccounts ?? []).map(account => ({
-          id: account._id.toHexString(), name: account.name,
-        })),
-      })),
-      delivery: { myObservedHearts: jsonReportCount(observed), myCreditedHearts: credited, myRemainingHearts: remaining,
-        myExcessHearts: jsonReportCount(observed - BigInt(credited)) },
-    };
+    if (order.dispatchPricing?.priceUnit === 'gift_times') {
+      const facts = await giftDayFacts(this.orders.db.collection('club_daily_reports'), order);
+      return giftAssignmentDetail(order, userId, giftFactsByShare(facts));
+    }
+    const [rows, pending] = await Promise.all([
+      this.delivery.confirmedPeriodRows(order), this.delivery.pendingPersonalReports([order], userId),
+    ]);
+    const review = summarizeDeliveryPeriods(order, rows, userId);
+    return employeeView(order, userId, review.totals, review, pending.get(order._id.toHexString()) ?? 0);
   }
 
   async recordPersonalSchedule(clubId: string, userId: string, orderId: string, input: PersonalScheduleDto) {
@@ -598,6 +666,200 @@ export class ClubOrderService implements OnModuleInit {
     throw new ConflictException('本人排期已更新，请刷新后重新调整');
   }
 
+  async getDispatchFulfillment(
+    clubId: string,
+    userId: string,
+    orderId: string,
+    through?: string,
+  ) {
+    await this.directory.requireMember(clubId, userId);
+    const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
+    if (order.heartDelivery.requestedGiftTimes !== undefined)
+      return { ...await this.giftSupervision.dispatch(order, through), ...continuationView(order) };
+    const [rows, reports, names] = await Promise.all([
+      this.delivery.periodRows(order, through, true),
+      this.delivery.agreedDayReports([order], through),
+      this.directory.memberNicknames([...new Set(order.shares.map(({ userId }) => userId))]),
+    ]);
+    const review = summarizeDeliveryPeriods(order, rows);
+    const progress = dispatchFulfillmentView(order, review.totals, reports, names, through);
+    return {
+      ...progress,
+      ...(order.dispatchStatus === 'published' ? {
+        deliveryReview: {
+          ...review.breakdown,
+          comparison: this.adjustments.withManualReview(order, compareDeliveryPrice(order, progress, review, { through })),
+        },
+        priceAdjustment: priceAdjustmentView(order),
+        priceAdjustmentHistory: priceAdjustmentHistoryView(order),
+        priceAdjustmentReviews: priceAdjustmentReviewsView(order),
+        termination: dispatchTerminationView(order, review.issues.has('pending_reports')),
+      } : {}),
+    };
+  }
+
+  async getDispatchPeriodReports(clubId: string, userId: string, orderId: string, through?: string, after?: string) {
+    const order = await this.requirePublishedDispatch(clubId, userId, orderId);
+    return this.delivery.dispatchPeriodReports(order, through, after);
+  }
+
+  async previewDeliveryPrice(clubId: string, userId: string, orderId: string, shift: DeliveryPeriodShift) {
+    const order = await this.requirePublishedDispatch(clubId, userId, orderId);
+    return this.adjustments.preview(order, shift);
+  }
+
+  private async requirePublishedDispatch(clubId: string, userId: string, orderId: string) {
+    await this.directory.requireMember(clubId, userId);
+    return this.get(orderId, {
+      clubId, dispatcherUserId: userId, dispatchStatus: 'published',
+      'heartDelivery.requestedGiftTimes': { $exists: false },
+    });
+  }
+
+  async listFulfillmentExceptions(
+    clubId: string,
+    userId: string,
+    query: FulfillmentExceptionsQuery,
+  ) {
+    await this.directory.requireMember(clubId, userId);
+    const { through, source } = query;
+    const limit = query.limit ?? 15;
+    const scope: QueryFilter<ClubOrder> = {
+      clubId,
+      dispatcherUserId: userId,
+      $or: [
+        giftExceptionScope(through),
+        { 'heartDelivery.agreedDeadline': { $lte: through } },
+        { 'shares.agreedReportDates': { $lte: through } },
+      ],
+    };
+    const items: {
+      order: ReturnType<typeof orderSummary>;
+      fulfillment: DispatchFulfillment | GiftDispatchSupervision;
+    }[] = [];
+    let after = query.after;
+    do {
+      const { orders, nextCursor } = await this.list(scope, { after, source, limit: 25 });
+      const historical = orders.filter(order => order.heartDelivery.requestedGiftTimes === undefined);
+      const [views, giftViews] = await Promise.all([
+        this.dispatchProgress(historical, through),
+        Promise.all(orders.map(order => order.heartDelivery.requestedGiftTimes === undefined
+          ? null : this.giftSupervision.exceptions(order, through))),
+      ]);
+      const byId = new Map(historical.map((order, index) => [order._id.toHexString(), views[index]]));
+      for (const [index, order] of orders.entries()) {
+        if (order.heartDelivery.requestedGiftTimes !== undefined) {
+          const giftView = giftViews[index];
+          if (!giftView) continue;
+          if (items.length === limit) return { items, nextCursor: items.at(-1)!.order.id };
+          items.push({ order: orderSummary(order), fulfillment: giftView });
+          continue;
+        }
+        const view = byId.get(order._id.toHexString())!;
+        const shares = view.shares.flatMap((share) => {
+          const days = share.days.filter(
+            (day) => day.status === 'missing' || day.supplementPending || day.correctionPending,
+          );
+          return share.overdue || days.length ? [{ ...share, days }] : [];
+        });
+        if (!view.overdue && !shares.length) continue;
+        if (items.length === limit) return { items, nextCursor: items.at(-1)!.order.id };
+        items.push({
+          order: orderSummary(orders[index]),
+          fulfillment: { ...view, shares },
+        });
+      }
+      after = nextCursor ?? undefined;
+    } while (after);
+    return { items, nextCursor: null };
+  }
+
+  private async dispatchProgress(orders: readonly ClubOrder[], through?: string) {
+    const memberIds = new Set(
+      orders.flatMap(({ shares }) => shares.map(({ userId }) => userId)),
+    );
+    const [totals, reports, names] = await Promise.all([
+      this.delivery.totals(orders.map(({ _id }) => _id), through),
+      this.delivery.agreedDayReports(orders, through),
+      this.directory.memberNicknames([...memberIds]),
+    ]);
+    const totalsByOrder = byDeliveryOrder(totals);
+    const reportsByOrder = byDeliveryOrder(reports);
+    return orders.map((order) => {
+      const id = order._id.toHexString();
+      return dispatchFulfillmentView(
+        order,
+        totalsByOrder.get(id) ?? [],
+        reportsByOrder.get(id) ?? [],
+        names,
+        through,
+      );
+    });
+  }
+
+  async recordAgreementDeadline(
+    clubId: string,
+    userId: string,
+    orderId: string,
+    input: AgreementDeadlineDto,
+  ) {
+    await this.directory.requireMember(clubId, userId);
+    const scope = { clubId, dispatcherUserId: userId };
+    const order = await this.get(orderId, scope);
+    if (order.heartDelivery.requestedGiftTimes !== undefined)
+      throw new ConflictException('按次订单的履约约定功能待启用');
+    const { businessDate } = input;
+    const { matchedCount } = await this.orders.updateOne(
+      {
+        ...scope, _id: order._id, termination: null, 'priceAdjustment.decision.value': { $ne: 'decline' },
+        'heartDelivery.agreedDeadline': { $exists: false },
+      },
+      { $set: { 'heartDelivery.agreedDeadline': businessDate } },
+      { runValidators: true },
+    );
+    if (
+      !matchedCount &&
+      (await this.get(orderId, scope)).heartDelivery.agreedDeadline !== businessDate
+    ) {
+      throw new ConflictException('本单已有客户约定截止业务日，原记录已保留');
+    }
+    return { agreedDeadline: businessDate };
+  }
+
+  async recordShareReportDates(
+    clubId: string,
+    userId: string,
+    orderId: string,
+    shareId: string,
+    input: AgreedReportDatesDto,
+  ) {
+    await this.directory.requireMember(clubId, userId);
+    if (!isObjectIdOrHexString(shareId)) throw new BadRequestException('份额标识格式无效');
+    const scope = { clubId, dispatcherUserId: userId, dispatchStatus: 'published' };
+    const order = await this.get(orderId, scope);
+    const share = order.shares.find(({ _id }) => _id.equals(shareId));
+    if (!share) throw new NotFoundException('本单没有该份额');
+    const dates = [...input.businessDates].sort();
+    const { matchedCount } = await this.orders.updateOne(
+      {
+        ...scope,
+        _id: order._id,
+        termination: null,
+        'priceAdjustment.decision.value': { $ne: 'decline' },
+        shares: { $elemMatch: { _id: share._id, agreedReportDates: { $exists: false } } },
+      },
+      { $set: { 'shares.$.agreedReportDates': dates } },
+      { runValidators: true },
+    );
+    if (!matchedCount) {
+      const latest = (await this.get(orderId, scope)).shares.find(({ _id }) => _id.equals(shareId));
+      if (JSON.stringify(latest?.agreedReportDates) !== JSON.stringify(dates)) {
+        throw new ConflictException('该份额已有约定日报日期，原记录已保留');
+      }
+    }
+    return { agreedReportDates: dates };
+  }
+
   async getDispatchPreparation(
     clubId: string,
     userId: string,
@@ -605,16 +867,21 @@ export class ClubOrderService implements OnModuleInit {
   ) {
     await this.directory.requireMember(clubId, userId);
     const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
-    if (order.dispatchStatus === 'published') return dispatchPreparation(order, null);
-    const [rule, promotionPolicy, promotionCoupons] = await Promise.all([
-      this.directory.readCommissionRule(clubId),
-      this.promotions.readPolicy(clubId),
-      order.customerUserId && order.customerLinkStatus === 'verified' ? this.promotions.availableCoupons(clubId, order.customerUserId) : [],
+    if (order.dispatchStatus !== 'published') {
+      const [rule, promotionPolicy, promotionCoupons] = await Promise.all([
+        this.directory.readCommissionRule(clubId), this.promotions.readPolicy(clubId),
+        order.customerUserId && order.customerLinkStatus === 'verified' ? this.promotions.availableCoupons(clubId, order.customerUserId) : [],
+      ]);
+      return { ...dispatchPreparation(order, rule), promotionPolicy, promotionCoupons };
+    }
+    const allocationMembers = new Set([
+      ...(order.allocation?.directed ?? []).map((share) => share.userId),
+      ...(order.allocation ? order.shares.map((share) => share.userId) : []),
     ]);
-    return {
-      ...dispatchPreparation(order, rule),
-      promotionPolicy, promotionCoupons,
-    };
+    const names = allocationMembers.size
+      ? await this.directory.memberNicknames([...allocationMembers])
+      : undefined;
+    return dispatchPreparation(order, null, names);
   }
 
   getCustomerCoupons(clubId: string, userId: string) {
@@ -658,7 +925,6 @@ export class ClubOrderService implements OnModuleInit {
     if (!amounts || amounts.paidGiftTimes !== requested) {
       throw new BadRequestException('各报价段付费次数合计须等于原订购次数，请核对每日次数和金额');
     }
-
     const legacyDiscount = order.pricing?.discountedHeartsAmountCents;
     if (legacyDiscount !== undefined && (input.personalDiscountCents || giftTimesBySegment.some(Boolean) || input.platformCouponId))
       throw new ConflictException('历史折扣报价须沿用原有优惠口径');
@@ -674,14 +940,15 @@ export class ClubOrderService implements OnModuleInit {
       priceUnit: 'gift_times' as const,
       dispatchFeeCents: input.dispatchFeeCents,
       segments: [],
+      giftSegments,
       ...(legacyDiscount !== undefined ? { discountedHeartsAmountCents: legacyDiscount } : {}),
       ...(promotions && (promotions.platform || promotions.personal || promotions.gift || promotions.couponIssue ||
         order.requestedPromotionCouponId || input.platformCouponId !== undefined) ? { promotions } : {}),
-      giftSegments,
       revision: input.expectedRevision + 1,
     };
-    if (!calculateCustomerQuote(pricing))
-      throw new BadRequestException('报价金额超出可记录范围');
+    if (!calculateCustomerQuote(pricing)) {
+      throw new BadRequestException('请核对报价金额范围，折后爱心款须低于折前');
+    }
     const { matchedCount } = await this.orders.updateOne(
       {
         ...scope,
@@ -694,37 +961,52 @@ export class ClubOrderService implements OnModuleInit {
       { runValidators: true },
     );
     if (!matchedCount)
-      throw new ConflictException('订单报价或派发状态已更新，请重新加载');
+      throw new ConflictException('订单报价、收款或派发状态已更新，请重新加载');
     return this.getDispatchPreparation(clubId, userId, orderId);
   }
 
-  async recordOrderReceipt(clubId: string, userId: string, orderId: string, input: RecordOrderReceiptDto) {
+  async recordOrderReceipt(
+    clubId: string,
+    userId: string,
+    orderId: string,
+    input: RecordOrderReceiptDto,
+  ) {
     await this.directory.requireMember(clubId, userId);
     const scope = { clubId, dispatcherUserId: userId };
     const order = await this.get(orderId, scope);
     const receivedAt = new Date(input.receivedAt);
     if (!Number.isFinite(receivedAt.getTime()))
       throw new BadRequestException('实收时间格式无效');
-    if (order.receipt) return this.replayOrderReceipt(order.receipt, input, receivedAt);
+    if (order.receipt)
+      return this.replayOrderReceipt(order.receipt, input, receivedAt);
+    if (pendingQuoteActivity(order.pricing)) {
+      throw new ConflictException('买赠与折扣叠加规则待核对，目前无法登记实收');
+    }
 
     const quote = calculateCustomerQuote(order.pricing);
-    if (order.dispatchStatus === 'published' || quote?.priceUnit !== 'gift_times' || quote.revision !== input.pricingRevision)
+    if (
+      !quote ||
+      quote.revision !== input.pricingRevision ||
+      order.dispatchStatus === 'published'
+    ) {
       throw new ConflictException('请重新加载并核对最新报价后登记实收');
-    const couponId = quote.promotions?.platform?.couponId;
+    }
     if (!input.receivedAmountCents && quote.totalAmountCents)
       throw new BadRequestException('请填写本单实际收款金额');
+    const couponId = quote.promotions?.platform?.couponId;
     const receipt: StoredOrderReceipt = {
       requestId: input.requestId,
-      receivedAmountCents: input.receivedAmountCents,
       receivedByUserId: userId,
       recordedByUserId: userId,
       receivedAt,
       recordedAt: new Date(),
+      receivedAmountCents: input.receivedAmountCents,
       quote,
     };
     try {
       const { matchedCount } = await this.orders.updateOne({
-        ...scope, _id: order._id,
+        ...scope,
+        _id: order._id,
         dispatchStatus: { $in: PRE_DISPATCH_STATUSES },
         'pricing.revision': quote.revision,
         receipt: { $exists: false },
@@ -736,84 +1018,136 @@ export class ClubOrderService implements OnModuleInit {
       if (isDuplicateKey(error, 'activePromotionCouponId')) throw new ConflictException('此券已用于另一笔订单，请重新核对报价');
       throw error;
     }
+
     const latest = await this.get(orderId, scope);
-    if (latest.receipt) return this.replayOrderReceipt(latest.receipt, input, receivedAt);
+    if (latest.receipt)
+      return this.replayOrderReceipt(latest.receipt, input, receivedAt);
     throw new ConflictException('报价或派发状态已更新，请重新加载后核对实收');
   }
 
-  private replayOrderReceipt(receipt: StoredOrderReceipt, input: RecordOrderReceiptDto, receivedAt: Date) {
+  private replayOrderReceipt(
+    receipt: StoredOrderReceipt,
+    input: RecordOrderReceiptDto,
+    receivedAt: Date,
+  ) {
+    if (receipt.requestId !== input.requestId) {
+      throw new ConflictException('本单已有实收登记，请重新加载核对');
+    }
     if (
-      receipt.requestId !== input.requestId ||
       receipt.quote.revision !== input.pricingRevision ||
       receipt.receivedAmountCents !== input.receivedAmountCents ||
       receipt.receivedAt.getTime() !== receivedAt.getTime()
-    ) throw new ConflictException('本单已有不同的实收登记，请重新加载核对');
+    ) {
+      throw new ConflictException('相同提交标识已用于登记不同的收款信息');
+    }
     return { receipt, paymentStatus: paymentStatus(receipt) };
   }
 
-  async reviewDispatchCommission(clubId: string, userId: string, orderId: string, input: ReviewDispatchCommissionDto) {
+  async reviewDispatchCommission(
+    clubId: string,
+    userId: string,
+    orderId: string,
+    input: ReviewDispatchCommissionDto,
+  ) {
     await this.directory.requireMember(clubId, userId);
     const scope = { clubId, dispatcherUserId: userId };
     const order = await this.get(orderId, scope);
-    if (order.dispatchStatus === 'published' || order.receipt?.quote.revision !== input.pricingRevision)
+    if (
+      order.dispatchStatus === 'published' ||
+      order.giftTermination ||
+      order.pricing?.priceUnit !== 'gift_times' ||
+      order.receipt?.quote.revision !== input.pricingRevision
+    ) {
       throw new ConflictException('请核对已登记实收的报价版本和派发状态');
-
+    }
     const rule = await this.requireCurrentRule(clubId, input.ruleVersion);
     const commissionReview = {
       revision: input.expectedReviewRevision + 1,
       ruleVersion: rule.version,
-      basis: 'gift_times' as const,
+      basis: rule.basis,
       dispatchFeeCents: input.dispatchFeeCents,
     };
     const { matchedCount } = await this.orders.updateOne(
       {
-        ...scope, _id: order._id,
+        ...scope,
+        _id: order._id,
         dispatchStatus: { $in: PRE_DISPATCH_STATUSES },
+        giftTermination: null,
         'receipt.quote.revision': input.pricingRevision,
-        'commissionReview.revision': input.expectedReviewRevision || { $exists: false },
+        'commissionReview.revision': input.expectedReviewRevision || {
+          $exists: false,
+        },
       },
       { $set: { commissionReview } },
       { runValidators: true },
     );
-    if (!matchedCount) throw new ConflictException('派抽复核或派发状态已更新，请重新加载');
+    if (!matchedCount)
+      throw new ConflictException('派抽复核或派发状态已更新，请重新加载');
     return this.getDispatchPreparation(clubId, userId, orderId);
   }
 
-  async commitDispatchAfterPayment(clubId: string, userId: string, orderId: string, input: PublishOrderDto) {
+  async commitDispatchAfterPayment(
+    clubId: string,
+    userId: string,
+    orderId: string,
+    input: PublishOrderDto,
+  ) {
     await this.directory.requireMember(clubId, userId);
     const scope = { clubId, dispatcherUserId: userId };
     const order = await this.get(orderId, scope);
-    if (order.dispatchStatus === 'published') return this.replayDispatch(order, input);
-
-    const { requestId, pricingRevision, ruleVersion, commissionReviewRevision } = input;
-    const { pricing, receipt, commissionReview } = order;
-    if (pricing?.priceUnit !== 'gift_times' || pricing.revision !== pricingRevision ||
-        receipt?.quote.priceUnit !== 'gift_times' || receipt.quote.revision !== pricingRevision) {
+    if (order.dispatchStatus === 'published') {
+      return this.replayDispatch(order, input);
+    }
+    if (order.giftTermination) throw new ConflictException('本单已停送，不能发布');
+    if (pendingQuoteActivity(order.pricing)) {
+      throw new ConflictException('买赠与折扣叠加规则待核对，目前无法派发');
+    }
+    const { pricingRevision, ruleVersion, commissionReviewRevision } = input;
+    if (
+      !order.pricing ||
+      order.pricing.revision !== pricingRevision ||
+      order.receipt?.quote.revision !== pricingRevision
+    ) {
       throw new ConflictException('订单报价未准备或已更新，请重新确认');
     }
-    if (paymentStatus(receipt) !== 'paid_in_full')
+    if (paymentStatus(order.receipt) !== 'paid_in_full') {
       throw new ConflictException('实收与报价的差额待核对');
-    if ((commissionReview?.revision ?? 0) !== commissionReviewRevision)
+    }
+    if ((order.commissionReview?.revision ?? 0) !== commissionReviewRevision) {
       throw new ConflictException('派抽复核已更新，请重新加载');
-    const commission = commissionReview ?? pricing;
-    const rule = await this.requireCurrentRule(clubId, ruleVersion);
-    if (commission.basis !== rule.basis || commission.ruleVersion !== ruleVersion)
+    }
+    const giftOrder = order.pricing.priceUnit === 'gift_times';
+    if (giftOrder && (input.publicHearts !== undefined || input.directed !== undefined)) {
+      throw new BadRequestException('按次订单无法使用按颗分配方案');
+    }
+    const commission = order.commissionReview ?? order.pricing;
+    if (giftOrder && (
+      order.receipt.quote.priceUnit !== 'gift_times' ||
+      commission.ruleVersion !== ruleVersion
+    )) {
       throw new ConflictException('请重新核对最新的每次抽成规则');
-
-    const { revision, priceUnit, giftSegments, segments, promotions,
-      totalAmountCents, originalHeartsAmountCents, heartsAmountCents } = receipt.quote;
+    }
+    if (!giftOrder && input.giftDispatchSegments !== undefined) {
+      throw new BadRequestException('历史按颗订单无法配置按次分工');
+    }
+    const allocation = giftOrder ? undefined : makeAllocation(order, input);
+    const { promotions } = order.receipt.quote;
     const giftDispatch = input.giftDispatchSegments
-      ? await this.giftDispatch.prepareInitial(clubId, input.giftDispatchSegments, giftFulfillmentSegments(giftSegments ?? [], promotions))
+      ? await this.giftDispatch.prepareInitial(clubId, input.giftDispatchSegments, giftFulfillmentSegments(order.receipt.quote.giftSegments ?? [], promotions))
       : undefined;
-    const dispatchPricing = {
-      ...rule, revision, priceUnit, giftSegments, segments,
-      ...(promotions ? { promotions } : {}),
-      ...(!promotions && originalHeartsAmountCents !== undefined ? { discountedHeartsAmountCents: heartsAmountCents } : {}),
-      dispatchFeeCents: commission.dispatchFeeCents,
-    };
-    const recipientUserIds = await this.directory.eligibleGiftMembers(clubId);
-    if (!recipientUserIds.includes(userId)) {
+    const recipientUserIds = (await this.directory.eligibleRecipients(clubId)).sort();
+    const eligibleIds = new Set(recipientUserIds);
+    if (!eligibleIds.has(userId)) {
       throw new ForbiddenException('需要本俱乐部有效成员身份');
+    }
+    if (allocation?.directed.some(({ userId }) => !eligibleIds.has(userId))) {
+      throw new BadRequestException('指定对象须是本俱乐部可进入团员端的有效团员');
+    }
+    const rule = await this.requireCurrentRule(clubId, ruleVersion);
+    if (commission.basis !== rule.basis) {
+      throw new ConflictException(
+        '共用计量口径已更新，请核对当前单位并重新保存派抽',
+      );
     }
     const publishedAt = new Date();
     const publication = {
@@ -826,48 +1160,114 @@ export class ClubOrderService implements OnModuleInit {
       nextAttemptAt: publishedAt,
       ...this.dispatchPush.publicationSchedule(publishedAt),
     };
-    const committed = await this.orders.findOneAndUpdate(
-      {
-        ...scope, _id: order._id,
-        dispatchStatus: { $in: PRE_DISPATCH_STATUSES },
-        'pricing.revision': pricingRevision,
-        'receipt.quote.revision': pricingRevision,
-        'receipt.receivedAmountCents': totalAmountCents,
-        'commissionReview.revision': commissionReviewRevision || { $exists: false },
-        dispatchPricing: { $exists: false },
-      },
-      {
-        $set: {
-          dispatchStatus: 'published', publishedAt, dispatchPricing, publication,
-          giftPublicationRequestId: requestId,
-          ...(giftDispatch ? { giftDispatch, giftPublicationScheduleFingerprint: giftDispatchFingerprint(input.giftDispatchSegments!) } : {}),
+    const { revision, segments, priceUnit, giftSegments, originalHeartsAmountCents, heartsAmountCents } = order.receipt.quote;
+    const dispatchPricing = {
+      ...rule,
+      revision,
+      segments,
+      ...(priceUnit ? { priceUnit, giftSegments } : {}),
+      ...(!promotions && originalHeartsAmountCents !== undefined ? { discountedHeartsAmountCents: heartsAmountCents } : {}),
+      ...(promotions ? { promotions } : {}),
+      dispatchFeeCents: commission.dispatchFeeCents,
+    };
+    const committed = await this.orders
+      .findOneAndUpdate(
+        {
+          ...scope,
+          _id: order._id,
+          dispatchStatus: { $in: PRE_DISPATCH_STATUSES },
+          giftTermination: null,
+          'pricing.revision': pricingRevision,
+          'receipt.quote.revision': pricingRevision,
+          'receipt.receivedAmountCents': order.receipt.quote.totalAmountCents,
+          'commissionReview.revision': commissionReviewRevision || {
+            $exists: false,
+          },
+          dispatchPricing: { $exists: false },
+          allocation: { $exists: false },
+          'shares.0': { $exists: false },
         },
-        $unset: { pricing: '' },
-      },
-      { returnDocument: 'after', runValidators: true, writeConcern: { w: 'majority', j: true } },
-    ).lean();
+        {
+          $set: {
+            dispatchStatus: 'published',
+            publishedAt,
+            dispatchPricing,
+            publication,
+            ...(allocation ? { allocation } : { giftPublicationRequestId: input.requestId }),
+            ...(giftDispatch ? { giftDispatch, giftPublicationScheduleFingerprint: giftDispatchFingerprint(input.giftDispatchSegments!) } : {}),
+          },
+          $unset: { pricing: '' },
+        },
+        {
+          returnDocument: 'after',
+          runValidators: true,
+          writeConcern: { w: 'majority', j: true },
+        },
+      )
+      .lean();
     if (committed) return this.dispatchReceipt(committed);
+
     const latest = await this.get(orderId, scope);
-    if (latest.dispatchStatus === 'published') return this.replayDispatch(latest, input);
+    if (latest.dispatchStatus === 'published') {
+      return this.replayDispatch(latest, input);
+    }
     throw new ConflictException('订单报价或派发状态已更新，请重新加载');
   }
 
   private dispatchReceipt(order: ClubOrder) {
+    if (order.dispatchPricing?.priceUnit === 'gift_times') {
+      return {
+        ...orderSummary(order),
+        publicationId: order.publication?.id.toHexString(),
+        dispatchPricing: order.dispatchPricing,
+      };
+    }
+    const { requestId, publicHearts, directed } = order.allocation!;
     return {
       ...orderSummary(order),
-      publicationId: order.publication?.id.toHexString(),
+      ...(order.publication
+        ? { publicationId: order.publication.id.toHexString() }
+        : {}),
       dispatchPricing: order.dispatchPricing,
+      allocation: { requestId, publicHearts, directed },
     };
   }
 
   private replayDispatch(order: ClubOrder, input: PublishOrderDto) {
+    if (order.dispatchPricing?.priceUnit === 'gift_times') {
+      if (
+        order.giftPublicationRequestId !== input.requestId ||
+        order.dispatchPricing.revision !== input.pricingRevision ||
+        order.dispatchPricing.version !== input.ruleVersion ||
+        (order.commissionReview?.revision ?? 0) !== input.commissionReviewRevision ||
+        input.publicHearts !== undefined || input.directed !== undefined ||
+        order.giftPublicationScheduleFingerprint !== (input.giftDispatchSegments && giftDispatchFingerprint(input.giftDispatchSegments))
+      ) throw new ConflictException('订单已派发，提交标识或派发内容不同');
+      return this.dispatchReceipt(order);
+    }
+    const saved = order.allocation;
+    if (!saved || !order.dispatchPricing) {
+      throw new ConflictException('历史订单已派发，未记录可用于接单的分配方案');
+    }
+    if (saved.requestId !== input.requestId || input.giftDispatchSegments !== undefined) {
+      throw new ConflictException('订单已派发，请重新加载核对已发布的份额');
+    }
+    const directed = input.directed && sortDirectedShares(input.directed);
     if (
-      order.giftPublicationRequestId !== input.requestId ||
-      order.dispatchPricing?.revision !== input.pricingRevision ||
+      order.dispatchPricing.revision !== input.pricingRevision ||
       order.dispatchPricing.version !== input.ruleVersion ||
-      (order.commissionReview?.revision ?? 0) !== input.commissionReviewRevision ||
-      order.giftPublicationScheduleFingerprint !== (input.giftDispatchSegments && giftDispatchFingerprint(input.giftDispatchSegments))
-    ) throw new ConflictException('订单已派发，提交标识或派发内容不同');
+      (order.commissionReview?.revision ?? 0) !==
+        input.commissionReviewRevision ||
+      saved.publicHearts !== input.publicHearts ||
+      !directed ||
+      saved.directed.length !== directed.length ||
+      saved.directed.some(({ userId, hearts }, index) => {
+        const share = directed[index];
+        return userId !== share.userId || hearts !== share.hearts;
+      })
+    ) {
+      throw new ConflictException('相同提交标识已用于内容不同的派发方案');
+    }
     return this.dispatchReceipt(order);
   }
 
@@ -1027,7 +1427,10 @@ export class ClubOrderService implements OnModuleInit {
       try {
         if (submission.input.platformCouponId)
           await this.promotions.requireAvailableCoupon(clubId, userId, submission.input.platformCouponId);
-        dispatcherUserId = await this.resolveDispatcher(clubId, submission.input.dispatcherUserId);
+        dispatcherUserId = await this.resolveDispatcher(
+          clubId,
+          submission.input.dispatcherUserId,
+        );
       } catch (error) {
         if (error instanceof BadRequestException) {
           // A concurrent request can save the original assignment while eligibility changes.
@@ -1060,7 +1463,6 @@ export class ClubOrderService implements OnModuleInit {
             customerUserId: userId,
             customerLinkStatus: 'verified',
           };
-
     try {
       return await this.orders.create({
         ...key,
@@ -1103,15 +1505,16 @@ export class ClubOrderService implements OnModuleInit {
     const { input } = submission;
     const { heartDelivery } = order;
     const originalEstimate = heartDelivery.estimatedReceivedHeartsDerived ? undefined : heartDelivery.estimatedReceivedHearts;
+    const chosenDispatcher = order.requestedDispatcherUserId ??
+      (order.dispatcherAssignment === 'customer_selected'
+        ? order.dispatcherUserId
+        : undefined);
     const matchesSourceFields =
       submission.source === 'direct_dispatch'
         ? order.customerLabel === submission.input.customerLabel &&
           order.selectedCustomerUserId === submission.input.existingCustomerUserId &&
           order.newCustomerNickname === submission.input.newCustomerNickname
-        : order.requestedPromotionCouponId === submission.input.platformCouponId &&
-          (order.requestedDispatcherUserId ??
-            (order.dispatcherAssignment === 'customer_selected' ? order.dispatcherUserId : undefined)) ===
-          submission.input.dispatcherUserId;
+        : chosenDispatcher === submission.input.dispatcherUserId && order.requestedPromotionCouponId === submission.input.platformCouponId;
     if (
       !matchesSourceFields ||
       order.recipientGameAccount !== input.recipientGameAccount ||
