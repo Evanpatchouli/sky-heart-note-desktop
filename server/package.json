@@ -20,7 +20,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "node --test test/web-apps.e2e.mjs test/club-orders.e2e.mjs test/club-single-operations.e2e.mjs test/club-gift-dispatch.e2e.mjs test/club-dispatch.e2e.mjs test/club-execution.e2e.mjs test/club-dispatch-notice.e2e.mjs test/club-dispatch-push.e2e.mjs test/club-delivery.e2e.mjs test/club-gift-supervision.e2e.mjs test/club-fulfillment.e2e.mjs test/club-settlement.e2e.mjs test/club-settlement-close.e2e.mjs test/club-financial-adjustments.e2e.mjs test/club-delivery-review.e2e.mjs test/club-price-adjustment.e2e.mjs test/club-termination.e2e.mjs test/club-personal-schedule.e2e.mjs test/club-promotions.e2e.mjs"
+    "test:e2e": "node --test test/web-apps.e2e.mjs test/club-orders.e2e.mjs test/club-single-operations.e2e.mjs test/club-gift-dispatch.e2e.mjs test/club-dispatch.e2e.mjs test/club-execution.e2e.mjs test/club-dispatch-notice.e2e.mjs test/club-dispatch-push.e2e.mjs test/club-delivery.e2e.mjs test/club-gift-supervision.e2e.mjs test/club-fulfillment.e2e.mjs test/club-settlement.e2e.mjs test/club-settlement-close.e2e.mjs test/club-withdrawals.e2e.mjs test/club-financial-adjustments.e2e.mjs test/club-delivery-review.e2e.mjs test/club-price-adjustment.e2e.mjs test/club-termination.e2e.mjs test/club-personal-schedule.e2e.mjs test/club-promotions.e2e.mjs"
   },
   "_moduleAliases": {
     "@": "dist/src",

@@ -7,6 +7,7 @@ import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";
 import { AdjustmentSummary, money } from "./adjustment-summary";
 import SettlementCorrectionApprovals from "./settlement-correction-approvals";
+import { WithdrawalReviews } from "./withdrawals";
 
 const route = "club/financial-adjustments";
 type Decision = { row: ClubAdjustmentRecord; decision: ClubAdjustmentDecision };
@@ -20,6 +21,7 @@ export default function AdjustmentApprovals() {
       <Tabs key={token} items={[
         { key: "adjustments", label: "罚款与补偿", children: <PendingApprovals /> },
         { key: "settlements", label: "结单更正", children: <SettlementCorrectionApprovals /> },
+        { key: "withdrawals", label: "提现审批", children: <WithdrawalReviews /> },
       ]} />
     </main>
   </>;

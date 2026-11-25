@@ -75,7 +75,8 @@ export type ClubBalanceEntry = {
 } & (
   { kind: ClubAdjustmentKind; adjustmentId: string } |
   { kind: ClubSettlementPostingKind; calculationId: string; correctionRequestId?: string; revisedCalculationId?: string } |
-  { kind: 'compensation_cash_correction'; calculationId: string; correctionRequestId: string; sourceMovementRequestId: string }
+  { kind: 'compensation_cash_correction'; calculationId: string; correctionRequestId: string; sourceMovementRequestId: string } |
+  { kind: 'withdrawal_payment'; withdrawalId: string }
 );
 
 export type ClubBalance = { balanceCents: number; entries: ClubBalanceEntry[] };

@@ -46,10 +46,11 @@ function BalanceEntries({ memberId, onOpen }: { memberId: string; onOpen: (id: s
           <summary>入账流水</summary>
           <Flex vertical gap="small" style={{ marginTop: 8 }}>
             {data.entries.map(entry => <section key={entry.eventId}>
-              <Typography.Text strong>{entry.kind === "member_penalty" ? (memberId ? "责任扣款" : "罚款收入") : entry.kind === "customer_compensation" ? "额外补偿实退" :
+              <Typography.Text strong>{entry.kind === "withdrawal_payment" ? "提现实付" : entry.kind === "member_penalty" ? (memberId ? "责任扣款" : "罚款收入") : entry.kind === "customer_compensation" ? "额外补偿实退" :
                 entry.kind === "compensation_cash_correction" ? "补偿实退更正" : clubSettlementPostingLabel[entry.kind]}
                 {"correctionRequestId" in entry && entry.kind !== "compensation_cash_correction" ? "（日报更正）" : ""} · {money(entry.amountCents)}</Typography.Text>
               <div>{entry.reason} · {new Date(entry.occurredAt).toLocaleString("zh-CN")}</div>
+              {"withdrawalId" in entry ? <Typography.Text type="secondary" copyable>提现申请 {entry.withdrawalId}</Typography.Text> : null}
               {entry.orderId ? <Button type="link" size="small" onClick={() => onOpen(entry.orderId!)}>核对订单 {entry.orderId}</Button> : null}
             </section>)}
           </Flex>

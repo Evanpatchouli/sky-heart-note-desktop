@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useOutletContext, useSearchParams } from "react-router";
 import { Alert, Button, Card, Collapse, Descriptions, Drawer, Empty, Flex, Grid, Spin, Table, Tag, Typography } from "antd";
 import {
@@ -10,6 +10,7 @@ import { getSettlement, getSettlements } from "@/api/club.api";
 import type { AdminClubContext } from "../home";
 import GiftSettlementDetail from "./gift-settlement-detail";
 import ClubBalanceCard from "./club-balance";
+import WithdrawalPayments from "./withdrawal-payments";
 
 const sources = { direct_dispatch: "直接派单", client_order: "客户端下单" };
 const periods = { normal: "普通期", double: "双倍期", unconfirmed: "待确认" };
@@ -33,6 +34,9 @@ export default function Settlements() {
   const { club, loadFailed, reload } = useOutletContext<AdminClubContext>();
   const [params, setParams] = useSearchParams();
   const selected = club?.permissions.includes("CLUB_FINANCE_READ") ? club : null;
+  const mayPay = !!club?.permissions.includes("CLUB_WITHDRAWAL_PAY");
+  const [balanceRevision, setBalanceRevision] = useState(0);
+  const refreshBalance = useCallback(() => setBalanceRevision(value => value + 1), []);
   const orderId = params.get("order") ?? undefined;
   const calculationId = params.get("calculation") ?? undefined;
   const { md } = Grid.useBreakpoint();
@@ -46,15 +50,16 @@ export default function Settlements() {
     <Typography.Title level={4} style={{ margin: 0 }}>结算核对</Typography.Title>
     {loadFailed ? <Alert type="error" showIcon title="俱乐部加载失败" action={<Button onClick={reload}>重试</Button>} />
       : club === undefined ? <Spin aria-label="加载俱乐部" />
-      : !selected ? <Empty description="当前账号未获财务查看权限" /> : <>
-        <Typography.Text strong>{selected.name}</Typography.Text>
-        <ClubBalanceCard onOpen={showOrder} />
-        <SettlementList onOpen={showOrder} />
-        <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
+      : !selected && !mayPay ? <Empty description="当前账号未获财务查看或提现实付登记权限" /> : <>
+        <Typography.Text strong>{club?.name}</Typography.Text>
+        {mayPay ? <WithdrawalPayments onSaved={refreshBalance} /> : null}
+        {selected ? <><ClubBalanceCard key={balanceRevision} onOpen={showOrder} />
+        <SettlementList onOpen={showOrder} /></> : null}
+        {selected ? <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
           {orderId ? <SettlementDetail key={`${orderId}/${calculationId ?? ""}`}
             orderId={orderId} calculationId={calculationId} compact={!md}
             onChange={id => showOrder(orderId, id)} /> : null}
-        </Drawer>
+        </Drawer> : null}
       </>}
   </Flex>;
 }

@@ -10,6 +10,7 @@ const permissions = {
   CLUB_COMMISSION_MANAGE: "团抽配置",
   CLUB_ORDERS_READ: "管理端订单查看",
   CLUB_FINANCE_READ: "管理端财务查看",
+  CLUB_WITHDRAWAL_PAY: "提现实付登记",
 };
 type Permission = keyof typeof permissions;
 const positions = { leader: "团长", deputy: "副团长", member: "团员" };

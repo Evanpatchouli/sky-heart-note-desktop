@@ -31,8 +31,8 @@ export function adjustmentPostings(record: ClubFinancialAdjustment, settlement?:
   }));
 }
 
-export function adjustmentBalance(records: readonly ClubFinancialAdjustment[], memberUserId: string | null, includeOrder: boolean,
-  settlements: ReadonlyMap<string, PostedOrderPenalties>, posted: readonly ClubBalanceEntry[] = []): ClubBalance {
+export function adjustmentLedger(records: readonly ClubFinancialAdjustment[], memberUserId: string | null, includeOrder: boolean,
+  settlements: ReadonlyMap<string, PostedOrderPenalties>, posted: readonly ClubBalanceEntry[]) {
   const entries: ClubBalanceEntry[] = [...posted];
   let balance = posted.reduce((sum, entry) => sum + BigInt(entry.amountCents), 0n);
   for (const record of records) {
@@ -43,6 +43,12 @@ export function adjustmentBalance(records: readonly ClubFinancialAdjustment[], m
       balance += BigInt(data.amountCents);
     }
   }
+  return { balance, entries };
+}
+
+export function adjustmentBalance(records: readonly ClubFinancialAdjustment[], memberUserId: string | null, includeOrder: boolean,
+  settlements: ReadonlyMap<string, PostedOrderPenalties>, posted: readonly ClubBalanceEntry[] = []): ClubBalance {
+  const { balance, entries } = adjustmentLedger(records, memberUserId, includeOrder, settlements, posted);
   if (!Number.isSafeInteger(Number(balance))) throw new RangeError('余额超出安全整数范围');
   entries.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.eventId.localeCompare(b.eventId));
   return { balanceCents: Number(balance), entries };

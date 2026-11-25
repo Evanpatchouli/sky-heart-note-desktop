@@ -39,6 +39,7 @@
 | `CLUB_COMMISSION_MANAGE` | 在团员端或管理端读取和更新每次团抽。管理端的优惠设置沿用此权限。 |
 | `CLUB_ORDERS_READ` | 通过管理端会话读取本团订单的监管视图。与团抽配置权限合用可读已派发订单的规则摘要。 |
 | `CLUB_FINANCE_READ` | 通过管理端会话读取相应财务明细。 |
+| `CLUB_WITHDRAWAL_PAY` | 在管理端查看获批提现并登记实际线下付款。由团长授予负责付款的管理端账号。 |
 
 管理端准入由平台角色管理。每次业务请求实时核对当前账号的有效成员身份、职务和所需单项权限。授予或收回在已登录账号的下次请求生效。仅团长可修改名称、管理授权和副团长职务。
 
@@ -525,6 +526,19 @@ pnpm --dir server club:configure notify employee important sample.event.001 00A1
 `requestId` 为 UUID v4。同一提交人重试相同申请或发布请求时返回同一记录，同一补偿实退以补偿 ID 和请求 ID 识别重试。决定与实退使用 `revision` 条件写入。批准或驳回的决定、实退金额和时间、登记人及选填凭据均随原调整记录保存。
 
 独立罚款将有效决定作为本人借记与团费贷记的共同凭据，两项使用相同流水事件键 `club.penalty:<罚款ID>`。订单罚款生效后纳入核算，实际余额在结单时变化。结单写入方须在同一次 `club_orders` 原子更新中写入 `closedAt` 和 `settlementPenaltyIds`（本次核算冻结的本单生效罚款 ObjectId 数组）。`adjustmentPostings` 按确切 ID 与生效时间核对后生成个人借记和团费贷记。订单结单或取消后不再新增或批准该单的关联罚款，原生效操作可按原请求重试。团费补偿以每笔实退款为团费支出凭据，批准后的待退款进入订单应退，退款登记后进入实际流水。结单按扣罚前送心报酬入账，派抽、团抽、优惠与赠送成本按各自分录核算。已冻结罚款和已登记补偿由原记录提供入账依据。
+
+### 个人余额提现
+
+团员在个人余额页申请提现。申请和批准占用可申请金额，账面余额在每笔实际打款登记时扣减。团长或副团长可批准或驳回，驳回释放占用。获批后的分次实付合计达到申请金额时办结。每笔实付关联原申请、时间和经办人，可在本人流水中核对。
+
+| 请求 | 经办与数据 |
+| --- | --- |
+| `GET /api/employee/club/withdrawals` | 查看本人的申请、决定及实付记录。 |
+| `POST /api/employee/club/withdrawals` | 有效成员提交 `{ requestId, amountCents }`。金额为正整数分。 |
+| `GET /api/employee/club/withdrawals/review` | 团长或副团长查看待审申请。 |
+| `PATCH /api/employee/club/withdrawals/:id/decision` | 团长或副团长提交 `{ decision }`，取值为 `approved` 或 `rejected`。 |
+| `GET /api/admin/club/withdrawals` | 具有 `CLUB_WITHDRAWAL_PAY` 权限的经办人查看已批准和已实付申请。 |
+| `POST /api/admin/club/withdrawals/:id/payments` | 财务在线下打款后提交 `{ requestId, amountCents, occurredAt, transferReference? }`。发生时间带时区，同一笔付款重试沿用原 UUID v4。同一申请中多笔同刻同额的实际转账可用渠道和流水号区分。 |
 
 ## 历史按颗结算计算单
 

@@ -67,6 +67,10 @@ import { ClubFinancialAdjustment, ClubFinancialAdjustmentSchema } from './club-f
 import { AdminClubFinancialAdjustmentController, EmployeeClubFinancialAdjustmentController } from './club-financial-adjustment.controller';
 import { ClubFinancialAdjustmentService } from './club-financial-adjustment.service';
 import { ClubTerminationService } from './club-termination.service';
+import { AdminClubWithdrawalController, EmployeeClubWithdrawalController } from './club-withdrawal.controller';
+import { CLUB_WITHDRAWAL_EVENT_MODEL, ClubWithdrawalEventSchema } from './club-withdrawal.schema';
+import { ClubWithdrawalService } from './club-withdrawal.service';
+import { ClubWithdrawalStore } from './club-withdrawal.store';
 
 @Module({
   imports: [
@@ -89,12 +93,15 @@ import { ClubTerminationService } from './club-termination.service';
       { name: ClubSettlementCalculation.name, schema: ClubSettlementCalculationSchema },
       { name: ClubSettlementEvidence.name, schema: ClubSettlementEvidenceSchema },
       { name: ClubFinancialAdjustment.name, schema: ClubFinancialAdjustmentSchema },
+      { name: CLUB_WITHDRAWAL_EVENT_MODEL, schema: ClubWithdrawalEventSchema },
     ]),
   ],
   controllers: [
     ClubSettlementCorrectionController,
     AdminClubFinancialAdjustmentController,
     EmployeeClubFinancialAdjustmentController,
+    AdminClubWithdrawalController,
+    EmployeeClubWithdrawalController,
     ClientGiftPriceAdjustmentController,
     EmployeeGiftPriceAdjustmentController,
     ClientContinuationController,
@@ -119,6 +126,8 @@ import { ClubTerminationService } from './club-termination.service';
   providers: [
     ClubSettlementCorrectionService,
     ClubFinancialAdjustmentService,
+    ClubWithdrawalService,
+    ClubWithdrawalStore,
     ClubPromotionService,
     ClubContinuationService,
     ClubGiftSupervision,

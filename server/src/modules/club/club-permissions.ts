@@ -3,6 +3,7 @@ export const CLUB_PERMISSIONS = [
   'CLUB_MEMBERS_MANAGE',
   'CLUB_COMMISSION_MANAGE',
   'CLUB_FINANCE_READ',
+  'CLUB_WITHDRAWAL_PAY',
 ] as const;
 
 export type ClubPermission = (typeof CLUB_PERMISSIONS)[number];

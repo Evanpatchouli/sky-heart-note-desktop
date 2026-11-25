@@ -5,13 +5,14 @@ import { isObjectIdOrHexString, Model, Types, type QueryFilter } from 'mongoose'
 import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';
 import { AppNotificationService } from './app-notification.service';
-import { adjustmentBalance } from './club-adjustment-ledger';
+import { adjustmentBalance, adjustmentLedger } from './club-adjustment-ledger';
 import { ClubDirectoryService } from './club-directory.service';
 import type { DecideClubAdjustmentDto, PublishClubPenaltyDto, RecordCompensationRefundDto, RequestClubAdjustmentDto } from './club-financial-adjustment.dto';
 import { ClubFinancialAdjustment, type OrderAdjustmentCommand } from './club-financial-adjustment.schema';
 import { financialAdjustmentView, personalPenalty, type PostedOrderPenalties } from './club-gift-settlement-adjustments';
 import { ClubOrder } from './club-order.schema';
 import { settlementBalanceEntries } from './club-settlement-close';
+import { ClubWithdrawalStore } from './club-withdrawal.store';
 import { CLUB_ID } from './club.schema';
 
 const durable = { writeConcern: { w: 'majority', j: true } } as const;
@@ -25,6 +26,7 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
     @InjectModel(ClubOrder.name) private readonly orders: Model<ClubOrder>,
     private readonly directory: ClubDirectoryService,
     private readonly notifications: AppNotificationService,
+    private readonly withdrawals: ClubWithdrawalStore,
   ) {}
 
   async onModuleInit() {
@@ -150,10 +152,10 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
 
   async personalBalance(actor: SessionUser): Promise<PersonalClubBalance> {
     await this.directory.requireMember(CLUB_ID, actor.id);
-    const { settlements, posted } = await this.balanceSettlements(actor.id);
-    const records = await this.approvedRecords(actor.id);
+    const { settlements, posted, records } = await this.balanceSources(actor.id);
+    const payments = await this.withdrawals.balanceEntries(actor.id);
     return {
-      ...adjustmentBalance(records, actor.id, false, settlements, posted),
+      ...adjustmentBalance(records, actor.id, false, settlements, [...posted, ...payments]),
       pendingPenalties: records.flatMap(record => {
         const view = financialAdjustmentView(record, settlements.get(record.orderId?.toHexString() ?? ''));
         const { penaltyPosting } = view;
@@ -165,9 +167,20 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
   async financeBalance(actor: SessionUser, userId?: string) {
     await this.directory.requireAdminPermission(CLUB_ID, actor, 'CLUB_FINANCE_READ');
     if (userId !== undefined && !USER_ID_PATTERN.test(userId)) throw new BadRequestException('请输入四位用户 ID');
+    const { settlements, posted, records } = await this.balanceSources(userId);
+    const payments = userId ? await this.withdrawals.balanceEntries(userId) : [];
+    return adjustmentBalance(records, userId ?? null, true, settlements, [...posted, ...payments]);
+  }
+
+  async memberBalanceBeforeWithdrawals(userId: string) {
+    const { settlements, posted, records } = await this.balanceSources(userId);
+    return adjustmentLedger(records, userId, false, settlements, posted).balance;
+  }
+
+  private async balanceSources(userId?: string) {
     const { settlements, posted } = await this.balanceSettlements(userId ?? null);
     const records = await this.approvedRecords(userId);
-    return adjustmentBalance(records, userId ?? null, true, settlements, posted);
+    return { settlements, posted, records };
   }
 
   private async balanceSettlements(userId: string | null) {
