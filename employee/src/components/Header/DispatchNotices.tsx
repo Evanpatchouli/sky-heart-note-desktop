@@ -4,8 +4,9 @@ import { Alert, Badge, Button, Empty, Flex, Modal, Spin, Tag } from "antd";
 import dayjs from "dayjs";
 import { Link } from "react-router";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import { dispatchNoticeRoute, dispatchNoticesRoute } from "#/service/dispatch-notices";
+import { dispatchNoticeReadEvent, dispatchNoticeRoute, dispatchNoticesRoute } from "#/service/dispatch-notices";
 import { employeeRequest } from "#/service/request";
+import useEmitter from "#/utils/useEmitter";
 import { ClientOrderNoticeList, useClientOrderNotices } from "./ClientOrderNotices";
 
 type Notice = {
@@ -23,6 +24,7 @@ type NoticePage = Unread & { items: Notice[]; nextCursor: string | null };
 
 export default function DispatchNotices() {
   const { token } = useAuthSession();
+  const { useSubscription } = useEmitter();
   const [hasUnread, setHasUnread] = useState(false);
   const [open, setOpen] = useState(false);
   const clientOrders = useClientOrderNotices(open);
@@ -34,6 +36,7 @@ export default function DispatchNotices() {
   const [readError, setReadError] = useState("");
   const [marking, setMarking] = useState<string>();
 
+  useSubscription(dispatchNoticeReadEvent, () => setUnreadAttempt(value => value + 1));
   useEffect(() => {
     let request: AbortController | undefined;
     const refreshUnread = () => {
@@ -133,8 +136,8 @@ export default function DispatchNotices() {
               <code className="club-order-number">{notice.orderId}</code>
               <Flex align="center" gap="middle" wrap>
                 <Link className="member-dispatch-notice__link"
-                  to={{ pathname: "/club/gift-claims", search: new URLSearchParams({ orderId: notice.orderId }).toString() }}
-                  onClick={() => setOpen(false)}>查看按次派单</Link>
+                  to={{ pathname: "/claim-board", search: new URLSearchParams({ noticeId: notice.id }).toString() }}
+                  onClick={() => setOpen(false)}>前往接单区</Link>
                 {notice.readAt ? null : <Button loading={marking === notice.id} disabled={marking !== undefined}
                   onClick={() => void markRead(notice.id)}>标为已读</Button>}
               </Flex>

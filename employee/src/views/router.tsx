@@ -12,8 +12,13 @@ const errorElement = <><Header /><ErrorPage /></>;
 export default createBrowserRouter([
   { path: "/", element: <Root />, errorElement },
   {
+    path: "/claim-board",
+    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims /></Suspense>,
+    errorElement,
+  },
+  {
     path: "/club/gift-claims",
-    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载按次接单…</p></>}><GiftClaims /></Suspense>,
+    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims /></Suspense>,
     errorElement,
   },
   {

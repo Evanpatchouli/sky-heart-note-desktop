@@ -52,6 +52,14 @@ export class ClubDispatchNoticeController {
     return Resp.success(await this.notices.unread(user.id));
   }
 
+  @Get(':noticeId/claim-board')
+  async locate(
+    @AuthUser() user: SessionUser,
+    @Param('noticeId') noticeId: string,
+  ) {
+    return Resp.success(await this.notices.locate(user.id, noticeId));
+  }
+
   @Patch(':noticeId/read')
   async markRead(
     @AuthUser() user: SessionUser,

@@ -53,7 +53,7 @@ export default function Header() {
         </nav>
         <div className="member-appbar__account">
           {pathname === "/" ? <Link className="member-appbar__dispatch-link" to="/club/dispatch">派单准备</Link> : null}
-          {pathname !== "/club/gift-claims" && <Link className="member-appbar__dispatch-link" to="/club/gift-claims">按次接单</Link>}
+          {pathname !== "/claim-board" && pathname !== "/club/gift-claims" && <Link className="member-appbar__dispatch-link" to="/claim-board">接单区</Link>}
           <Timenow />
           <DispatchNotices key={user.token} />
           <Dropdown

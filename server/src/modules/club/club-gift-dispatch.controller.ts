@@ -1,6 +1,7 @@
 import { CLUB_ID } from './club.schema';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
-import { IsMongoId, ValidateIf } from 'class-validator';
+import { IsIn, IsMongoId, ValidateIf } from 'class-validator';
+import type { GiftClaimFilter } from '@webapp-template/common';
 import type { SessionUser } from '../../auth/app-access';
 import { AppAccess, AuthUser } from '../../auth/auth.decorator';
 import Resp from '../../common/models/Resp';
@@ -11,6 +12,10 @@ class GiftClaimQuery {
   @ValidateIf(input => input.after !== undefined)
   @IsMongoId()
   after?: string;
+
+  @ValidateIf(input => input.filter !== undefined)
+  @IsIn(['all', 'public', 'directed'])
+  filter?: GiftClaimFilter;
 }
 
 @AppAccess('employee')
@@ -43,7 +48,7 @@ export class ClubGiftDispatchController {
 
   @Get('gift-claims')
   async list(@AuthUser() user: SessionUser, @Query() query: GiftClaimQuery) {
-    return Resp.success(await this.dispatch.list(CLUB_ID, user.id, query.after));
+    return Resp.success(await this.dispatch.list(CLUB_ID, user.id, query));
   }
 
   @Get('gift-claims/:orderId')

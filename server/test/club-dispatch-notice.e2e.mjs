@@ -57,6 +57,7 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
   const employee = (path, ...args) => request('employee', path, ...args);
   const readNotice = (noticeId, actor, status = 200) =>
     employee(inbox + '/' + noticeId + '/read', actor, 'PATCH', undefined, status);
+  const locate = (noticeId, actor) => employee(inbox + '/' + noticeId + '/claim-board', actor);
   const orderInput = () => ({
     requestId: randomUUID(), recipientGameAccount: '测试用私有游戏账号', requestedGiftTimes: 20,
   });
@@ -150,6 +151,17 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
   await employee(inbox + '?after=invalid', dispatcher, 'GET', undefined, 400);
   await employee(club + '/gift-claims/' + direct.id, unmarked, 'GET', undefined, 404);
   assert.equal((await employee(club + '/gift-claims/' + direct.id, directedMember)).id, direct.id);
+  const directedNotice = (await employee(inbox, directedMember)).items[0];
+  assert.deepEqual(await locate(unmarkedNotice.id, directedMember), { status: 'missing' });
+  assert.deepEqual(await locate('invalid', unmarked), { status: 'missing' });
+  assert.deepEqual(await locate(unmarkedNotice.id, unmarked), {
+    status: 'directed_elsewhere', clubId: 'club', readAt: null,
+  });
+  const directedTarget = await locate(directedNotice.id, directedMember);
+  assert.equal(directedTarget.status, 'gift_located');
+  assert.equal(directedTarget.order.id, direct.id);
+  assert.equal(directedTarget.order.recipientGameAccount, undefined);
+  assert.deepEqual(directedTarget.order.segments[0].offers.map(({ userId }) => userId), [directedMember.id]);
 
   // MongoDB permits one insert from the unordered batch and rejects the rest.
   const clientOrderId = new Types.ObjectId(client.id);
@@ -184,9 +196,10 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
   await assign(outsider);
   assert.deepEqual((await employee(inbox, unmarked)).items, []);
   await readNotice(unmarkedNotice.id, unmarked, 404);
+  assert.deepEqual(await locate(unmarkedNotice.id, unmarked), { status: 'missing' });
   assert.deepEqual(await publish(client, clientPublication), clientPublished);
   await restartServer();
-  await startPeer();
+  const restartedPeer = await startPeer();
   await db.command({ collMod: records.collectionName, validator: {} });
   await eventually('重启后的后台应补齐原有快照并完成事件', async () => !(await stored(client)).publication.pending);
   const recovered = await records.find({ orderId: clientOrderId }).toArray();
@@ -213,4 +226,99 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
   assert.equal(oldPublication.publicationId, undefined);
   assert.equal((await orders.findOne({ _id: legacyId })).publication, undefined);
   assert.equal(await records.countDocuments({ orderId: legacyId }), 0);
+
+  const unpublishedAllocation = await employee(club + '/orders', dispatcher, 'POST', orderInput(), 201);
+  await prepare(unpublishedAllocation);
+  await publish(unpublishedAllocation, {
+    requestId: randomUUID(), pricingRevision: 1, ruleVersion: 1, commissionReviewRevision: 0,
+  });
+  const findNotice = async (order, actor) => {
+    let notice;
+    await eventually('当前团员应收到该单的通知', async () => {
+      notice = (await employee(inbox, actor)).items.find(item => item.orderId === order.id);
+      return Boolean(notice);
+    });
+    return notice;
+  };
+  assert.equal((await locate((await findNotice(unpublishedAllocation, unmarked)).id, unmarked)).status,
+    'awaiting_times_allocation');
+
+  const contested = await request('client', '/client/orders', customer, 'POST', {
+    ...orderInput(), requestedGiftTimes: 5, estimatedReceivedHearts: 10, dispatcherUserId: dispatcher.id,
+  }, 201);
+  const route = orderRoute(contested);
+  await employee(route + '/pricing', dispatcher, 'PATCH', {
+    expectedRevision: 0, ruleVersion: 1, dispatchFeeCents: 5,
+    giftSegments: [{ period: 'double', paidGiftTimes: 5, dailyGiftTimes: 5, unitPriceCents: 50 }],
+  });
+  await employee(route + '/receipts', dispatcher, 'POST', {
+    requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: 250,
+    receivedAt: '2026-11-24T19:40:00+08:00',
+  }, 201);
+  const day = '2026-11-25';
+  await publish(contested, {
+    ...publicationInput(true),
+    giftDispatchSegments: [{ segmentIndex: 0, startDate: day, endDate: day, openToClaim: true, directed: [] }],
+  });
+  const actors = [directedMember, unmarked];
+  const publicNotices = await Promise.all(actors.map(actor => findNotice(contested, actor)));
+  assert.notEqual(publicNotices[0].id, publicNotices[1].id);
+  const targets = await Promise.all(actors.map((actor, index) => locate(publicNotices[index].id, actor)));
+  for (const target of targets) {
+    assert.equal(target.status, 'gift_located');
+    assert.equal(target.order.recipientGameAccount, undefined);
+    assert.equal(target.order.segments[0].publicDailyGiftTimes, 5);
+    assert.equal(target.order.segments[0].publicRemainingGiftTimes, 5);
+    assert.deepEqual(target.order.segments[0].shares, []);
+  }
+  const markedPublic = await readNotice(publicNotices[0].id, actors[0]);
+  assert.equal((await locate(publicNotices[0].id, actors[0])).readAt, markedPublic.readAt);
+  const claimRoute = club + '/gift-claims/' + contested.id;
+  const input = dailyGiftTimes => ({ requestId: randomUUID(), kind: 'public', segmentIndex: 0, dailyGiftTimes });
+  const ownClaim = await employee(claimRoute, dispatcher, 'POST', { ...input(4), actualReceivedHearts: 8 }, 201);
+  assert.deepEqual([ownClaim.dailyGiftTimes, ownClaim.giftTimes, ownClaim.actualReceivedHearts], [4, 4, 8]);
+  const inputs = actors.map(() => input(1));
+  const results = await Promise.all(actors.map((actor, index) =>
+    employee(claimRoute, actor, 'POST', inputs[index], 201, index ? restartedPeer : undefined)));
+  assert.deepEqual(results.map(({ giftTimes }) => giftTimes).sort(), [0, 1]);
+  for (const [index, actor] of actors.entries()) {
+    assert.deepEqual(await employee(claimRoute, actor, 'POST', inputs[index], 201), results[index]);
+    const target = await locate(publicNotices[index].id, actor);
+    assert.equal(target.order.segments[0].publicRemainingGiftTimes, 0);
+    assert.equal(target.order.segments[0].publicDailyGiftTimes, 0);
+    assert.equal(target.order.segments[0].shares.length, results[index].giftTimes);
+    assert.ok((await employee(club + '/gift-claims', actor)).items.some(order => order.id === client.id));
+  }
+  assert.equal((await request('client', '/client/orders/' + contested.id, customer)).deliveryProgress.deliveredGiftTimes, 0);
+  const board = club + '/gift-claims';
+  assert.ok((await employee(board + '?filter=all', unmarked)).items.some(order => order.id === contested.id));
+  assert.deepEqual((await employee(board + '?filter=public', unmarked)).items.map(order => order.id), [client.id]);
+  assert.deepEqual((await employee(board + '?filter=directed', directedMember)).items.map(order => order.id).sort(),
+    [direct.id, legacyId.toHexString()].sort());
+  assert.deepEqual((await employee(board + '?filter=directed', unmarked)).items, []);
+  await employee(board + '/' + direct.id, directedMember, 'POST', {
+    requestId: randomUUID(), segmentIndex: 0, kind: 'directed', offerId: directedTarget.order.segments[0].offers[0].id,
+  }, 201);
+  assert.deepEqual((await employee(board + '?filter=directed', directedMember)).items.map(order => order.id),
+    [legacyId.toHexString()]);
+  await employee(board + '?filter=invalid', unmarked, 'GET', undefined, 400);
+
+  const { _id: _publicId, publication: _publicEvent, ...availableOrder } = await stored(client);
+  const { _id: _contestedId, publication: _contestedEvent, ...exhaustedOrder } = await stored(contested);
+  const copy = (order, index) => ({
+    ...order, _id: new Types.ObjectId('7fffffff' + index.toString(16).padStart(16, '0')), requestId: randomUUID(),
+  });
+  const openCopies = Array.from({ length: 26 }, (_, index) => copy(availableOrder, index));
+  const fullCopies = Array.from({ length: 26 }, (_, index) => copy(exhaustedOrder, index + openCopies.length));
+  await orders.insertMany([...openCopies, ...fullCopies]);
+  const firstOpenPage = await employee(board + '?filter=public', unmarked);
+  assert.deepEqual(firstOpenPage.items.map(order => order.id), openCopies.slice(1).reverse().map(order => order._id.toHexString()));
+  assert.equal(firstOpenPage.nextCursor, openCopies[1]._id.toHexString());
+  const lastOpenPage = await employee(board + '?filter=public&after=' + firstOpenPage.nextCursor, unmarked);
+  assert.deepEqual(lastOpenPage.items.map(order => order.id), [openCopies[0]._id.toHexString(), client.id]);
+  assert.equal(lastOpenPage.nextCursor, null);
+
+  await orders.updateOne({ _id: new Types.ObjectId(contested.id) }, { $set: { dispatchStatus: 'cancelled' } });
+  assert.equal((await locate(publicNotices[0].id, actors[0])).status, 'withdrawn');
+  await employee(claimRoute, actors[0], 'POST', input(2), 404);
 });

@@ -153,12 +153,13 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 直接派单和客户端下单统一在本单派单人成功发布后通知本团。收件名单固定为发布当时具有团员端准入的有效团员，包括派单人、没有派单标记的团员和未订阅系统推送的团员。工作人员保存草稿或老板下单、系统确定接待派单人时，订单仍待派发。此时本单派单人可在同一铃铛查看待接待的客户端订单。
 
-后台按发布 ID 和收件人去重写入，服务重启后可补齐原名单中的通知，保留已写记录及首次已读时间。新派单在团员端以「重要」显示，当前团员可核对订单号和发布时间、标记已读或查看原有「按次接单」页。订单详情仍按当前业务权限核对。
+后台按发布 ID 和收件人去重写入，服务重启后可补齐原名单中的通知，保留已写记录及首次已读时间。新派单在团员端以「重要」显示。点击「前往接单区」进入 `/claim-board?noticeId=…`，把对应的按次订单置于列表顶部并标为已读。打开、返回或刷新只查询接单数据，领取需本人主动提交。通知不可访问、目标订单被抢完、撤回、停送、尚未配置分工或仅指定给他人时，接单区提示当前状态，其他有权查看的订单仍可浏览。
 
 | 方法 | 路由 | 操作 |
 | --- | --- | --- |
 | `GET` | `/api/employee/dispatch-notices` | 查询本人通知。使用 `limit`（默认 25，最多 100）和 `after` 分页，返回 `items`、`nextCursor` 和 `hasUnread`。通知的 `type` 为 `important`，`targetApp` 为 `employee`。 |
 | `GET` | `/api/employee/dispatch-notices/unread` | 返回本团有效团员本人通知的 `hasUnread`。 |
+| `GET` | `/api/employee/dispatch-notices/:noticeId/claim-board` | 按本人通知、当前成员身份及原发布事件定位，返回 `status`。`gift_located` 同时返回当前可见的 `order`。超出通知权限时返回 `missing`。 |
 | `PATCH` | `/api/employee/dispatch-notices/:noticeId/read` | 标记本人通知已读，返回通知 ID 和首次已读时间。 |
 
 ### 按次优惠
@@ -173,7 +174,9 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 ### 按次接单与领取汇总
 
-团员从「按次接单」打开本俱乐部已派发订单。写入使用 `POST /api/employee/club/gift-claims/:orderId`。公开抢单传 UUID v4 `requestId`、`segmentIndex`、`kind: "public"` 和本段本人申报的总日量 `dailyGiftTimes`。提高总日量时只按较前次增加的日量分配，填写相同或更低总日量的新请求返回 HTTP 409。定向承接传 `kind: "directed"` 和本人的 `offerId`。两种请求都可另填 `actualReceivedHearts`。
+团员从导航进入 `/claim-board` 查看本俱乐部已派发的按次订单。列表和详情使用 `GET /api/employee/club/gift-claims` 和 `GET /api/employee/club/gift-claims/:orderId`。列表支持 `filter=all`（默认）、`filter=public`（公开份额仍可领取）及 `filter=directed`（本人有待确认的指定份额）。按筛选后的订单分页，下一页沿用当前筛选和返回的 `nextCursor`。每段分别显示公开待领总次数、最高日量、按日余量、本人获指派的份额及已承接记录。本人承接后可核对接收游戏号。
+
+主动领取使用 `POST /api/employee/club/gift-claims/:orderId`。公开抢单传 UUID v4 `requestId`、`segmentIndex`、`kind: "public"` 和本段本人申报的总日量 `dailyGiftTimes`。提高总日量时只按较前次增加的日量分配，填写相同或更低总日量的新请求返回 HTTP 409。定向承接传 `kind: "directed"` 和本人的 `offerId`。两种请求都可另填 `actualReceivedHearts`，此字段单独记录爱心颗数。领取只分配赠送次数，日报更新履约实绩。
 
 回执返回申报日量 `requestedDailyGiftTimes`、实际获分的最高日量 `dailyGiftTimes`、实际日程 `schedule` 和份额总次数 `giftTimes`。追加时另返回 `additionalRequestedDailyGiftTimes`。正份额有 `shareId`，0 次结果只保存回执。相同订单、团员、标识和内容的重试返回原回执，包括截量结果。本人用相同标识提交不同内容返回 HTTP 409。订单撤回或停止承接后，有效团员仍可重试本人已保存的操作，或者用 `GET /api/employee/club/gift-claims/:orderId/receipts/:requestId` 只读核对；新的领取依然受当前状态限制。
 

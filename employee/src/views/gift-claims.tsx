@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Spin, Tag, Typography } from "antd";
 import { Link, useSearchParams } from "react-router";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import type { GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
+import type { GiftClaimFilter, GiftClaimNoticeTarget, GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
 import Header from "#/components/Header";
+import { dispatchNoticeReadEvent, dispatchNoticeRoute } from "#/service/dispatch-notices";
 import { employeeRequest } from "#/service/request";
+import useEmitter from "#/utils/useEmitter";
 import GiftDeliveryDiary from "./gift-delivery-diary";
 import { GiftSchedule } from "./club-dispatch/gift-allocation";
 import { GiftExecutionAccounts } from "./club-dispatch/gift-execution-accounts";
@@ -20,6 +22,33 @@ type ClaimReceipt = PendingClaim & { result: GiftClaimResult };
 const sources = { direct_dispatch: "直接派单", client_order: "客户端下单" };
 const orderIdPattern = /^[a-f0-9]{24}$/i;
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const filters = [
+  { value: "all", label: "全部" },
+  { value: "public", label: "公开可抢" },
+  { value: "directed", label: "指定给我" },
+] as const;
+const noticeMessages = {
+  missing: "这条派单通知不存在或当前无法查看",
+  unavailable: "当前无法查看这条通知对应的派单",
+  withdrawn: "这笔派单已撤回",
+  directed_elsewhere: "这笔派单没有指定给你的份额",
+  awaiting_times_allocation: "这笔订单尚未配置可承接的计价段",
+  located: "这笔通知对应原有按颗派单",
+};
+type NoticeTarget = (GiftClaimNoticeTarget | { status: "located"; clubId: string }) & { readAt?: string | null };
+
+const queueKey = (userId: string) => `sky-heart.employee.gift-claim-queue.v1:${userId}`;
+
+function readQueue(userId: string) {
+  try { return new URLSearchParams(sessionStorage.getItem(queueKey(userId)) ?? ""); }
+  catch { return new URLSearchParams(); }
+}
+
+function queueSearch(filter: GiftClaimFilter, after?: string) {
+  const search = new URLSearchParams({ filter });
+  if (after) search.set("after", after);
+  return search;
+}
 
 function pendingKey(prefix: string, { orderId, input }: PendingClaim) {
   return `${prefix}${orderId}:${input.segmentIndex}:${input.kind}:${input.offerId ?? ""}:${input.requestId}`;
@@ -56,9 +85,16 @@ function failure(error: unknown) {
   return error instanceof RequestError ? error.message : "请求失败，请检查网络连接后重试";
 }
 
-export default function GiftClaims() {
+export default function GiftClaims({ legacyClaimPath }: { legacyClaimPath?: string }) {
   const { id, token } = useAuthSession();
   const [params, setParams] = useSearchParams();
+  const noticeId = params.get("noticeId") ?? undefined;
+  const orderId = noticeId === undefined ? params.get("orderId") ?? undefined : undefined;
+  const savedQueue = readQueue(id);
+  const rawFilter = params.get("filter") ?? savedQueue.get("filter");
+  const filter = rawFilter === "public" || rawFilter === "directed" ? rawFilter : "all";
+  const cursor = params.get("after") ?? (!params.has("filter") ? savedQueue.get("after") : null);
+  const after = cursor && orderIdPattern.test(cursor) ? cursor : undefined;
   const [club, setClub] = useState<Club | null>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -73,32 +109,65 @@ export default function GiftClaims() {
     return () => controller.abort();
   }, [attempt, token]);
 
+  useEffect(() => {
+    if (noticeId !== undefined || orderId) return;
+    try { sessionStorage.setItem(queueKey(id), queueSearch(filter, after).toString()); }
+    catch { /* The URL retains the current selection. */ }
+  }, [id, noticeId, orderId, filter, after]);
+
+  function goToPage(next?: string) {
+    const search = queueSearch(filter, next);
+    if (noticeId !== undefined) search.set("noticeId", noticeId);
+    setParams(search);
+  }
+
   return <>
     <Header />
     <main style={{ flex: 1, overflow: "auto", width: "100%", padding: 16, boxSizing: "border-box" }}>
       <Flex vertical gap="middle" style={{ maxWidth: 820, marginInline: "auto" }}>
-        <Link to="/club/dispatch">派单准备</Link>
-        <Typography.Title level={3} style={{ margin: 0 }}>按次接单</Typography.Title>
+        <Flex gap="middle" wrap>
+          <Link to="/club/dispatch">派单准备</Link>
+          {legacyClaimPath && <Link to={legacyClaimPath}>查看按颗派单</Link>}
+        </Flex>
+        <Typography.Title level={3} style={{ margin: 0 }}>接单区</Typography.Title>
         {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => {
           setError("");
           setAttempt(value => value + 1);
         }}>重试</Button>} /> : club === undefined ? <Spin aria-label="加载俱乐部" /> : club ? <>
           <Typography.Text strong>{club.name}</Typography.Text>
-          <Orders key={id + ":" + (params.get("orderId") ?? "")}
-            orderId={params.get("orderId") ?? undefined} onClearOrder={() => setParams({})} />
+          {!orderId && <Flex gap="small" wrap role="group" aria-label="筛选已发布派单">
+            {filters.map(({ value, label }) => <Button key={value} autoInsertSpace={false} aria-pressed={filter === value}
+              type={filter === value ? "primary" : "default"}
+              onClick={() => {
+                if (value !== filter || noticeId !== undefined) setParams(queueSearch(value));
+              }}>{label}</Button>)}
+          </Flex>}
+          <Orders key={JSON.stringify([id, token, noticeId, orderId])} noticeId={noticeId}
+            legacyClaimPath={legacyClaimPath} orderId={orderId} filter={filter} after={after} onPage={goToPage}
+            onClearOrder={() => setParams(queueSearch(filter, after), { replace: true })} />
         </> : <Empty description="当前账号尚无有效团员身份" />}
       </Flex>
     </main>
   </>;
 }
 
-function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () => void }) {
+function Orders({ orderId, noticeId, legacyClaimPath, filter, after, onPage, onClearOrder }: {
+  orderId?: string;
+  noticeId?: string;
+  legacyClaimPath?: string;
+  filter: GiftClaimFilter;
+  after?: string;
+  onPage: (cursor?: string) => void;
+  onClearOrder: () => void;
+}) {
   const { id, token } = useAuthSession();
+  const { emit } = useEmitter();
   const root = "club/gift-claims";
   const prefix = `sky-heart.employee.gift-claim.v1:${id}:`;
-  const [page, setPage] = useState<Page>();
-  const [after, setAfter] = useState<string>();
+  const [loadedPage, setLoadedPage] = useState<{ key: string; page: Page }>();
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<NoticeTarget>();
+  const [noticeError, setNoticeError] = useState("");
   const [claimError, setClaimError] = useState("");
   const [target, setTarget] = useState<Target>();
   const [diaryOrder, setDiaryOrder] = useState<GiftClaimOrder>();
@@ -108,21 +177,52 @@ function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () 
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const lock = useRef(false);
+  const pageKey = queueSearch(filter, after).toString();
+  const page = loadedPage?.key === pageKey ? loadedPage.page : undefined;
+
+  useEffect(() => {
+    if (noticeId === undefined) return;
+    if (!orderIdPattern.test(noticeId)) {
+      setNotice({ status: "missing" });
+      return;
+    }
+    const controller = new AbortController();
+    const route = dispatchNoticeRoute(noticeId);
+    employeeRequest<NoticeTarget>(`${route}/claim-board`, "GET", undefined, controller.signal)
+      .then(result => {
+        if (controller.signal.aborted || getAppToken("employee") !== token) return;
+        setNotice(result);
+        if (result.readAt !== null) return;
+        void employeeRequest(`${route}/read`, "PATCH", undefined, controller.signal).then(() => {
+          if (!controller.signal.aborted && getAppToken("employee") === token) {
+            emit({ type: dispatchNoticeReadEvent, payload: noticeId });
+          }
+        }).catch(() => {});
+      }).catch(err => {
+        if (controller.signal.aborted) return;
+        setNotice(undefined);
+        setNoticeError(failure(err));
+      });
+    return () => controller.abort();
+  }, [noticeId, token, attempt, emit]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const path = orderId ? `${root}/${orderId}` : after ? `${root}?after=${after}` : root;
+    setError("");
+    const path = orderId ? `${root}/${encodeURIComponent(orderId)}` : `${root}?${pageKey}`;
     async function load() {
       return orderId ? { items: [await employeeRequest<GiftClaimOrder>(path, "GET", undefined, controller.signal)], nextCursor: null }
         : employeeRequest<Page>(path, "GET", undefined, controller.signal);
     }
     load().then(data => {
-      if (!controller.signal.aborted) setPage(data);
+      if (!controller.signal.aborted) setLoadedPage({ key: pageKey, page: data });
     }).catch(err => {
-      if (!controller.signal.aborted) setError(failure(err));
+      if (controller.signal.aborted) return;
+      if (err instanceof RequestError && [401, 403, 404].includes(err.status)) setLoadedPage(undefined);
+      setError(failure(err));
     });
     return () => controller.abort();
-  }, [root, orderId, after, attempt, token]);
+  }, [root, orderId, pageKey, attempt, token]);
 
   const forget = useCallback((entry: PendingClaim) => {
     try { sessionStorage.removeItem(pendingKey(prefix, entry)); } catch { /* Keep the current page usable. */ }
@@ -184,6 +284,7 @@ function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () 
 
   function refresh() {
     setError("");
+    setNoticeError("");
     setAttempt(value => value + 1);
   }
 
@@ -193,11 +294,23 @@ function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () 
     setTarget(next);
   }
 
+  const located = notice?.status === "gift_located" ? notice.order : undefined;
+  const otherOrders = error ? [] : page?.items.filter(order => order.id !== located?.id) ?? [];
+  const orders = located ? [located, ...otherOrders] : otherOrders;
+
   return <>
     <Flex gap="small" wrap>
-      {orderId && <Button onClick={onClearOrder}>返回接单列表</Button>}
+      {(orderId || noticeId !== undefined) && <Button onClick={onClearOrder}>返回接单列表</Button>}
       <Button onClick={refresh}>刷新接单列表</Button>
     </Flex>
+    {noticeId !== undefined && (noticeError
+      ? <Alert type="warning" showIcon title={noticeError} action={<Button onClick={refresh}>重试定位</Button>} />
+      : !notice ? <Spin aria-label="定位派单" />
+        : notice.status !== "gift_located" && <Alert type="warning" showIcon
+          title={notice.status === "stopped" ? notice.reason : noticeMessages[notice.status]}
+          action={notice.status === "located" && legacyClaimPath
+            ? <Link to={{ pathname: legacyClaimPath, search: new URLSearchParams({ noticeId }).toString() }}>打开这笔按颗派单</Link>
+            : undefined} />)}
     {pending.length > 0 && <Card size="small" title="待确认的领取">
       <Flex vertical gap="small">{pending.map(entry => <Flex key={entry.input.requestId} justify="space-between" gap="small" wrap>
         <Typography.Text>订单 {entry.orderId} · 第 {entry.input.segmentIndex + 1} 段 · {
@@ -217,11 +330,13 @@ function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () 
     {claimError && <Alert type="error" showIcon title={claimError} />}
     {error ? <Alert type="error" showIcon title={error} action={<Button onClick={refresh}>重试</Button>} />
       : !page ? <Spin aria-label="加载接单列表" />
-      : !page.items.length ? <Empty description="暂无已派发的按次订单可接" />
-      : page.items.map(order => <Card key={order.id} title={`${sources[order.source]} · ${order.requestedGiftTimes} 次${order.promotionalGiftTimes ? ` + 赠 ${order.promotionalGiftTimes} 次` : ""}`} size="small">
+      : !orders.length && <Empty description={filter === "directed" ? "暂无指定给你待确认的按次派单"
+        : filter === "public" ? "暂无公开可抢的按次派单" : "暂无已派发的按次订单可接"} />}
+    {orders.map(order => <Card key={order.id} data-claim-order={order.id} title={`${order.id === located?.id ? "通知对应的派单 · " : ""}${sources[order.source]} · ${order.requestedGiftTimes} 次${order.promotionalGiftTimes ? ` + 赠 ${order.promotionalGiftTimes} 次` : ""}`} size="small">
         <p>订单 <code>{order.id}</code> · 派单人 {order.dispatcherUserId}</p>
         <p>建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "未记录" : `${order.estimatedReceivedHearts} 颗`}
           {order.recipientGameAccount ? ` · 接收游戏号 ${order.recipientGameAccount}` : ""}</p>
+        {order.claimBlockReason && <Alert type="info" showIcon title={order.claimBlockReason} />}
         {order.segments.some(segment => segment.shares.length > 0) &&
           <Button onClick={() => setDiaryOrder(order)}>我的日报</Button>}
         {order.segments.map(segment => {
@@ -229,12 +344,17 @@ function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () 
           const myGiftTimes = segment.shares.reduce((sum, share) => sum + share.netGiftTimes, 0);
           const publicTarget = { orderId: order.id, segmentIndex: segment.segmentIndex, previousDaily, myGiftTimes };
           return <section key={segment.segmentIndex} style={{ borderTop: "1px solid #DBE2EB", paddingBlock: 10 }}>
-            <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段{segment.promotionalGiftTimes ? " · 促销赠送" : ""}</Typography.Title>
+            <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段
+              {segment.quotePeriod === "double" ? " · 双倍期" : segment.quotePeriod === "normal" ? " · 普通期" : ""}
+              {segment.promotionalGiftTimes ? " · 促销赠送" : ""}
+            </Typography.Title>
             {segment.promotionalGiftTimes ? <p>整单付费次数完成后执行。</p> : null}
             <p>{segment.startDate} 至 {segment.endDate}</p>
             {previousDaily > 0 && <p>我已申报 {previousDaily} 次/日 · 当前承接 {myGiftTimes} 次</p>}
-            {segment.openToClaim && <p>公开待领 {segment.publicRemainingGiftTimes} 次
-              {segment.publicRemainingGiftTimes > 0 ? ` · 最高 ${segment.publicDailyGiftTimes} 次/日` : ""}</p>}
+            {order.acceptingClaims !== false && segment.openToClaim && <p>
+              公开待领 {segment.publicRemainingGiftTimes} 次 · 最高 {segment.publicDailyGiftTimes} 次/日
+              {segment.publicRemainingGiftTimes === 0 && " · 已抢完"}
+            </p>}
             {segment.publicRemainingGiftTimes > 0 && <>
               <GiftSchedule schedule={segment.publicSchedule} />
               <Button disabled={busy || pending.some(entry => matchingAction(entry, publicTarget)) || previousDaily >= Number.MAX_SAFE_INTEGER}
@@ -264,8 +384,8 @@ function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () 
         })}
       </Card>)}
     {(after || page?.nextCursor) && <Flex gap="small">
-      <Button disabled={!after} onClick={() => { setPage(undefined); setAfter(undefined); }}>返回首页</Button>
-      <Button disabled={!page?.nextCursor} onClick={() => { setAfter(page?.nextCursor ?? undefined); setPage(undefined); }}>下一页</Button>
+      <Button disabled={!after} onClick={() => { setError(""); onPage(); }}>返回首页</Button>
+      <Button disabled={!page?.nextCursor} onClick={() => { setError(""); onPage(page?.nextCursor ?? undefined); }}>下一页</Button>
     </Flex>}
     <Modal open={!!target} destroyOnHidden title={target?.offer ? "确认承接指定份额" : target?.previousDaily ? "提高申报日量" : "申报每日赠送次数"} footer={null}
       onCancel={() => !busy && setTarget(undefined)}>

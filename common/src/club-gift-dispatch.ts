@@ -65,6 +65,7 @@ export interface GiftClaimResult {
 
 export interface GiftDispatchSegment extends GiftWindow {
   segmentIndex: number;
+  quotePeriod?: GiftPriceSegment['period'];
   promotionalGiftTimes?: number;
   openToClaim: boolean;
   publicDailyGiftTimes: number;
@@ -105,5 +106,14 @@ export interface GiftClaimOrder {
   estimatedReceivedHearts?: number;
   recipientGameAccount?: string;
   acceptingClaims?: boolean;
+  claimBlockReason?: string;
   segments: GiftDispatchSegment[];
 }
+
+export type GiftClaimFilter = 'all' | 'public' | 'directed';
+
+export type GiftClaimNoticeTarget =
+  | { status: 'gift_located'; clubId: string; orderId: string; order: GiftClaimOrder }
+  | { status: 'withdrawn' | 'directed_elsewhere' | 'awaiting_times_allocation'; clubId: string }
+  | { status: 'stopped'; clubId: string; reason: string }
+  | { status: 'missing' | 'unavailable'; clubId?: string };

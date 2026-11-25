@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectModel } from '@nestjs/mongoose';
 import { giftSegmentTimes } from '@webapp-template/common';
 import type {
-  GiftAllocationTotals, GiftClaimOrder, GiftClaimResult, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput,
+  GiftAllocationTotals, GiftClaimFilter, GiftClaimNoticeTarget, GiftClaimOrder, GiftClaimResult,
+  GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput,
 } from '@webapp-template/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
@@ -61,8 +62,16 @@ function claimReceipt(state: GiftDispatchState, saved: StoredGiftClaim): GiftCla
   };
 }
 
+function claimBlockReason(order: ClubOrder & { dispatchWithdrawnAt?: Date; termination?: unknown; giftTermination?: unknown }) {
+  if (order.dispatchWithdrawnAt || order.dispatchStatus !== 'published') return '这笔派单已撤回';
+  if (order.giftTermination || order.termination || order.giftPriceAdjustmentState === 'stopped') return '这笔派单已停送';
+  if (order.closedAt) return '这笔派单已结单';
+  if (!acceptsGiftExecution(order)) return '这笔派单当前暂停接单';
+}
+
 function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
-  const acceptingClaims = acceptsGiftExecution(order);
+  const blockReason = claimBlockReason(order);
+  const acceptingClaims = !blockReason;
   const accountsByShare = new Map<string, ReturnType<typeof giftExecutionAccounts>>();
   const accounts = giftExecutionAccounts(order, userId);
   for (const account of accounts) {
@@ -79,9 +88,11 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
   const quotes = activeGiftSegments(order);
   const requested = publicRequestBySegment(order.giftDispatch?.claims ?? [], userId);
   const segments = authorizedSegments.map(segment => {
-    const view = giftSegmentView(segment, quotes[segment.segmentIndex], userId, acceptingClaims);
+    const quote = quotes[segment.segmentIndex];
+    const view = giftSegmentView(segment, quote, userId, acceptingClaims);
     return {
       ...view,
+      quotePeriod: quote.period,
       shares: view.shares.map(share => ({ ...share, executionGameAccounts: accountsByShare.get(share.id) ?? [] })),
       myPublicRequestedDailyGiftTimes: requested.get(segment.segmentIndex) ?? 0,
     };
@@ -96,8 +107,19 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
     ...(estimatedReceivedHearts === undefined ? {} : { estimatedReceivedHearts }),
     ...(hasOwnShare || order.dispatcherUserId === userId
       ? { recipientGameAccount: order.recipientGameAccount } : {}),
-    segments, acceptingClaims,
+    segments, acceptingClaims, claimBlockReason: blockReason,
   };
+}
+
+export function locateGiftClaimOrder(order: ClubOrder, userId: string): GiftClaimNoticeTarget {
+  const { clubId } = order;
+  const reason = claimBlockReason(order);
+  if (reason) return { status: 'stopped', clubId, reason };
+  if (!order.giftDispatch?.segments.length) return { status: 'awaiting_times_allocation', clubId };
+  const view = readOrder(order, userId);
+  return view.segments.length
+    ? { status: 'gift_located', clubId, orderId: view.id, order: view }
+    : { status: 'directed_elsewhere', clubId };
 }
 
 function totalAllocation(
@@ -215,14 +237,38 @@ export class ClubGiftDispatchService {
     throw concurrentChange();
   }
 
-  async list(clubId: string, userId: string, after?: string) {
+  async list(clubId: string, userId: string, { after, filter = 'all' }: { after?: string; filter?: GiftClaimFilter }) {
     await this.directory.requireMember(clubId, userId);
     const limit = 25;
-    const orders = await this.orders.find({
-      ...this.readScope(clubId, userId), ...(after ? { _id: { $lt: new Types.ObjectId(after) } } : {}),
-    }).sort({ _id: -1 }).limit(limit + 1).lean();
-    return { items: orders.slice(0, limit).map(order => readOrder(order, userId)),
-      nextCursor: orders.length > limit ? orders[limit - 1]._id.toHexString() : null };
+    const scope = filter === 'all' ? this.readScope(clubId, userId) : { ...claimable, clubId,
+      ...(filter === 'public'
+        ? { 'giftDispatch.segments.openToClaim': true }
+        : { 'giftDispatch.segments.offers': { $elemMatch: { userId, accepted: false } } }),
+    };
+    const query = this.orders.find({
+      ...scope, ...(after ? { _id: { $lt: new Types.ObjectId(after) } } : {}),
+    }).sort({ _id: -1 }).lean();
+
+    let orders: GiftClaimOrder[];
+    if (filter === 'public') {
+      // Public capacity depends on the segment schedule and pending offers.
+      // Calculate it with the same inventory rules used for a claim, before paging.
+      orders = [];
+      const cursor = query.cursor({ batchSize: limit + 1 });
+      try {
+        for await (const order of cursor) {
+          const view = readOrder(order, userId);
+          if (!view.segments.some(segment => segment.publicRemainingGiftTimes > 0)) continue;
+          orders.push(view);
+          if (orders.length > limit) break;
+        }
+      } finally {
+        await cursor.close();
+      }
+    } else {
+      orders = (await query.limit(limit + 1)).map(order => readOrder(order, userId));
+    }
+    return { items: orders.slice(0, limit), nextCursor: orders.length > limit ? orders[limit - 1].id : null };
   }
 
   async detail(clubId: string, userId: string, orderId: string) {
@@ -327,9 +373,10 @@ export class ClubGiftDispatchService {
   }
 
   private readScope(clubId: string, userId: string): QueryFilter<ClubOrder> {
-    return { $or: [this.claimScope(clubId, userId), {
-      ...publishedGiftOrder, clubId, 'giftDispatch.executionAccounts.userId': userId,
-    }] };
+    return { $or: [this.claimScope(clubId, userId),
+      { ...publishedGiftOrder, clubId, dispatchWithdrawnAt: null, 'giftDispatch.segments.shares.userId': userId },
+      { ...publishedGiftOrder, clubId, 'giftDispatch.executionAccounts.userId': userId },
+    ] };
   }
 
   private claimScope(clubId: string, userId: string): QueryFilter<ClubOrder> {

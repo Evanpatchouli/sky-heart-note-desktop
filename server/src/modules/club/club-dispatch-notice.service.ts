@@ -13,6 +13,7 @@ import {
   ClubDispatchNotice,
   type DispatchPublication,
 } from './club-dispatch-notice.schema';
+import { locateGiftClaimOrder } from './club-gift-dispatch.service';
 import { ClubOrder } from './club-order.schema';
 import { CLUB_ID } from './club.schema';
 
@@ -107,6 +108,34 @@ export class ClubDispatchNoticeService
     return {
       hasUnread: Boolean(await this.notices.exists({ ...scope, readAt: null })),
     };
+  }
+
+  async locate(userId: string, noticeId: string) {
+    if (!isObjectIdOrHexString(noticeId)) return { status: 'missing' as const };
+    const { scope } = await this.inboxScope(userId);
+    const notice = await this.notices
+      .findOne({ ...scope, _id: noticeId })
+      .select({ clubId: 1, orderId: 1, publicationId: 1, readAt: 1 })
+      .lean();
+    if (!notice) return { status: 'missing' as const };
+    const { clubId, orderId, publicationId } = notice;
+    const order = await this.orders.findOne({
+      _id: orderId,
+      clubId,
+      'publication.id': publicationId,
+      'publication.clubId': clubId,
+      'publication.orderId': orderId,
+      'publication.recipientUserIds': userId,
+    }).lean();
+    const target = this.locateOrder(order, clubId, userId);
+    return { ...target, readAt: notice.readAt?.toISOString() ?? null };
+  }
+
+  private locateOrder(order: (ClubOrder & { dispatchWithdrawnAt?: Date }) | null, clubId: string, userId: string) {
+    if (!order) return { clubId, status: 'unavailable' as const };
+    if (order.dispatchWithdrawnAt || order.dispatchStatus !== 'published') return { clubId, status: 'withdrawn' as const };
+    if (order.dispatchPricing?.priceUnit === 'gift_times') return locateGiftClaimOrder(order, userId);
+    return { clubId, status: 'unavailable' as const };
   }
 
   async markRead(userId: string, noticeId: string) {
