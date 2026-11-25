@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { captchaCode } from './start-system.mjs';
 
-export async function checkDirectCustomers(t, { db, api, configure, register, dispatcher, outsider }) {
+export async function checkDirectCustomers(t, { db, base, api, configure, register, dispatcher, outsider }) {
   const clubId = 'customer-binding';
   await configure('club', clubId, '客户绑定俱乐部');
   await configure('member', clubId, dispatcher.id, 'active', 'dispatcher');
@@ -161,5 +162,119 @@ export async function checkDirectCustomers(t, { db, api, configure, register, di
     assert.equal(await orders.countDocuments({ clubId, requestId: body.requestId }), 1);
     assert.deepEqual(new Set((await search(nickname)).map(({ userId }) => userId)),
       new Set([owner.id, stranger.id, first.customerUserId, second.customerUserId]));
+  });
+
+  await t.test('原派单人可交接一次性激活链接，老板沿用四位账号和历史订单', async () => {
+    const newNickname = '待激活老板';
+    const original = await direct({ ...input(), newCustomerNickname: newNickname });
+    const followUp = await direct({ ...input(), existingCustomerUserId: original.customerUserId });
+    const existing = await direct({ ...input(), existingCustomerUserId: owner.id });
+    const issuePath = id => `${employeeRoute}/${id}/customer-activation`;
+    const issue = (actor, id = original.id, status = 201) => api('employee', issuePath(id), {
+      method: 'POST', token: actor?.token, status,
+    });
+    const credentials = { username: 'activated_boss', password: 'activated-boss-password' };
+    const activationPath = '/user/activate-dispatch-customer';
+    const redeem = async (token, fields = credentials, app = 'client') => {
+      const response = await fetch(base + activationPath, {
+        method: 'POST',
+        headers: { origin: `https://${app}.club.test`, 'content-type': 'application/json' },
+        body: JSON.stringify({ token, ...fields }),
+      });
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      const result = await response.json();
+      return { status: response.status, message: result.message };
+    };
+    const unpack = ({ activationUrl, expiresAt }) => {
+      const { origin, pathname, search, hash } = new URL(activationUrl);
+      assert.equal(origin, 'https://client.club.test');
+      assert.equal(pathname, '/activate');
+      assert.equal(search, '');
+      assert.ok(expiresAt > Date.now());
+      const token = new URLSearchParams(hash.slice(1)).get('token');
+      assert.match(token, /^[A-Za-z0-9_-]{43}$/);
+      return token;
+    };
+    const customerKey = { _id: original.customerUserId };
+    const visible = async actor => (await get('employee', employeeRoute, actor)).items
+      .filter(order => order.customerActivationAvailable).map(order => order.id);
+    assert.ok((await visible(dispatcher)).includes(original.id));
+    assert.ok(!(await visible(dispatcher)).includes(followUp.id));
+    assert.ok(!(await visible(dispatcher)).includes(existing.id));
+    await issue(undefined, original.id, 401);
+    await issue(owner, original.id, 403);
+    await issue(outsider, original.id, 403);
+    await configure('member', clubId, outsider.id, 'active', 'dispatcher');
+    await issue(outsider, original.id, 404);
+    assert.ok(!(await visible(outsider)).includes(original.id));
+    const otherDispatcherOrder = await post('employee', employeeRoute, outsider,
+      { ...input(), existingCustomerUserId: original.customerUserId });
+    await issue(outsider, otherDispatcherOrder.id, 409);
+    await issue(dispatcher, followUp.id, 409);
+    await issue(dispatcher, existing.id, 409);
+    await api('employee', `/employee/clubs/side/orders/${original.id}/customer-activation`, {
+      method: 'POST', token: outsider.token, status: 404,
+    });
+
+    const first = unpack(await issue(dispatcher));
+    const expired = unpack(await issue(dispatcher));
+    assert.notEqual(first, expired);
+    assert.equal((await redeem(first)).status, 404);
+    await users.updateOne(customerKey, { $set: { 'dispatchActivation.expiresAt': Date.now() - 1 } });
+    assert.equal((await redeem(expired)).status, 410);
+    const token = unpack(await issue(dispatcher));
+    const pending = await users.findOne(customerKey);
+    assert.equal(pending.dispatchActivation.tokenHash, createHash('sha256').update(token).digest('hex'));
+    assert.equal(pending.username, undefined);
+    assert.equal(pending.password, undefined);
+    assert.equal((await redeem(token, credentials, 'employee')).status, 403);
+    assert.equal((await redeem('invalid')).status, 404);
+    assert.equal((await redeem(token, { ...credentials, username: ' ' })).status, 400);
+
+    await db.collection('roles').updateOne({ _id: common._id }, { $set: { status: 0 } });
+    try {
+      assert.equal((await redeem(token)).status, 403);
+      await issue(dispatcher, original.id, 403);
+      assert.ok(!(await visible(dispatcher)).includes(original.id));
+    } finally {
+      await db.collection('roles').updateOne({ _id: common._id }, { $set: { status: 1 } });
+    }
+    await users.updateOne(customerKey, { $set: { status: 0 } });
+    assert.equal((await redeem(token)).status, 403);
+    await users.updateOne(customerKey, { $set: { status: 1 } });
+
+    const occupied = await redeem(token, { ...credentials, username: ` ${ownerName} ` });
+    assert.equal(occupied.status, 409);
+    assert.match(occupied.message, /用户名已被注册/);
+    assert.equal((await users.findOne(customerKey)).dispatchActivation.usedAt, undefined);
+
+    const attempts = await Promise.all([
+      redeem(token), redeem(token, { ...credentials, username: 'racing_boss' }),
+    ]);
+    assert.deepEqual(attempts.map(({ status }) => status).sort(), [201, 409]);
+    assert.match(attempts.find(({ status }) => status === 409).message, /激活链接已使用/);
+    const replay = await redeem(token);
+    assert.equal(replay.status, 409);
+    assert.match(replay.message, /激活链接已使用/);
+    await issue(dispatcher, original.id, 409);
+    assert.ok(!(await visible(dispatcher)).includes(original.id));
+
+    const updated = await users.findOne(customerKey);
+    assert.equal(updated.nickname, newNickname);
+    assert.deepEqual(updated.role_ids, [common._id]);
+    assert.match(updated.password, /^scrypt\$/);
+    assert.equal(await users.countDocuments({ nickname: newNickname }), 1);
+    assert.equal((await users.findOne({ _id: owner.id })).username, ownerName);
+    await api('client', '/captcha/login?app=client');
+    const customer = await api('client', '/user/login?type=account', {
+      method: 'POST', status: 201,
+      body: { app: 'client', username: updated.username, password: credentials.password, captcha: captchaCode },
+    });
+    assert.equal(customer.id, original.customerUserId);
+    assert.equal(customer.nickname, newNickname);
+    assert.deepEqual(customer.roles, ['common']);
+    assert.deepEqual(new Set(ids((await get('client', '/client/orders', customer)).items)),
+      new Set([original.id, followUp.id, otherDispatcherOrder.id]));
+    await get('client', `${clientRoute}/${existing.id}`, customer, 404);
   });
 }

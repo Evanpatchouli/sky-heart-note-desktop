@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -11,6 +10,7 @@ import UserCreatedEvent from '@/events/user.created.event';
 import { UserModel } from './user.model';
 import { isDuplicateKey, withNewUserId } from './user-id';
 import { RoleService } from '../role-module/role.service';
+import { validateAccountCredentials } from './account-credentials';
 
 @Injectable()
 export class UserLoginService {
@@ -40,8 +40,7 @@ export class UserLoginService {
   }
 
   async register(username: string, password: string) {
-    if (!username.trim() || password.length > 256)
-      throw new BadRequestException('用户名或密码无效');
+    username = validateAccountCredentials(username, password);
     const record = await this.users.findByUsername(username);
     if (record) throw new ConflictException('用户名已被注册');
     const [hashedPassword, role] = await Promise.all([

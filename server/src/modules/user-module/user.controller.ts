@@ -25,6 +25,7 @@ import UserLogoutEvent from '@/events/user.logout.event';
 import CaptchaService from '../captcha-module/captcha.service';
 import OPTService from '../opt-module/opt.service';
 import { UserLoginService } from './user.service.login';
+import { UserDispatchActivationService } from './user-dispatch-activation.service';
 
 function field(value: unknown, name: string) {
   if (typeof value !== 'string' || !value || value.length > 512)
@@ -40,6 +41,7 @@ export class UserController {
     private readonly captcha: CaptchaService,
     private readonly otp: OPTService,
     private readonly events: EventEmitter2,
+    private readonly activation: UserDispatchActivationService,
   ) {}
 
   @Post('login')
@@ -168,5 +170,16 @@ export class UserController {
       field(form.password, 'password'),
     );
     return Resp.success({ id });
+  }
+
+  @Post('activate-dispatch-customer')
+  @Header('Cache-Control', 'no-store')
+  async activateDispatchCustomer(@Body() form: Record<string, unknown>, @Req() req: Request) {
+    checkOrigin(req, 'client', true);
+    if (!req.is('application/json')) throw new BadRequestException('需要 JSON 请求');
+    await this.activation.activate(
+      field(form?.token, 'token'), field(form?.username, 'username'), field(form?.password, 'password'),
+    );
+    return Resp.success();
   }
 }

@@ -5,17 +5,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { createHash, randomBytes } from 'node:crypto';
 import { Model } from 'mongoose';
 import type { Request, Response, CookieOptions } from 'express';
 import { AppSession } from './app-session.schema';
 import { apps, canAccess, type SessionUser, type WebApp } from './app-access';
 import { UserModel } from '../modules/user-module/user.model';
 import { RoleService } from '../modules/role-module/role.service';
+import { createOpaqueToken, digestToken as digest, opaqueTokenPattern } from './opaque-token';
 
 const lifetime = 7 * 24 * 60 * 60 * 1000;
-const digest = (value: string) =>
-  createHash('sha256').update(value).digest('hex');
+
 const cookieName = (app: WebApp) => 'sky_grant_' + app;
 const cookieOptions = (): CookieOptions => ({
   httpOnly: true,
@@ -33,7 +32,7 @@ function cookieHash(req: Request, app: WebApp): string | undefined {
     .map((part) => part.trim())
     .find((part) => part.startsWith(prefix))
     ?.slice(prefix.length);
-  return value && /^[\w-]{43}$/.test(value) ? digest(value) : undefined;
+  return value && opaqueTokenPattern.test(value) ? digest(value) : undefined;
 }
 
 @Injectable()
@@ -134,8 +133,8 @@ export class AppSessionService {
     const user = await this.profile(userId, app);
     if (!user || !canAccess(app, user.roles))
       throw new ForbiddenException('该账号无权登录此应用');
-    const token = randomBytes(32).toString('base64url');
-    const grant = randomBytes(32).toString('base64url');
+    const token = createOpaqueToken();
+    const grant = createOpaqueToken();
     const record = {
       userId,
       app,

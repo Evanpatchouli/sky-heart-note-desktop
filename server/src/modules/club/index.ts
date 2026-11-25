@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RoleModule } from '../role-module';
+import { UserDispatchActivationModule } from '../user-module/user-dispatch-activation.module';
 import { User, UserSchema } from '../user-module/user.schema';
 import { AdminClubController } from './admin-club.controller';
 import { ClubCustomerService } from './club-customer.service';
@@ -18,6 +19,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
 @Module({
   imports: [
     RoleModule,
+    UserDispatchActivationModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Club.name, schema: ClubSchema },

@@ -11,6 +11,7 @@ import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';
 import { ClubCustomerService } from './club-customer.service';
+import { UserDispatchActivationService } from '../user-module/user-dispatch-activation.service';
 import { ClubDirectoryService } from './club-directory.service';
 import type {
   ClubOrderQuery,
@@ -98,6 +99,7 @@ export class ClubOrderService implements OnModuleInit {
     @InjectModel(ClubOrder.name) private readonly orders: Model<ClubOrder>,
     private readonly directory: ClubDirectoryService,
     private readonly customers: ClubCustomerService,
+    private readonly activation: UserDispatchActivationService,
   ) {}
 
   async onModuleInit() {
@@ -121,6 +123,25 @@ export class ClubOrderService implements OnModuleInit {
   async searchDirectOrderCustomers(clubId: string, userId: string, query: string) {
     await this.directory.requireMember(clubId, userId);
     return this.customers.search(query);
+  }
+
+  async issueCustomerActivation(clubId: string, userId: string, orderId: string) {
+    await this.directory.requireMember(clubId, userId);
+    const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
+    if (order.source !== 'direct_dispatch' || !order.newCustomerNickname ||
+        order.customerLinkStatus !== 'verified' || !order.customerUserId) {
+      throw new ConflictException('仅可从新老板的原建档订单生成激活链接');
+    }
+    return this.activation.issue(order.customerUserId, order._id);
+  }
+
+  private customerActivationOrders(orders: ClubOrder[], userId: string) {
+    return this.activation.availableOrderIds(orders.flatMap((order) =>
+      order.dispatcherUserId === userId && order.source === 'direct_dispatch' &&
+        order.newCustomerNickname && order.customerLinkStatus === 'verified' && order.customerUserId
+        ? [{ orderId: order._id, customerUserId: order.customerUserId }]
+        : [],
+    ));
   }
 
   private async finishDirectCustomerLink(order: ClubOrder) {
@@ -187,8 +208,12 @@ export class ClubOrderService implements OnModuleInit {
   ) {
     const scope = await this.employeeScope(clubId, userId);
     const { orders, nextCursor } = await this.list(scope, query);
+    const activationOrders = await this.customerActivationOrders(orders, userId);
     return {
-      items: orders.map((order) => employeeView(order, userId)),
+      items: orders.map((order) => ({
+        ...employeeView(order, userId),
+        ...(activationOrders.has(order._id.toHexString()) ? { customerActivationAvailable: true } : {}),
+      })),
       nextCursor,
     };
   }

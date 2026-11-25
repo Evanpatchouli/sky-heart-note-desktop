@@ -41,6 +41,8 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 | --- | --- | --- |
 | `GET` | `/api/employee/clubs/:clubId/order-customers?q=关键词` | 有效团员按用户名、昵称或四位 ID 搜索可进入客户端的启用账号，最多返回 20 条 `{ userId, nickname }`。完整 ID 优先，其次是完整用户名、昵称。 |
 | `POST` | `/api/employee/clubs/:clubId/orders` | 有效团员新建直接派单草稿，选择已有用户或填写新老板昵称。创建人与本单派单人均为当前团员。 |
+| `POST` | `/api/employee/clubs/:clubId/orders/:orderId/customer-activation` | 原建档订单的当单派单人生成客户端一次性激活链接，返回 `activationUrl` 和毫秒时间戳 `expiresAt`。 |
+| `POST` | `/api/user/activate-dispatch-customer` | 客户端来源提交 JSON `{ token, username, password }`，为链接对应的原客户账号设置首次登录凭据。 |
 | `POST` | `/api/client/clubs/:clubId/orders` | 登录客户提交本人订单。可填 `dispatcherUserId` 指定本俱乐部有派单标记且可进入团员端的有效成员，省略则在该范围内随机选人。订单创建时为待派发。 |
 | `GET` | `/api/{employee\|client}/clubs/:clubId/orders` | 客户端查本人已核实归属的订单。团员端查本人负责派单、或已派发且本人承接的订单。 |
 | `GET` | `/api/{employee\|client}/clubs/:clubId/orders/:orderId` | 按列表相同的归属范围查询详情。 |
@@ -51,7 +53,7 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 | `GET` | `/api/admin/clubs/:clubId/members` | 查询指定俱乐部成员的昵称、四位 ID、成员状态和派单标记。 |
 | `PATCH` | `/api/admin/clubs/:clubId/members/:userId/dispatcher` | 用 `{"dispatcher": true}` 或 `{"dispatcher": false}` 更新有效成员的派单标记。 |
 
-写入需要相应端的访问令牌和 JSON 请求体。两个入口共用 `requestId`、`recipientGameAccount`、`requestedHearts`。每次新建生成一个 UUID v4，请求重试时沿用相同的 `requestId` 与内容。同一俱乐部、来源和创建人的重复提交返回已保存的订单，相同提交标识配不同内容返回 HTTP 409。候选为空同样返回 HTTP 409，订单无法创建。显式指定当前候选范围之外的账号返回 HTTP 400。
+下单需要相应端的访问令牌和 JSON 请求体。两个下单入口共用 `requestId`、`recipientGameAccount`、`requestedHearts`。每次新建生成一个 UUID v4，请求重试时沿用相同的 `requestId` 与内容。同一俱乐部、来源和创建人的重复提交返回已保存的订单，相同提交标识配不同内容返回 HTTP 409。候选为空同样返回 HTTP 409，订单无法创建。显式指定当前候选范围之外的账号返回 HTTP 400。
 
 以下请求体可用于客户端普通送心单。直接派单也使用 `requestId`、`recipientGameAccount`、`requestedHearts` 三个共用字段。
 
@@ -63,7 +65,13 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 }
 ```
 
-团员在「派单准备」点击「新建直接派单草稿」，选择「已有用户」并用昵称和四位 ID 核对搜索结果，或选择「新老板」填写 1 至 100 字昵称。请求传 `"existingCustomerUserId": "00A1"` 或 `"newCustomerNickname": "青禾"`。已选账号须处于启用状态且拥有客户端准入角色。新老板获得平台分配的独立四位 ID 与普通客户角色，同名时仍建独立账号。成功响应的 `customerUserId` 表示老板归属，`recipientGameAccount` 记录接收爱心的游戏账号。新老板登录凭据交接待 Q6 确认。[待确认规则](heart-delivery.md#需要业务方确认的决定)
+团员在「派单准备」点击「新建直接派单草稿」，选择「已有用户」并用昵称和四位 ID 核对搜索结果，或选择「新老板」填写 1 至 100 字昵称。请求传 `"existingCustomerUserId": "00A1"` 或 `"newCustomerNickname": "青禾"`。已选账号须处于启用状态且拥有客户端准入角色。新老板获得平台分配的独立四位 ID 与普通客户角色，同名时仍建独立账号。成功响应的 `customerUserId` 表示老板归属，`recipientGameAccount` 记录接收爱心的游戏账号。
+
+新老板的原建档订单确认归属后，当前有效派单人可在「派单准备」点击「生成激活链接」，再点击「复制激活链接」交给这位老板。团员端列表只为符合条件的原建档订单返回 `customerActivationAvailable: true`。其他派单人可继续使用四位 ID 关联后续订单。已有登录凭据的账号不提供此激活动作。
+
+链接指向 `CLIENT_ORIGIN` 的 `/activate`，令牌位于 URL 片段中。链接有效期为 24 小时，重新生成后上一条未使用的链接立即失效。服务端保存令牌摘要，原子写入密码哈希和使用时间。用户名已占用时可换名并继续使用同一个链接。成功后用新账号正常登录客户端，可查看原四位 ID 名下已确认归属的历史订单。若提交后未收到结果，重试显示已使用时可直接用刚设置的账号和密码登录。
+
+P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后自行设置凭据、原昵称与四位 ID 保留、多笔历史订单可查询。另验证重新签发、过期、重复提交、用户名冲突、账号或普通客户角色停用，以及同俱乐部其他派单人无权签发。
 
 旧调用可仅传 `customerLabel` 或省略老板字段，订单归属为 `pending_verification`。称呼只供记录。提交多个归属字段会返回 HTTP 400。若新老板的建号或归属确认失败，沿用原请求标识及内容重试。草稿与新账号在归属确认后才进入派单订单列表和客户搜索。团员端会在当前标签页按当前账号和俱乐部保存待确认提交。关闭弹窗或刷新后，在同一俱乐部重新打开弹窗并点击「重试本次提交」。
 

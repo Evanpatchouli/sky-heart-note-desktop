@@ -11,6 +11,7 @@ import { AppSessionService } from '@/auth/app-session.service';
 import { CaptchaModule } from '../captcha-module';
 import { OPTModule } from '../opt-module';
 import { UserManageService } from './user.service.manage';
+import { UserDispatchActivationModule } from './user-dispatch-activation.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { UserManageService } from './user.service.manage';
     RoleModule,
     CaptchaModule,
     OPTModule,
+    UserDispatchActivationModule,
   ],
   controllers: [UserController],
   providers: [

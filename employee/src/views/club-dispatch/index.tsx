@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 import NewDirectDraft from "./new-direct-draft";
+import CustomerActivation from "./customer-activation";
 
 type Club = { id: string; name: string };
 type Order = {
@@ -11,6 +12,7 @@ type Order = {
   source: "direct_dispatch" | "client_order";
   customerUserId?: string | null;
   customerLinkStatus?: "verified" | "pending_verification";
+  customerActivationAvailable?: boolean;
   recipientGameAccount: string;
   requestedHearts: number;
 };
@@ -78,6 +80,7 @@ function ClubOrders({ clubId }: { clubId: string }) {
           {order.source === "direct_dispatch" ? "直接派单" : "客户端下单"} · {order.recipientGameAccount} · {order.requestedHearts} 颗
           {order.customerLinkStatus === "verified" ? ` · 老板 ${order.customerUserId}`
             : order.customerLinkStatus === "pending_verification" ? " · 老板归属待核" : ""} · <code>{order.id}</code>
+          {order.customerActivationAvailable && <CustomerActivation route={`clubs/${clubId}/orders/${order.id}`} />}
         </li>)}
       </ul> : <Empty description="暂无俱乐部订单" /> : <Spin aria-label="加载订单" />}
       {after || page?.nextCursor ? <Flex gap="small">

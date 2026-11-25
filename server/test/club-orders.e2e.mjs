@@ -257,7 +257,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal((await post('client', clientOrders, owner, { ...orderInput(), dispatcherUserId: dispatcher.id })).dispatcherUserId, dispatcher.id);
   });
 
-  await checkDirectCustomers(t, { db, api, configure, register, dispatcher, outsider });
+  await checkDirectCustomers(t, { db, base, api, configure, register, dispatcher, outsider });
 
   await t.test('管理端按俱乐部及单项职责授权，已登录会话立即体现授权变更', async (adminTest) => {
     const secondAdmin = await register('club_second_admin', 'admin');

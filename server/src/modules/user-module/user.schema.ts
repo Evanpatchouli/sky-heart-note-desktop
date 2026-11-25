@@ -5,6 +5,18 @@ import { Role } from '../role-module/role.schema';
 
 export type UserDocument = HydratedDocument<User>;
 
+@Schema({ _id: false })
+class DispatchActivation {
+  @Prop({ type: String, required: true })
+  tokenHash: string;
+
+  @Prop({ type: Number, required: true })
+  expiresAt: number;
+
+  @Prop({ type: Number })
+  usedAt?: number;
+}
+
 @Schema({
   timestamps: {
     createdAt: 'created_at',
@@ -66,6 +78,9 @@ export class User {
 
   @Prop({ type: Types.ObjectId, immutable: true, select: false })
   dispatchCustomerOrderId?: Types.ObjectId;
+
+  @Prop({ type: SchemaFactory.createForClass(DispatchActivation), select: false })
+  dispatchActivation?: DispatchActivation;
 
   @Prop({
     type: Number,
@@ -177,6 +192,7 @@ UserSchema.index({ dispatchCustomerOrderId: 1 }, {
   name: 'unique_dispatch_customer_order',
   partialFilterExpression: { dispatchCustomerOrderId: { $type: 'objectId' } },
 });
+UserSchema.index({ 'dispatchActivation.tokenHash': 1 }, { sparse: true });
 UserSchema.index({ deleted_at: 1 });
 UserSchema.index({ created_at: -1 });
 UserSchema.index({ updated_at: -1 });

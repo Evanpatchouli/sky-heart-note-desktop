@@ -133,6 +133,7 @@ function SignIn({ app, onLogin }: SignInProps) {
         setRegister(value => !value); setError(""); setNotice("");
       }}>{register ? "已有账号，前往登录" : "注册账号"}</button>}
     </form>
+    {app === "client" && !register && <p><small>曾通过其他渠道在本团下过单？联系派单人激活账号可享历史数据和平台专属权益</small></p>}
   </main>;
 }
 

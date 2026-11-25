@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Post,
   Query,
@@ -52,6 +53,16 @@ export class EmployeeClubController {
 @Controller('employee/clubs/:clubId/orders')
 export class EmployeeClubOrderController {
   constructor(private readonly orders: ClubOrderService) {}
+
+  @Post(':orderId/customer-activation')
+  @Header('Cache-Control', 'no-store')
+  async issueCustomerActivation(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+  ) {
+    return Resp.success(await this.orders.issueCustomerActivation(clubId, user.id, orderId));
+  }
 
   @Post()
   async create(
