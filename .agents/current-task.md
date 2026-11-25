@@ -1,51 +1,25 @@
-# Current Task
+# 逐项交付路线图
 
-## Goal
+按[路线图](../docs/roadmap.md)和[任务清单](../docs/todo.md)的依赖逐项实施。每项经验证后勾选并单独本地提交，已勾选项保留验收历史。终点是未勾选数为零，缺少真实业务或设备证据时保留相应待办。
 
-<当前任务目标>
+## 接力
 
-## Done when
+当前会话为首任。项目为本机 `local` 的 `sky-club`，项目 ID 为 `67f65f40-feae-4fe7-bc54-db15ae3d3b3a`，工作区为 `C:\Users\31250\Work\sky-heart-note-desktop`。分支为 `refactor/webapp-template`，起点为 `909b9be`。按用户指定的 [relay-task](skills/relay-task/SKILL.md) 工作，窗口达到 80% 或下一单元容不下时在可验证边界交接，同一项目和工作区只建一个直接后继。首任绑定会话为 `01a21408-1a33-71b1-a495-c962b7b88c84`。起始采样为 32,197 / 828,400。
 
-- <可验证完成条件 1>
-- <可验证完成条件 2>
+## 短计划
 
-## Parent task complexity
+整体 S2，财务、跨端工作流及实际设备验收存在顺序依赖。由主会话逐项集成、验证和提交。非平凡改动另行独立只读审查。
 
-- Planning complexity: S0/S1/S2/S3
-- Why: <只描述父任务整体协调/风险；此等级不得被子任务继承>
+| 工作单元 | 主要工作 | 难度 | 验收 |
+| --- | --- | --- | --- |
+| P1-14 | 验证 | S1 | 从确认报价、日报更正到停送、返券、实退，复跑 HTTP 样单 |
+| P1-18、P1-33 | 决策 | S2 | 逐项核对财务入口和账面余额，覆盖权限、并发及重试 |
+| P1-30 | 执行 | S2 | 正式首页和明细同口径、权限隔离、空状态 |
+| P1-19、P1-21、P1-27、P1-28、P1-22 | 验证 | S2 | 对照三端正式入口逐项补齐，记录设备、推送、跨端和发布走查 |
+| P2、P3 | 调查 | S0 | 各阶段须有业务方提供的两类真实样单，再依次实施与核账 |
 
-## Work units
+## 现场
 
-| ID | 工作单元 | 模式 | 状态 | 独立难度 | 路由 | 评级理由 / 交接产物 | 验证 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| T1 | <可独立验证的小任务> | investigate/decide/execute/verify | pending | S0/S1/S2/S3 | main/scout/fast-worker/worker/deep-solver/reviewer | <为什么需要该等级；S2/S3 完成后写 Brief> | <命令或证据> |
-
-状态建议：`pending` / `in_progress` / `blocked` / `done`。
-
-路由提示：
-
-- 父任务等级不传播给 Work Unit。
-- 一个 Work Unit 只保留一种主要认知模式；“decide + 大段 execute/verify”应在决策边界拆开。
-- 只读检索/验证/证据汇总优先 S0。
-- 已知方案下的机械实现、fixture、测试脚手架、开发验证页、文档优先 S1；代码量大本身不是 S2 理由。
-- 需要普通工程判断才用 S2；S2 决策稳定后输出 Implementation Brief，并把后续机械实现重新评级。
-- 有真实失败证据且根因仍跨层或风险高才用 S3。
-- 调查/决策后边界变清楚时必须降级。
-
-## Evidence / blockers
-
-- <只记录会影响当前任务的事实、失败证据或阻塞>
-
-## Implementation Briefs
-
-> 仅在 S2/S3 决策完成后需要向低成本执行角色交接时填写；保持紧凑。
-
-### <Work Unit ID>
-
-- Decision:
-- Files / interfaces:
-- Invariants:
-- Implementation steps:
-- Acceptance:
-- Do not:
-- Focused validation:
+- 初始有 15 项未勾选。P1-14 已验收。全仓构建通过，停送、改价和优惠的 16 项 HTTP 测试通过。退款矩阵另行复跑 6 项通过，覆盖仅个人让利、与买赠叠加、拒补和返券。下一项 P1-18。
+- 已请求代跑、陪玩各一笔普通单和异常单，以及 Android、iOS/iPadOS 设备或实际验收记录。首次 ADB 枚举无已连接设备。
+- 接力技能目录为开始前已存在的未跟踪文件。

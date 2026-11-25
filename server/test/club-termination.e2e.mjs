@@ -174,13 +174,16 @@ test('按次停送、锁价退款和优惠券返还', { timeout: 160_000 }, asyn
   });
 
   await t.test('买赠、个人让利、尾差和折后现金沿用确认报价', async () => {
-    for (const [times, personalDiscountCents, expected, fulfilled] of [
-      [80, 500, 900, 3600], [90, 500, 450, 4050], [95, 500, 225, 4275], [80, undefined, 1000, 4000],
+    for (const [times, personalDiscountCents, promotionalGiftTimes, expected, fulfilled] of [
+      [80, 500, 0, 900, 3600], [90, 500, 0, 450, 4050], [95, 500, 0, 225, 4275],
+      [80, 500, 5, 900, 3600], [90, 500, 5, 450, 4050], [95, 500, 5, 225, 4275],
+      [80, undefined, 5, 1000, 4000],
     ]) {
-      const order = await booked({ segments: [gift(100, 50, 'normal', 5)], personalDiscountCents });
+      const order = await booked({ segments: [gift(100, 50, 'normal', promotionalGiftTimes)], personalDiscountCents });
       await report(order, times);
       let view = await stop(order);
-      assert.deepEqual([view.refundDueCents, view.fulfilledServiceCents, view.stoppedPromotionalGiftTimes], [expected, fulfilled, 5]);
+      assert.deepEqual([view.refundDueCents, view.fulfilledServiceCents, view.stoppedPromotionalGiftTimes],
+        [expected, fulfilled, promotionalGiftTimes]);
       if (times === 90) {
         assert.equal(view.fulfilledPersonalDiscountCents, 450);
         view = await change(order, view.revision);
