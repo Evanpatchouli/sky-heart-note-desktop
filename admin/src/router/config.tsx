@@ -29,6 +29,11 @@ export const routeConfigs: RouteConfig[] = [
     label: "抽成规则",
     component: lazy(() => import("@/views/club/rules")),
   },
+  {
+    path: "/club/settlements",
+    label: "结算核对",
+    component: lazy(() => import("@/views/club/settlements")),
+  },
 
   // ========== 系统管理模块 ==========
   {

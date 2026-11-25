@@ -1,4 +1,5 @@
 import { CLUB_ID } from './club.schema';
+import { ClubGiftSettlementService } from './club-gift-settlement.service';
 import { IsISO8601, Matches, ValidateIf } from 'class-validator';
 import { giftBusinessDatePattern } from './club-gift-segment.dto';
 import {
@@ -251,7 +252,7 @@ export class EmployeeClubOrderController {
 @UsePipes(orderValidation)
 @Controller('client/orders')
 export class ClientClubOrderController {
-  constructor(private readonly orders: ClubOrderService) {}
+  constructor(private readonly orders: ClubOrderService, private readonly settlements: ClubGiftSettlementService) {}
 
   @Post(':orderId/cancel-before-assignment')
   async cancelPendingOrder(
@@ -287,9 +288,10 @@ export class ClientClubOrderController {
     @AuthUser() user: SessionUser,
     @Param('orderId') orderId: string,
   ) {
-    return Resp.success(
-      await this.orders.getCustomerOrder(CLUB_ID, user.id, orderId),
-    );
+    const order = await this.orders.getCustomerOrder(CLUB_ID, user.id, orderId);
+    const settlement = 'requestedGiftTimes' in order
+      ? await this.settlements.customer(CLUB_ID, user.id, orderId) : undefined;
+    return Resp.success({ ...order, ...(settlement ? { settlement } : {}) });
   }
 }
 

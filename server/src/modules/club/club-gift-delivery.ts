@@ -287,11 +287,18 @@ export function giftPerformanceView(performance: Performance): GiftPerformance {
   };
 }
 
+export function giftCompensationBasis(delivered: number, gross: bigint, pricing: NonNullable<ClubOrder['dispatchPricing']>) {
+  const dispatch = BigInt(delivered) * BigInt(pricing.dispatchFeeCents);
+  const club = BigInt(delivered) * BigInt(pricing.clubFeeCents);
+  return { gross, dispatch, club, reward: gross - dispatch - club };
+}
+
 function giftCompensation(performance: Performance, pricing: NonNullable<ClubOrder['dispatchPricing']>) {
   const giftTimes = performance.delivered;
-  const grossCents = money(performance.gross);
-  const dispatchFeeCents = money(BigInt(giftTimes) * BigInt(pricing.dispatchFeeCents));
-  const clubFeeCents = money(BigInt(giftTimes) * BigInt(pricing.clubFeeCents));
+  const basis = giftCompensationBasis(giftTimes, performance.gross, pricing);
+  const grossCents = money(basis.gross);
+  const dispatchFeeCents = money(basis.dispatch);
+  const clubFeeCents = money(basis.club);
   if (grossCents === null || dispatchFeeCents === null || clubFeeCents === null)
     return { compensationIssue: 'out_of_range' as const, pendingCompensation: null };
   const memberCents = grossCents - dispatchFeeCents - clubFeeCents;

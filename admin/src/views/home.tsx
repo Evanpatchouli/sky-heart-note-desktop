@@ -9,11 +9,6 @@ import UserAvatar from "@/components/UserAvatar";
 import AdminShell from "@/components/layouts/AdminShell";
 import { AuthMenu } from "./components/auth-menu";
 
-const clubItems: MenuProps["items"] = [{
-  key: "/club", label: "俱乐部管理", icon: <AuditOutlined />,
-  children: [{ key: "/club/rules", label: "抽成规则" }],
-}];
-
 export interface AdminClubContext {
   club: AdminClub | null | undefined;
   loadFailed: boolean;
@@ -43,7 +38,15 @@ function AuthorizedHome() {
   }, [attempt]);
 
   const mayConfigureRule = club?.permissions.includes("CLUB_COMMISSION_MANAGE");
-  return <AdminShell menu={<AuthMenu additionalItems={mayConfigureRule ? clubItems : undefined} />} account={<UserAvatar />}>
+  const mayReadFinance = club?.permissions.includes("CLUB_FINANCE_READ");
+  const clubItems: MenuProps["items"] = [{
+    key: "/club", label: "俱乐部管理", icon: <AuditOutlined />,
+    children: [
+      ...(mayConfigureRule ? [{ key: "/club/rules", label: "抽成规则" }] : []),
+      ...(mayReadFinance ? [{ key: "/club/settlements", label: "结算核对" }] : []),
+    ],
+  }];
+  return <AdminShell menu={<AuthMenu additionalItems={mayConfigureRule || mayReadFinance ? clubItems : undefined} />} account={<UserAvatar />}>
     <Outlet context={{ club, loadFailed, reload: () => setAttempt(value => value + 1) } satisfies AdminClubContext} />
   </AdminShell>;
 }

@@ -20,7 +20,7 @@ function undiscounted(segment: GiftPriceSegment): QuoteDiscountShare {
 }
 
 export function giftPriceSegments(order: ClubOrder) {
-  const quote = order.dispatchPricing;
+  const quote = order.receipt?.quote ?? order.dispatchPricing;
   const initial = giftFulfillmentSegments(quote?.giftSegments ?? [], quote?.promotions);
   const segments: SegmentBasis[] = initial.map((segment, idx) => ({
     segment, ...(segment.paidGiftTimes && {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import GiftSettlementCard from "../club-assignments/gift-settlement";
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
 import {
   calculateGiftQuote, deliveryPeriodPreferenceLabel, formatCentsAsYuan, giftFulfillmentSegments, parseYuanAsCents, platformPromotionDescription, platformPromotionLabels,
@@ -31,6 +32,7 @@ type Preparation = {
   quote: CustomerQuote | null;
   receipt: Receipt | null;
   paymentStatus?: string;
+  giftDeliveryStopped?: boolean;
   commissionReview?: { revision: number; ruleVersion: number; dispatchFeeCents: number } | null;
 };
 type SegmentFields = Omit<GiftPriceSegment, "unitPriceCents"> & { unitPrice: string };
@@ -283,6 +285,12 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
     </Typography.Paragraph>
     {loadError ? <Alert type="error" showIcon title={loadError} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
       : !preparation ? <Spin aria-label="加载报价" />
+      : preparation.giftDeliveryStopped && !isPublished ? <Flex vertical gap="middle">
+        <Alert type="info" showIcon title="已停送" />
+        {quote ? <QuoteSummary quote={quote} /> : null}
+        {receipt ? <ReceiptDetails receipt={receipt} /> : null}
+        <GiftSettlementCard route={route} revision={attempt} role="dispatcher" />
+      </Flex>
       : isPublished && frozen ? <>
         <Typography.Paragraph>首段规则 V{frozen.version} · 派抽 {money(frozen.dispatchFeeCents)}/次 · 团抽 {money(frozen.clubFeeCents)}/次</Typography.Paragraph>
         {(frozen.giftSegments ?? []).map((segment, index) => <SegmentPrice key={index} segment={segment} />)}

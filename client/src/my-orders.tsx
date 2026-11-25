@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { deliveryPeriodPreferenceLabel, formatCentsAsYuan, isGiftOrderProgress, platformPromotionLabels, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type CustomerQuote, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
+import { OrderGiftSettlement } from "./order-gift-settlement";
+import type { CustomerGiftSettlement } from "@webapp-template/common";
 import { authRequest, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 
 import { ContinuationFacts, CustomerContinuation, giftCount, GiftOrderProgress, totalGiftPayments } from "./order-gift-progress";
@@ -17,6 +19,7 @@ type Order = OrderSummary & {
   receipt?: { receivedAmountCents: number; receivedAt: string };
   continuationQuotes?: ContinuationQuote[];
   continuationRequests?: ContinuationRequest[];
+  settlement?: CustomerGiftSettlement;
   closedAt?: string | null;
   deliveryProgress?: CustomerGiftProgress | {
     priceUnit: "received_hearts";
@@ -124,6 +127,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
         <h2>{order.recipientGameAccount}</h2>
         <p>{sourceLabel[order.source]} · <strong>{dispatchLabel[order.dispatchStatus]}</strong></p>
         <OrderFacts order={order} manageContinuation />
+        {order.settlement ? <OrderGiftSettlement value={order.settlement} /> : null}
         {progress?.priceAdjustment && <OrderGiftPriceAdjustment key={progress.priceAdjustment.id}
           route={`${clientOrdersPath}/${orderId}`} value={progress.priceAdjustment} history={progress.priceAdjustmentHistory} reload={reload} />}
         <CustomerContinuation route={`${clientOrdersPath}/${orderId}`}

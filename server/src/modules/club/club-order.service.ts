@@ -146,6 +146,7 @@ function dispatchPreparation(order: ClubOrder, rule: CommissionRule | null) {
     receipt: order.receipt ?? null,
     commissionReview: order.commissionReview ?? null,
     paymentStatus: paymentStatus(order.receipt),
+    giftDeliveryStopped: !!order.giftTermination,
   };
 }
 

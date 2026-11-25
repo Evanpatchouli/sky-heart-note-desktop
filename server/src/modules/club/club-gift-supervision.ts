@@ -23,7 +23,7 @@ function progress(agreedGiftTimes: number, performance: ReturnType<typeof emptyG
 }
 
 function isStopped(order: ClubOrder & { dispatchWithdrawnAt?: Date; termination?: unknown; priceAdjustment?: { decision?: { value?: string } } }) {
-  return !!(order.dispatchWithdrawnAt || order.termination || order.priceAdjustment?.decision?.value === 'decline' ||
+  return !!(order.dispatchWithdrawnAt || order.termination || order.giftTermination || order.priceAdjustment?.decision?.value === 'decline' ||
     order.giftPriceAdjustmentState === 'stopped');
 }
 

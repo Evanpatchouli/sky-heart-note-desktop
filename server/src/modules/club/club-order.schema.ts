@@ -1,5 +1,6 @@
 import type { DailyReport } from './club-delivery.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import type { StoredGiftTermination } from './club-gift-termination';
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
 import type { DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { SchemaTypes, Types } from 'mongoose';
@@ -231,6 +232,12 @@ export class ClubOrder {
 
   @Prop({ type: String, enum: ['awaiting_decision', 'awaiting_supplement', 'continuing', 'stopped', 'needs_requote', 'superseded'] })
   giftPriceAdjustmentState?: StoredGiftPriceAdjustment['state'];
+
+  @Prop({ type: SchemaTypes.Mixed })
+  giftTermination?: StoredGiftTermination;
+
+  @Prop({ type: String })
+  promotionCouponReturnedAt?: string;
 
   @Prop({ type: String })
   giftPublicationScheduleFingerprint?: string;

@@ -17,6 +17,7 @@ import {
   CreateReportCorrectionDto,
 } from './club-delivery.dto';
 import { ClubGiftDeliveryService } from './club-gift-delivery.service';
+import { ClubGiftSettlementService } from './club-gift-settlement.service';
 
 @AppAccess('employee')
 @UsePipes(
@@ -28,7 +29,15 @@ import { ClubGiftDeliveryService } from './club-gift-delivery.service';
 )
 @Controller('employee/club/orders/:orderId')
 export class ClubDeliveryController {
-  constructor(private readonly delivery: ClubGiftDeliveryService) {}
+  constructor(
+    private readonly delivery: ClubGiftDeliveryService,
+    private readonly settlements: ClubGiftSettlementService,
+  ) {}
+
+  @Get('settlement')
+  async settlement(@AuthUser() user: SessionUser, @Param('orderId') orderId: string) {
+    return Resp.success(await this.settlements.personal(CLUB_ID, user.id, orderId));
+  }
 
   @Get('daily-reports')
   async history(

@@ -5,6 +5,7 @@ import { employeeRequest } from "#/service/request";
 import GiftDeliveryDiary from "../gift-delivery-diary";
 import { GiftExecutionAccounts } from "../club-dispatch/gift-execution-accounts";
 import { GiftSchedule } from "../club-dispatch/gift-allocation";
+import GiftSettlementCard from "./gift-settlement";
 import PersonalScheduleDialog from "./personal-schedule";
 import { PersonalProgress, StatusLabel } from "./record-views";
 import {
@@ -61,6 +62,7 @@ export default function AssignmentDetail(props: Props) {
       <Flex gap="small" align="center" wrap><StatusLabel order={order} /><PersonalProgress order={order} /></Flex>
       {isGiftAssignment(order) && "segments" in order ? <>
         <Button onClick={() => setDiary(true)}>我的日报</Button>
+        <GiftSettlementCard key={route} route={route} revision={attempt} role="member" />
         {order.segments.map(segment => <Card key={segment.segmentIndex} size="small" title={`第 ${segment.segmentIndex + 1} 段 · 本人份额`}>
           <Flex vertical gap="middle">
             {segment.shares.map(share => <section key={share.id} className="assignment-share">

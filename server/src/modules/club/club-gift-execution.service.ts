@@ -33,7 +33,7 @@ export function acceptsGiftExecution(order: ClubOrder & {
   termination?: unknown;
   priceAdjustment?: { state: string };
 }) {
-  return order.closedAt == null && order.dispatchWithdrawnAt == null && order.termination == null &&
+  return order.closedAt == null && order.dispatchWithdrawnAt == null && order.termination == null && !order.giftTermination &&
     (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing') &&
     (order.giftPriceAdjustmentState == null || order.giftPriceAdjustmentState === 'continuing' ||
       order.giftPriceAdjustmentState === 'superseded');

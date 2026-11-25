@@ -20,6 +20,7 @@ import { ClubOrderService } from './club-order.service';
 import { UpdateCommissionRuleDto } from './club-pricing.dto';
 import { IssueClubCouponDto, UpdateClubPromotionDto } from './club-promotion.dto';
 import { ClubPromotionService } from './club-promotion.service';
+import { ClubGiftSettlementService } from './club-gift-settlement.service';
 
 class UpdateDispatcherDto {
   @IsBoolean()
@@ -40,6 +41,7 @@ export class AdminClubController {
     private readonly directory: ClubDirectoryService,
     private readonly orders: ClubOrderService,
     private readonly promotions: ClubPromotionService,
+    private readonly settlements: ClubGiftSettlementService,
   ) {}
 
   @Get()
@@ -109,6 +111,21 @@ export class AdminClubController {
     return Resp.success(
       await this.orders.getAdminOrder(CLUB_ID, actor, orderId),
     );
+  }
+
+  @Get('settlements')
+  async listSettlements(@AuthUser() actor: SessionUser, @Query() query: ClubOrderQuery) {
+    return Resp.success(await this.settlements.adminList(CLUB_ID, actor, query));
+  }
+
+  @Get('orders/:orderId/settlement')
+  async settlement(@AuthUser() actor: SessionUser, @Param('orderId') orderId: string) {
+    return Resp.success(await this.settlements.adminDetail(CLUB_ID, actor, orderId));
+  }
+
+  @Get('orders/:orderId/settlement/calculations/:calculationId')
+  async settlementHistory(@AuthUser() actor: SessionUser, @Param('orderId') orderId: string, @Param('calculationId') id: string) {
+    return Resp.success(await this.settlements.historical(CLUB_ID, actor, orderId, id));
   }
 
   @Get('members')
