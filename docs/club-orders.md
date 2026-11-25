@@ -279,3 +279,13 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 | 团员端 | `POST /continuation-quotes/:quoteId/receipt` | `{ requestId, receivedAmountCents, receivedAt }`。实收必须与该笔续段报价相符，时间须带时区。返回激活的、从 0 开始的 `segmentIndex`。 |
 
 续段报价、确认与实收可按相同提交标识及内容重试。确认报价和核款使用同一订单的续段版本，避免重复激活。已核款的新段采用既有的按次派发与领取接口。[结单与续单](heart-delivery.md#结单与续单)
+
+## 本人承接与排期
+
+团员端「我的承接」提供时间轴、列表、日历、表格和看板。手机端从「我的」进入，桌面也可从个人工作台的导航进入。五视图使用同一批本人承接和详情，未排期订单在时间轴与日历下方单列。派单人仍从「派单准备」查看整单分工。
+
+- `GET /api/employee/club/orders?responsibility=executor` 返回本人承接列表。用 `limit` 指定页长，以 `nextCursor` 作为下一页的 `after`。
+- `GET /api/employee/club/orders/:orderId/assignment` 返回本人持有的份额、对应执行号和排期。按次订单的 `giftProgress` 分列承接、履约和剩余次数，并单列有效日报的实际到账颗数。改派从原团员的份额中扣除相应次数。
+- `PATCH /api/employee/club/orders/:orderId/personal-schedule` 接受 `startDate`、`endDate` 和 `expectedRevision`。日期是含首尾日的 `YYYY-MM-DD`，清空时两项均传 `null`。版本冲突返回 409，以最新排期重试。排期只对本人可见，保存时派发窗口、分工每日次数和计价段按原约定执行。
+
+接单区与本人承接沿用相同的撤回历史权限。撤回后，已关联本人执行号的团员可以查阅承接历史。停用团员无法读取或调整排期。

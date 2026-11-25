@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Select, Spin, Tag, Typography } from "antd";
-import { RequestError } from "@webapp-template/common/web-auth";
+import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import {
   commissionBasisLabel, commissionUnit, formatCentsAsYuan,
   type CommissionRule, type DispatchPricing, type OrderPricing,
 } from "@webapp-template/common";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import Header from "#/components/Header";
 import type { EmployeeClub } from "../club-operations";
 import { employeeRequest } from "#/service/request";
@@ -17,6 +17,10 @@ import { GiftExceptionQueue, GiftSupervisionCard } from "./gift-supervision";
 import PendingAssignment from "./pending-assignment";
 import MemberInvitation from "./member-invitation";
 import type { DeliveryPeriodPreference } from "@webapp-template/common";
+
+import { useWorkspaceScroll } from "../workspace-scroll";
+
+const orderIdPattern = /^[a-f0-9]{24}$/i;
 
 type Order = {
   id: string;
@@ -48,7 +52,11 @@ function requestError(err: unknown) {
 }
 
 export default function ClubDispatch() {
+  const { id, token } = useAuthSession();
   const [params] = useSearchParams();
+  const context = JSON.stringify([id, "dispatch", params.get("after"), params.get("orderId"), params.get("through")]);
+  const [readyContext, setReadyContext] = useState<string>();
+  const scroll = useWorkspaceScroll(context, readyContext === context);
   const [club, setClub] = useState<EmployeeClub | null>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -62,13 +70,12 @@ export default function ClubDispatch() {
       if (!controller.signal.aborted) setError(requestError(err));
     });
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, token]);
 
   return <>
     <Header />
-    <main style={{ flex: 1, overflow: "auto", padding: 16, width: "100%", boxSizing: "border-box" }}>
+    <main className="club-claim-page" {...scroll}>
       <Flex vertical gap="middle" style={{ maxWidth: 820, marginInline: "auto" }}>
-        <Link to="/">返回个人订单</Link>
         <Typography.Title level={3} style={{ margin: 0 }}>派单准备</Typography.Title>
         {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
           : club === undefined ? <Spin aria-label="加载俱乐部" />
@@ -78,33 +85,43 @@ export default function ClubDispatch() {
               <Typography.Link href={club.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
             </Typography.Text>
             <MemberInvitation />
-            <ClubOrders key={params.get("orderId") ?? ""}
-              linkedId={params.get("orderId") ?? undefined} canAssign={club.canAssignPendingOrders} />
+            <ClubOrders key={id} canAssign={club.canAssignPendingOrders} onReady={() => setReadyContext(context)} />
           </> : <Empty description="当前账号尚无有效团员身份" />}
       </Flex>
     </main>
   </>;
 }
 
-function ClubOrders({ canAssign, linkedId }: { canAssign?: boolean; linkedId?: string }) {
+function ClubOrders({ canAssign, onReady }: { canAssign?: boolean; onReady: () => void }) {
   const route = "club/orders";
-  const [page, setPage] = useState<Page>();
-  const [after, setAfter] = useState<string>();
-  const [selectedId, setSelectedId] = useState(linkedId);
+  const [params, setParams] = useSearchParams();
+  const readId = (name: string) => {
+    const value = params.get(name);
+    return value && orderIdPattern.test(value) ? value : undefined;
+  };
+  const after = readId("after");
+  const selectedId = readId("orderId");
+  const rawDate = params.get("through");
+  const through = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : undefined;
+  const [loadedPage, setPage] = useState<Page>();
+  const [loadedAfter, setLoadedAfter] = useState<string | null>();
+  const page = loadedAfter === (after ?? null) ? loadedPage : undefined;
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
-  const [through, setThrough] = useState<string>();
   const [fulfillmentRevision, setFulfillmentRevision] = useState(0);
   const [exceptionOrder, setExceptionOrder] = useState<Order>();
   const fulfillmentPanel = useRef<HTMLDivElement>(null);
   const [linkedOrder, setLinkedOrder] = useState<Order>();
   const [linkError, setLinkError] = useState("");
-  const order = page?.items.find(value => value.id === selectedId) ?? exceptionOrder
-    ?? (linkedId && selectedId === linkedId ? linkedOrder : page?.items[0]);
+  const pageOrder = page?.items.find(value => value.id === selectedId);
+  const order = selectedId ? pageOrder ?? (exceptionOrder?.id === selectedId ? exceptionOrder : undefined)
+    ?? (linkedOrder?.id === selectedId ? linkedOrder : undefined) : page?.items[0];
+  const linkedId = selectedId && !pageOrder ? selectedId : undefined;
 
   useEffect(() => {
     if (!linkedId) return;
+    setLinkError("");
     const controller = new AbortController();
     employeeRequest<Order>(`${route}/${encodeURIComponent(linkedId)}`, "GET", undefined, controller.signal).then(value => {
       if (!controller.signal.aborted) setLinkedOrder(value);
@@ -119,7 +136,7 @@ function ClubOrders({ canAssign, linkedId }: { canAssign?: boolean; linkedId?: s
   }
 
   function openException(selected: Order) {
-    setSelectedId(selected.id);
+    selectOrder(selected.id);
     setExceptionOrder(selected);
     requestAnimationFrame(() => {
       fulfillmentPanel.current?.focus({ preventScroll: true });
@@ -133,23 +150,45 @@ function ClubOrders({ canAssign, linkedId }: { canAssign?: boolean; linkedId?: s
     const query = new URLSearchParams({ responsibility: "dispatcher" });
     if (after) query.set("after", after);
     employeeRequest<Page>(`${route}?${query}`, "GET", undefined, controller.signal).then(data => {
-      if (!controller.signal.aborted) setPage(data);
+      if (!controller.signal.aborted) { setPage(data); setLoadedAfter(after ?? null); }
     }).catch(err => {
       if (!controller.signal.aborted) setError(requestError(err));
     });
     return () => controller.abort();
   }, [route, after, attempt]);
 
+  function setContext(changes: { after?: string; orderId?: string; through?: string }) {
+    setParams(previous => {
+      const next = new URLSearchParams(previous);
+      for (const [name, value] of Object.entries(changes)) {
+        if (value === undefined) next.delete(name);
+        else next.set(name, value);
+      }
+      return next;
+    });
+  }
+
+  function selectOrder(id: string) {
+    setContext({ orderId: id });
+  }
+
   function goTo(cursor?: string) {
     setPage(undefined);
     setExceptionOrder(undefined);
-    setAfter(cursor);
+    setContext({ after: cursor, orderId: undefined });
   }
+
+  function setThrough(date?: string) {
+    setContext({ through: date });
+  }
+
+  useEffect(() => {
+    if (page && (!selectedId || order || linkError)) onReady();
+  }, [page, selectedId, order, linkError, onReady]);
 
   return <>
     {canAssign ? <PendingAssignment onAssigned={id => {
-      setSelectedId(id);
-      setAfter(undefined);
+      setContext({ orderId: id, after: undefined });
       setAttempt(value => value + 1);
     }} /> : null}
     <GiftExceptionQueue<Order> route={route} through={through} revision={fulfillmentRevision} onOpen={openException}
@@ -159,7 +198,7 @@ function ClubOrders({ canAssign, linkedId }: { canAssign?: boolean; linkedId?: s
         action={<Button onClick={() => { setLinkError(""); setAttempt(value => value + 1); }}>重试</Button>} />}
       {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
         : page ? page.items.length ? <Select aria-label="我负责派发的订单" style={{ width: "100%" }} value={page.items.some(item => item.id === order?.id) ? order?.id : undefined}
-          onChange={id => { setExceptionOrder(undefined); setSelectedId(id); }}
+          onChange={id => { setExceptionOrder(undefined); selectOrder(id); }}
           options={page.items.map(value => ({
             value: value.id,
             label: `${sources[value.source]} · ${value.recipientGameAccount} · ${value.requestedGiftTimes === undefined ? `${value.requestedHearts} 颗` : `${value.requestedGiftTimes} 次`} · ${statuses[value.dispatchStatus]} · ${value.id}`,
@@ -189,8 +228,7 @@ function ClubOrders({ canAssign, linkedId }: { canAssign?: boolean; linkedId?: s
     {creating ? <NewDirectDraft onClose={() => setCreating(false)} onCreated={id => {
       setCreating(false);
       setExceptionOrder(undefined);
-      setSelectedId(id);
-      setAfter(undefined);
+      setContext({ orderId: id, after: undefined });
       setAttempt(value => value + 1);
     }} /> : null}
   </>;

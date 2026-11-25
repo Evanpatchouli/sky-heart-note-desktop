@@ -5,7 +5,7 @@ import {
   clientRequest, clientOrdersPath, detailHref, dispatcherName, dispatchLabel, orderDispatcher,
   sourceLabel, useClientRead, type OrderSummary,
 } from "./order-api";
-import { readClientContext, rememberClientContext } from "./navigation";
+import { readClientContext, rememberClientContext, useClientScroll } from "./navigation";
 
 type OrderOptions = { clubName: string; dispatchers: { userId: string; nickname: string | null }[]; coupons?: PlatformPromotionSource[] };
 type OrderInput = {
@@ -87,6 +87,7 @@ export function NewOrder() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<OrderSummary>();
+  useClientScroll(id, "new-order", !created && !options.loading);
   const inFlight = useRef(false);
   const candidates = options.data?.dispatchers ?? [];
   const coupons = options.data?.coupons ?? [];
@@ -147,6 +148,7 @@ export function NewOrder() {
       }
       savePending(storageKey, null);
       rememberClientContext(id, draftKey, "");
+      rememberClientContext(id, "scroll:new-order", "0");
       setPending(null);
       setCreated(order);
     } catch (error) {

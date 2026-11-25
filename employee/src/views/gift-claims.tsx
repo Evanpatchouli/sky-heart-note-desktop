@@ -10,6 +10,7 @@ import useEmitter from "#/utils/useEmitter";
 import GiftDeliveryDiary from "./gift-delivery-diary";
 import { GiftSchedule } from "./club-dispatch/gift-allocation";
 import { GiftExecutionAccounts } from "./club-dispatch/gift-execution-accounts";
+import { useWorkspaceScroll } from "./workspace-scroll";
 
 type Club = { name: string };
 type Page = { items: GiftClaimOrder[]; nextCursor: string | null };
@@ -98,6 +99,10 @@ export default function GiftClaims({ legacyClaimPath }: { legacyClaimPath?: stri
   const [club, setClub] = useState<Club | null>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [readyContext, setReadyContext] = useState<string>();
+  const scrollContext = JSON.stringify([id, "gift-claims", noticeId, orderId, filter, after]);
+  const scroll = useWorkspaceScroll(scrollContext, readyContext === scrollContext);
+  const markReady = useCallback(() => setReadyContext(scrollContext), [scrollContext]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -123,7 +128,7 @@ export default function GiftClaims({ legacyClaimPath }: { legacyClaimPath?: stri
 
   return <>
     <Header />
-    <main style={{ flex: 1, overflow: "auto", width: "100%", padding: 16, boxSizing: "border-box" }}>
+    <main className="club-claim-page" {...scroll}>
       <Flex vertical gap="middle" style={{ maxWidth: 820, marginInline: "auto" }}>
         <Flex gap="middle" wrap>
           <Link to="/club/dispatch">派单准备</Link>
@@ -143,7 +148,7 @@ export default function GiftClaims({ legacyClaimPath }: { legacyClaimPath?: stri
               }}>{label}</Button>)}
           </Flex>}
           <Orders key={JSON.stringify([id, token, noticeId, orderId])} noticeId={noticeId}
-            legacyClaimPath={legacyClaimPath} orderId={orderId} filter={filter} after={after} onPage={goToPage}
+            legacyClaimPath={legacyClaimPath} orderId={orderId} filter={filter} after={after} onPage={goToPage} onReady={markReady}
             onClearOrder={() => setParams(queueSearch(filter, after), { replace: true })} />
         </> : <Empty description="当前账号尚无有效团员身份" />}
       </Flex>
@@ -151,13 +156,14 @@ export default function GiftClaims({ legacyClaimPath }: { legacyClaimPath?: stri
   </>;
 }
 
-function Orders({ orderId, noticeId, legacyClaimPath, filter, after, onPage, onClearOrder }: {
+function Orders({ orderId, noticeId, legacyClaimPath, filter, after, onPage, onReady, onClearOrder }: {
   orderId?: string;
   noticeId?: string;
   legacyClaimPath?: string;
   filter: GiftClaimFilter;
   after?: string;
   onPage: (cursor?: string) => void;
+  onReady: () => void;
   onClearOrder: () => void;
 }) {
   const { id, token } = useAuthSession();
@@ -179,6 +185,11 @@ function Orders({ orderId, noticeId, legacyClaimPath, filter, after, onPage, onC
   const lock = useRef(false);
   const pageKey = queueSearch(filter, after).toString();
   const page = loadedPage?.key === pageKey ? loadedPage.page : undefined;
+  const ready = !!page && (noticeId === undefined || !!notice || !!noticeError);
+
+  useEffect(() => {
+    if (ready) onReady();
+  }, [ready, onReady]);
 
   useEffect(() => {
     if (noticeId === undefined) return;

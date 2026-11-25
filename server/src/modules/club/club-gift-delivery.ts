@@ -27,13 +27,28 @@ export function giftDayFacts(
   userId?: string,
   through?: string,
 ) {
-  const decimal = (value: string) => ({ $toDecimal: { $toLong: value } });
   const shareIds = shareId ? [shareId] : (order.giftDispatch?.segments ?? [])
     .flatMap(segment => segment.shares.map(share => new Types.ObjectId(share.id)));
+  return giftFactsForOrderIds(collection, [order._id], shareIds, userId, through);
+}
+
+export function giftFactsForOrders(collection: Collection, orders: ClubOrder[]) {
+  const giftOrders = orders.filter(order => order.dispatchPricing?.priceUnit === 'gift_times');
+  const shareIds = giftOrders.flatMap(order => (order.giftDispatch?.segments ?? [])
+    .flatMap(segment => segment.shares.map(share => new Types.ObjectId(share.id))));
+  return giftFactsForOrderIds(collection, giftOrders.map(order => order._id), shareIds);
+}
+
+function giftFactsForOrderIds(
+  collection: Collection, orderIds: Types.ObjectId[], shareIds: Types.ObjectId[],
+  userId?: string, through?: string,
+) {
   if (!shareIds.length) return Promise.resolve([]);
+  const decimal = (value: string) => ({ $toDecimal: { $toLong: value } });
   const pipeline: PipelineStage[] = [
     { $match: {
-      orderId: order._id, ...(userId ? { userId } : {}), ...(through ? { businessDate: { $lte: through } } : {}),
+      orderId: orderIds.length === 1 ? orderIds[0] : { $in: orderIds },
+      ...(userId ? { userId } : {}), ...(through ? { businessDate: { $lte: through } } : {}),
       $or: [
         { priceUnit: 'gift_times' },
         { priceUnit: null, $or: [{ shareId: { $in: shareIds } }, { 'lines.shareId': { $in: shareIds } }] },

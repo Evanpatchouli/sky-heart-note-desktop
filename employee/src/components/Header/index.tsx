@@ -7,8 +7,8 @@ import {
 } from "@ant-design/icons";
 import { useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
 import MemberBrand from "#/components/MemberBrand";
-import Timenow from "./timenow";
 import DispatchNotices from "./DispatchNotices";
+import Timenow from "./timenow";
 
 const views = [
   { label: "时间轴", value: "timeline", icon: <OrderedListOutlined /> },
@@ -22,6 +22,8 @@ export default function Header() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const currentPath = pathname.replace(/\/$/, "") || "/";
+  const personalWorkspace = currentPath === "/" || currentPath === "/workspace";
   const [menuOpen, setMenuOpen] = useState(false);
   const user = useAuthSession();
   const { logout, loggingOut, logoutError } = useSessionActions();
@@ -33,9 +35,16 @@ export default function Header() {
     <header className="member-appbar">
       <div className="member-appbar__row">
         <MemberBrand compact />
-        <nav className="member-appbar__views" aria-label="订单视图">
-          {pathname.startsWith("/club/")
-            ? <Link className="member-appbar__dispatch-link" to="/">个人工作台</Link> : <Segmented
+        <nav className={`member-appbar__views${personalWorkspace ? " member-appbar__views--personal" : ""}`} aria-label={personalWorkspace ? "订单视图" : "团员工作台"}>
+          {!personalWorkspace ? <div className="member-appbar__club-nav">
+            <Link className="member-appbar__dispatch-link" to="/workspace">个人工作台</Link>
+            <Link className="member-appbar__dispatch-link" to="/club/dispatch"
+              aria-current={currentPath === "/club/dispatch" ? "page" : undefined}>派单准备</Link>
+            <Link className="member-appbar__dispatch-link" to="/claim-board"
+              aria-current={["/claim-board", "/club/gift-claims", "/club/heart-claims"].includes(currentPath) ? "page" : undefined}>接单区</Link>
+            <Link className="member-appbar__dispatch-link" to="/club/assignments"
+              aria-current={currentPath === "/club/assignments" ? "page" : undefined}>我的承接</Link>
+          </div> : <Segmented
             aria-label="订单视图"
             options={views}
             value={currentView}
@@ -47,16 +56,20 @@ export default function Header() {
             onChange={value => {
               const next = new URLSearchParams(params);
               next.set("vtype", value);
-              navigate({ pathname: "/", search: next.toString() });
+              navigate({ pathname: currentPath, search: next.toString() });
             }}
           />}
         </nav>
         <div className="member-appbar__account">
-          {pathname === "/" ? <Link className="member-appbar__dispatch-link" to="/club/dispatch">派单准备</Link> : null}
-          {pathname !== "/claim-board" && pathname !== "/club/gift-claims" && <Link className="member-appbar__dispatch-link" to="/claim-board">接单区</Link>}
-          <Timenow />
-          <DispatchNotices key={user.token} />
-          <Dropdown
+          {personalWorkspace ? <nav className="member-appbar__club-nav member-appbar__home-nav" aria-label="俱乐部业务">
+            <Link className="member-appbar__dispatch-link" to="/club/dispatch">派单准备</Link>
+            <Link className="member-appbar__dispatch-link" to="/claim-board">接单区</Link>
+            <Link className="member-appbar__dispatch-link" to="/club/assignments">我的承接</Link>
+          </nav> : null}
+          <div className="member-appbar__tools">
+            <Timenow />
+            <DispatchNotices key={user.token} />
+            <Dropdown
             trigger={["click"]}
             placement="bottomRight"
             open={menuOpen}
@@ -94,7 +107,8 @@ export default function Header() {
               <span className="member-appbar__name">{name}</span>
               <DownOutlined className="member-appbar__chevron" />
             </Button>
-          </Dropdown>
+            </Dropdown>
+          </div>
         </div>
       </div>
       {logoutError && <Alert type="error" showIcon role="alert" title={logoutError} />}

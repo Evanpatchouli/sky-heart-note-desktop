@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { deliveryPeriodPreferenceLabel, formatCentsAsYuan, isGiftOrderProgress, platformPromotionLabels, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type CustomerQuote, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
 import { authRequest, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 
@@ -6,6 +6,8 @@ import { ContinuationFacts, CustomerContinuation, giftCount, GiftOrderProgress, 
 import { CancelPendingOrder } from "./cancel-pending-order";
 import { OrderGiftPriceAdjustment } from "./order-gift-price-adjustment";
 import { clientOrdersPath, detailHref, dispatchLabel, orderDispatcher, sourceLabel, useClientRead, type OrderSummary } from "./order-api";
+
+import { orderCursor, orderListHref, orderSource, readClientContext, rememberClientContext, rememberedOrderList, useClientScroll } from "./navigation";
 
 const periods = { normal: "普通期", double: "双倍期" };
 type Order = OrderSummary & {
@@ -27,9 +29,10 @@ type Order = OrderSummary & {
 type Page = { items: Order[]; nextCursor: string | null };
 
 export default function MyOrders() {
-  const { token } = useAuthSession();
-  const [source, setSource] = useState("");
-  const [after, setAfter] = useState<string>();
+  const { token, id } = useAuthSession();
+  const source = orderSource();
+  const after = orderCursor();
+  const context = `orders:${source ?? "all"}:${after ?? "first"}`;
   const [page, setPage] = useState<Page>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -52,18 +55,23 @@ export default function MyOrders() {
     return () => controller.abort();
   }, [token, after, source, attempt]);
 
-  function goTo(cursor?: string) {
-    setPage(undefined);
-    setError("");
-    setAfter(cursor);
-  }
+  useClientScroll(id, context, !!page);
+  const focusKey = `focus:${context}`;
+  useLayoutEffect(() => {
+    if (!page) return;
+    const orderId = readClientContext(id, focusKey);
+    if (orderId && page.items.some(order => order.id === orderId)) {
+      document.getElementById(`client-order-${orderId}`)?.focus({ preventScroll: true });
+      rememberClientContext(id, focusKey, "");
+    }
+  }, [page, id, focusKey]);
 
   return <section>
     <div className="client-orders__actions">
       <h1>我的订单</h1>
       <button type="button" onClick={() => { setError(""); setAttempt(value => value + 1); }}>刷新</button>
     </div>
-    <label>订单来源 <select value={source} onChange={event => { goTo(); setSource(event.target.value); }}>
+    <label>订单来源 <select value={source ?? ""} onChange={event => window.location.assign(orderListHref(null, event.target.value))}>
       <option value="">全部来源</option>
       <option value="direct_dispatch">直接派单</option>
       <option value="client_order">客户端下单</option>
@@ -73,8 +81,9 @@ export default function MyOrders() {
       setAttempt(value => value + 1);
     }}>重试</button></p> : page ? page.items.length ? <ul className="client-orders__list">
       {page.items.map(order => <li key={order.id}>
-        <details>
-          <summary>{order.recipientGameAccount} · {sourceLabel[order.source]} · {dispatchLabel[order.dispatchStatus]}
+        <details open={readClientContext(id, `open:${order.id}`) === "true"} onToggle={event =>
+          rememberClientContext(id, `open:${order.id}`, String(event.currentTarget.open))}>
+          <summary id={`client-order-${order.id}`}>{order.recipientGameAccount} · {sourceLabel[order.source]} · {dispatchLabel[order.dispatchStatus]}
             {isGiftOrderProgress(order.deliveryProgress) && <>
               {" · "}约定 {order.deliveryProgress.agreedGiftTimes} 次 · 已送 {order.deliveryProgress.deliveredGiftTimes} 次
               {" · "}剩余 {order.deliveryProgress.remainingGiftTimes} 次 · 日报到账 {giftCount(order.deliveryProgress.actualReceivedHearts)}
@@ -85,26 +94,28 @@ export default function MyOrders() {
             </>}
           </summary>
           <OrderFacts order={order} />
-          <a className="client-orders__action" href={detailHref(order)}>查看订单详情</a>
+          <a className="client-orders__action" href={detailHref(order)} onClick={() => rememberClientContext(id, focusKey, order.id)}>查看订单详情</a>
         </details>
       </li>)}
-    </ul> : <p>暂无订单</p> : <p role="status">加载中…</p>}
+    </ul> : <p>暂无归属本账号的送心订单。</p> : <p role="status">加载中…</p>}
     {after || page?.nextCursor ? <nav aria-label="订单分页">
-      <button type="button" disabled={!after} onClick={() => goTo()}>返回首页</button>
-      <button type="button" disabled={!page?.nextCursor} onClick={() => goTo(page?.nextCursor ?? undefined)}>下一页</button>
+      {after ? <a className="client-orders__action" href={orderListHref(null, source)}>返回首页</a> : null}
+      {page?.nextCursor ? <a className="client-orders__action" href={orderListHref(page.nextCursor, source)}>下一页</a> : null}
     </nav> : null}
   </section>;
 }
 
 export function OrderDetail({ orderId }: { orderId: string }) {
+  const { id } = useAuthSession();
   const { data: order, error, loading, reload } = useClientRead<Order>(
     `${clientOrdersPath}/${orderId}`, "订单加载失败",
   );
+  useClientScroll(id, `detail:${orderId}`, !!order && !loading);
   const progress = isGiftOrderProgress(order?.deliveryProgress) ? order.deliveryProgress : undefined;
   return <section className="client-orders__panel">
     <h1>订单详情</h1>
     <div className="client-orders__actions">
-      <a className="client-orders__action" href="/">返回我的订单</a>
+      <a className="client-orders__action" href={rememberedOrderList(id)}>返回我的订单</a>
       <a className="client-orders__action" href="/order">下单</a>
       <button type="button" disabled={loading} onClick={reload}>刷新</button>
     </div>

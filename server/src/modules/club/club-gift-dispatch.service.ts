@@ -17,7 +17,7 @@ import type { ClaimGiftDispatchDto, ConfigureGiftDispatchDto, ReassignGiftDispat
 import { ClubOrder } from './club-order.schema';
 
 import {
-  acceptsGiftExecution, giftExecutionAccounts,
+  acceptsGiftExecution, giftExecutionAccounts, giftHistoryScopes,
   publishedGiftOrder, saveGiftDispatch, writableGiftDispatch as claimable,
 } from './club-gift-execution.service';
 const concurrentChange = () => new ConflictException('订单分工或履约正在更新，请重新加载后重试');
@@ -373,10 +373,7 @@ export class ClubGiftDispatchService {
   }
 
   private readScope(clubId: string, userId: string): QueryFilter<ClubOrder> {
-    return { $or: [this.claimScope(clubId, userId),
-      { ...publishedGiftOrder, clubId, dispatchWithdrawnAt: null, 'giftDispatch.segments.shares.userId': userId },
-      { ...publishedGiftOrder, clubId, 'giftDispatch.executionAccounts.userId': userId },
-    ] };
+    return { $or: [this.claimScope(clubId, userId), ...giftHistoryScopes(clubId, userId)] };
   }
 
   private claimScope(clubId: string, userId: string): QueryFilter<ClubOrder> {

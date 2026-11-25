@@ -1,0 +1,263 @@
+.assignment-page {
+  --assignment-ink: #1d2a41;
+  --assignment-muted: #526477;
+  --assignment-border: #dbe2eb;
+  --assignment-blue: #355bc1;
+  min-width: 0;
+  color: var(--assignment-ink);
+}
+
+.assignment-heading { margin-bottom: 4px; }
+.assignment-heading h1 { margin: 0; font-size: clamp(25px, 3.3vw, 34px); line-height: 1.22; }
+.assignment-summary { margin-bottom: 10px; }
+.assignment-summary p { margin: 0; color: var(--assignment-muted); font-size: 14px; }
+.assignment-workspace-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--assignment-blue); }
+.assignment-surface {
+  min-width: 0;
+  margin-block: 6px 12px;
+  overflow: hidden;
+  border: 1px solid var(--assignment-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.assignment-surface :is(button, input, select), .assignment-date-toolbar label { font: inherit; color: inherit; }
+.assignment-surface button { cursor: pointer; }
+.assignment-surface button:disabled { cursor: default; opacity: .5; }
+.assignment-page :focus-visible, .assignment-surface :focus-visible { outline: 2px solid var(--assignment-blue); outline-offset: -2px; }
+.assignment-surface h2 { margin: 0; font-size: 15px; }
+.assignment-surface h2 small { color: var(--assignment-muted); font-weight: 400; margin-inline-start: 6px; }
+.assignment-tabs { display: flex; padding: 0 12px; border-bottom: 1px solid var(--assignment-border); }
+.assignment-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  min-height: 44px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: #fff;
+  color: var(--assignment-muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.assignment-tabs button:hover { background: #f4f6f9; }
+.assignment-tabs button[aria-selected="true"] { color: var(--assignment-ink); border-bottom-color: var(--assignment-ink); font-weight: 700; }
+
+.assignment-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--assignment-border);
+}
+.assignment-controls label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 42px;
+  gap: 7px;
+  padding-inline: 9px;
+  color: var(--assignment-muted);
+  border: 1px solid var(--assignment-border);
+  border-radius: 7px;
+}
+.assignment-controls label:focus-within { outline: 2px solid var(--assignment-blue); outline-offset: -2px; }
+.assignment-controls input, .assignment-controls select { min-width: 0; flex: 1; min-height: 42px; border: 0; background: transparent; }
+.assignment-controls input:focus-visible, .assignment-controls select:focus-visible { outline: 0; }
+.assignment-controls > span { margin-inline-start: auto; color: var(--assignment-muted); font-size: 13px; }
+.assignment-refresh, .assignment-date-toolbar button {
+  min-width: 44px;
+  min-height: 44px;
+  padding-inline: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.assignment-refresh:hover, .assignment-date-toolbar button:hover { background: #f4f6f9; }
+.assignment-overflow, .assignment-calendar-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+.assignment-empty { margin-block: 1.5rem; }
+.assignment-detail-page { max-width: 960px; margin-inline: auto; }
+.assignment-back { margin-block-end: 12px; }
+.assignment-schedule-summary { padding: 10px 12px; border: 1px solid #dbe2eb; border-radius: 8px; background: #f7f8fa; }
+.assignment-schedule-summary strong { margin-inline-start: 8px; }
+.assignment-feedback { color: #196850; margin: 0 0 10px; }
+.assignment-form-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(165px, 100%), 1fr)); gap: 12px; }
+.assignment-form-dates label { display: grid; gap: 4px; }
+.assignment-form-dates input, .assignment-date-toolbar input {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid #b0bdce;
+  border-radius: 6px;
+  color: #1d2a41;
+  background: #fff;
+  font: inherit;
+}
+.assignment-schedule-name { margin-block: 0 12px; overflow-wrap: anywhere; }
+
+.assignment-list { margin: 0; padding: 0; list-style: none; }
+.assignment-list li + li { border-top: 1px solid var(--assignment-border); }
+.assignment-list-row {
+  display: grid;
+  grid-template-columns: minmax(135px, 1.1fr) minmax(90px, .5fr) minmax(155px, 1fr) minmax(165px, .8fr) auto;
+  gap: 8px;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  text-align: start;
+}
+.assignment-list-row:hover, .assignment-table tbody button:hover { background: #f4f6f9; }
+.assignment-title { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.assignment-status {
+  display: inline-flex;
+  justify-self: start;
+  padding: 1px 7px;
+  border: 1px solid var(--status-border, #dbe2eb);
+  border-radius: 6px;
+  background: var(--status-bg, #edf0f4);
+  color: var(--status-ink, #415267);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.assignment-surface [data-status="active"] { --status-border: #c6d5f8; --status-bg: #e9effb; --status-ink: #244c9a; }
+.assignment-surface [data-status="review"], .assignment-surface [data-status="waiting"] { --status-border: #ead3a9; --status-bg: #fff2d9; --status-ink: #885510; }
+.assignment-surface [data-status="stopped"] { --status-border: #edc4c3; --status-bg: #fae9e8; --status-ink: #a23b40; }
+.assignment-surface [data-status="done"] { --status-border: #c3dfd1; --status-bg: #e6f2eb; --status-ink: #196850; }
+.assignment-progress { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 13px; }
+.assignment-progress > span + span, .assignment-date, .assignment-chevron { color: var(--assignment-muted); }
+.assignment-date { font-size: 13px; }
+
+.assignment-table { min-width: 790px; width: 100%; border-spacing: 0; text-align: start; }
+.assignment-table th, .assignment-table td { padding: 6px 10px; border-bottom: 1px solid var(--assignment-border); text-align: start; }
+.assignment-table tr > * + * { border-inline-start: 1px solid var(--assignment-border); }
+.assignment-table th[scope="col"] { background: #f7f8fa; font-weight: 500; }
+.assignment-table tbody tr:last-child > * { border-bottom: 0; }
+.assignment-table td small { color: var(--assignment-muted); }
+.assignment-table button, .assignment-timeline-name button {
+  min-height: 44px;
+  padding: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: start;
+}
+.assignment-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(224px, 1fr); min-height: 260px; }
+.assignment-kanban-column { padding: 12px; background: #f7f8fa; }
+.assignment-kanban-column + .assignment-kanban-column { border-inline-start: 1px solid var(--assignment-border); }
+.assignment-kanban-column > button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--assignment-border);
+  border-radius: 8px;
+  background: #fff;
+  text-align: start;
+}
+.assignment-kanban-column > button:hover { background: #f1f5fe; }
+
+.assignment-date-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 10px; }
+.assignment-date-toolbar h2 { margin-inline-end: auto; }
+.assignment-date-toolbar label { display: flex; align-items: center; gap: 6px; color: var(--assignment-muted); font-size: 13px; }
+.assignment-date-toolbar input { max-width: 140px; }
+.assignment-month-controls { display: flex; }
+.assignment-date-agenda { border-top: 1px solid var(--assignment-border); }
+.assignment-date-agenda h2, .assignment-date-empty { margin: 0; padding: 12px; }
+.assignment-date-empty { color: var(--assignment-muted); }
+
+.assignment-timeline { width: max-content; --assignment-name-width: 205px; }
+.assignment-timeline-row {
+  display: grid;
+  grid-template-columns: var(--assignment-name-width) auto;
+  min-height: 49px;
+  border-top: 1px solid var(--assignment-border);
+}
+.assignment-timeline-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 8px;
+  border-inline-end: 1px solid #cbd5e1;
+  background: #fff;
+}
+.assignment-timeline-name .assignment-jump { flex: 0 0 44px; text-align: center; }
+.assignment-timeline-name code, .assignment-timeline-name strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.assignment-timeline-name button { min-width: 0; }
+.assignment-timeline-head .assignment-timeline-name { background: #f7f8fa; color: var(--assignment-muted); }
+.assignment-timeline-lane {
+  display: grid;
+  grid-template-columns: repeat(var(--assignment-days), var(--assignment-day-width));
+  align-items: center;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(var(--assignment-day-width) - 1px), var(--assignment-border) 0 var(--assignment-day-width));
+}
+.assignment-day { display: grid; justify-items: center; align-content: center; min-height: 44px; border: 0; background: transparent; }
+.assignment-day[data-outside="true"] { color: #667992; background: #f6f8fa; }
+.assignment-day[aria-current="date"] { color: var(--assignment-blue); font-weight: 700; }
+.assignment-day[aria-pressed="true"] { background: #e8eefb; color: #244c9a; font-weight: 700; }
+.assignment-day small { font-size: 11px; }
+.assignment-timeline-bar, .assignment-calendar-bands button {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid var(--status-border, #dbe2eb);
+  border-radius: 6px;
+  background: var(--status-bg, #edf0f4);
+  color: var(--status-ink, #415267);
+  overflow: hidden;
+  text-align: start;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.assignment-timeline-bar { min-height: 42px; padding: 0; cursor: grab; user-select: none; }
+.assignment-timeline-bar:active { cursor: grabbing; }
+.assignment-bar-name { min-width: 0; flex: 1; padding-inline: 4px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.assignment-handle { flex: 0 0 7px; align-self: stretch; cursor: ew-resize; }
+.assignment-handle:hover { background: rgb(53 91 193 / 20%); }
+
+.assignment-calendar-weekdays, .assignment-calendar-days, .assignment-calendar-bands { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.assignment-calendar-weekdays { border-block: 1px solid var(--assignment-border); background: #f7f8fa; }
+.assignment-calendar-weekdays span { padding-block: 5px; text-align: center; color: var(--assignment-muted); font-size: 13px; }
+.assignment-calendar-week { background: repeating-linear-gradient(to right, transparent 0 calc(100% / 7 - 1px), var(--assignment-border) 0 calc(100% / 7)); }
+.assignment-calendar-week + .assignment-calendar-week { border-top: 1px solid var(--assignment-border); }
+.assignment-calendar-bands { min-height: 20px; grid-auto-rows: 32px; gap: 3px 0; padding-bottom: 3px; }
+.assignment-calendar-bands button { display: block; margin-inline: 1px; font-size: 13px; }
+.assignment-day-count { display: none; }
+
+@media (width <= 735px) {
+  .assignment-list-row { grid-template-columns: minmax(0, 1fr) auto 12px; }
+  .assignment-list-row .assignment-progress, .assignment-list-row .assignment-date { grid-column: 1 / 3; }
+  .assignment-list-row .assignment-chevron { grid-row: 1 / span 3; grid-column: 3; }
+}
+
+@media (width < 600px) {
+  .assignment-tabs { padding-inline: 3px; }
+  .assignment-tabs button { flex: 1; gap: 3px; padding-inline: 2px; font-size: 13px; }
+  .assignment-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 6px; padding: 5px 8px; }
+  .assignment-controls > span { margin-inline: 0; }
+  .assignment-refresh { justify-self: end; grid-column: 2; }
+  .assignment-controls input, .assignment-controls select, .assignment-form-dates input { font-size: 16px; }
+  .assignment-date-toolbar h2 { flex: 1 1 125px; }
+  .assignment-date-toolbar label { order: 2; }
+  .assignment-timeline { --assignment-name-width: 131px; }
+  .assignment-timeline-name button strong { font-size: 13px; }
+  .assignment-timeline-name button code { font-size: 10px; }
+  .assignment-calendar { min-width: 308px; }
+  .assignment-day-count { display: block; }
+  .assignment-timeline-lane .assignment-day, .assignment-timeline-bar { min-height: 44px; }
+}
+
+.assignment-share + .assignment-share { border-top: 1px solid var(--assignment-border); padding-top: 12px; }
+.assignment-timeline-name .assignment-progress { font-size: 11px; padding-block-end: 5px; }
+.assignment-timeline-name .assignment-progress strong { font-size: inherit; }

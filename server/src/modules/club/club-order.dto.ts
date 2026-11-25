@@ -117,6 +117,6 @@ export class ClubOrderQuery {
 
 export class EmployeeClubOrderQuery extends ClubOrderQuery {
   @ValidateIf((_, value) => value !== undefined)
-  @IsIn(['dispatcher'])
-  responsibility?: 'dispatcher';
+  @IsIn(['dispatcher', 'executor'])
+  responsibility?: 'dispatcher' | 'executor';
 }

@@ -65,3 +65,55 @@
   padding: 8px 14px;
   border-radius: 6px;
 }
+
+.client-bottom-tabs { display: none; }
+.client-orders__brand { text-decoration: none; font-weight: 700; }
+.client-orders__back { display: inline-flex; align-items: center; min-height: 44px; }
+.client-orders nav[aria-label="订单分页"] { display: flex; gap: 12px; }
+
+@media (width < 600px) {
+  html { scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  html[data-mobile-keyboard] { scroll-padding-bottom: 12px; }
+  body:has(.client-orders) { margin: 0; }
+  .sky-session, .client-orders__header nav, .client-orders__brand span { display: none; }
+  .client-orders {
+    padding: 0 max(14px, env(safe-area-inset-right)) calc(72px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  }
+  .client-orders h1 { font-size: 26px; }
+  .client-orders :is(input, select, button, summary) { box-sizing: border-box; min-height: 44px; }
+  .client-orders__brand { display: inline-flex; align-items: center; }
+  .client-orders__field :is(input, select) { width: 100%; min-width: 0; font-size: 16px; }
+  .client-orders__header {
+    min-height: 53px;
+    margin: 0 calc(-1 * max(14px, env(safe-area-inset-right))) 16px calc(-1 * max(14px, env(safe-area-inset-left)));
+    padding: env(safe-area-inset-top) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+    border-bottom: 1px solid #dbe2eb;
+    background: #fff;
+  }
+  .client-orders__brand { min-height: 44px; }
+  .client-bottom-tabs {
+    position: fixed;
+    z-index: 5;
+    display: flex;
+    inset: auto 0 0;
+    border-top: 1px solid #dbe2eb;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background: #fff;
+  }
+  .client-bottom-tabs a {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 55px;
+    gap: 2px;
+    color: #526477;
+    font-size: 11px;
+    text-decoration: none;
+  }
+  .client-bottom-tabs a[aria-current="page"] { color: #196850; font-weight: 700; }
+  .client-bottom-tabs a:focus-visible { outline-offset: -3px; }
+  [data-mobile-keyboard] .client-bottom-tabs { display: none; }
+  .client-orders__form .client-orders__actions button { flex: 1; }
+}

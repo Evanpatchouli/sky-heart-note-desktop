@@ -25,6 +25,7 @@
       "types": "./dist/utils/index.d.ts"
     },
     "./web-auth": "./web-auth/index.tsx",
+    "./mobile-navigation": "./mobile-navigation/index.tsx",
     "./components": {
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components.js"
@@ -32,6 +33,7 @@
   },
   "files": [
     "dist",
+    "mobile-navigation",
     "web-auth"
   ],
   "scripts": {

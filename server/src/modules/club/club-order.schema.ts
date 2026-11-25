@@ -19,6 +19,7 @@ import {
   type StoredOrderReceipt,
 } from './club-pricing.schema';
 import { CLUB_ID_PATTERN } from './club.schema';
+import { giftBusinessDatePattern } from './club-gift-segment.dto';
 
 export const ORDER_SOURCES = ['direct_dispatch', 'client_order'] as const;
 export type OrderSource = (typeof ORDER_SOURCES)[number];
@@ -79,6 +80,21 @@ export class ClubOrderShare {
     default: [],
   })
   executionGameAccounts: ExecutionGameAccount[];
+}
+
+@Schema({ _id: false })
+export class PersonalSchedule {
+  @Prop({ type: String, required: true, match: USER_ID_PATTERN })
+  userId: string;
+
+  @Prop({ type: String, match: giftBusinessDatePattern, default: null })
+  startDate: string | null;
+
+  @Prop({ type: String, match: giftBusinessDatePattern, default: null })
+  endDate: string | null;
+
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isSafeInteger })
+  revision: number;
 }
 
 @Schema({ _id: false })
@@ -242,6 +258,9 @@ export class ClubOrder {
 
   @Prop({ type: [SchemaFactory.createForClass(ClubOrderShare)], default: [] })
   shares: ClubOrderShare[];
+
+  @Prop({ type: [SchemaFactory.createForClass(PersonalSchedule)], default: undefined })
+  personalSchedules?: PersonalSchedule[];
 }
 
 export const ClubOrderSchema = SchemaFactory.createForClass(ClubOrder);
@@ -283,6 +302,20 @@ ClubOrderSchema.index({ customerUserId: 1, customerLinkStatus: 1, _id: -1 });
 ClubOrderSchema.index({
   clubId: 1,
   'shares.userId': 1,
+  dispatchStatus: 1,
+  _id: -1,
+});
+
+ClubOrderSchema.index({
+  clubId: 1,
+  'giftDispatch.segments.shares.userId': 1,
+  dispatchStatus: 1,
+  _id: -1,
+});
+
+ClubOrderSchema.index({
+  clubId: 1,
+  'giftDispatch.executionAccounts.userId': 1,
   dispatchStatus: 1,
   _id: -1,
 });

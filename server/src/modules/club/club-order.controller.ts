@@ -29,6 +29,7 @@ import { ClubDirectoryService } from './club-directory.service';
 import { LinkGameAccountDto } from './club-execution.dto';
 import { ClubGiftExecutionService } from './club-gift-execution.service';
 import { ClubOrderService } from './club-order.service';
+import { PersonalScheduleDto } from './club-personal-schedule.dto';
 import {
   PublishOrderDto,
   RecordOrderReceiptDto,
@@ -170,6 +171,24 @@ export class EmployeeClubOrderController {
       await this.orders.getEmployeeOrder(CLUB_ID, user.id, orderId),
     );
   }
+
+  @Get(':orderId/assignment')
+  async assignment(
+    @AuthUser() user: SessionUser,
+    @Param('orderId') orderId: string,
+  ) {
+    return Resp.success(await this.orders.getPersonalAssignment(CLUB_ID, user.id, orderId));
+  }
+
+  @Patch(':orderId/personal-schedule')
+  async recordPersonalSchedule(
+    @AuthUser() user: SessionUser,
+    @Param('orderId') orderId: string,
+    @Body() input: PersonalScheduleDto,
+  ) {
+    return Resp.success(await this.orders.recordPersonalSchedule(CLUB_ID, user.id, orderId, input));
+  }
+
 
   @Get(':orderId/pricing')
   async getPricing(

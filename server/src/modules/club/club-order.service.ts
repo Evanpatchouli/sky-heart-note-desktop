@@ -1,3 +1,6 @@
+import type { PersonalScheduleDto } from './club-personal-schedule.dto';
+import { giftDayFacts, giftFactsByShare, giftFactsForOrders } from './club-gift-delivery';
+import { giftAssignment, giftAssignmentDetail, personalAssignmentScope, personalScheduleView } from './club-personal-assignment';
 import { CLUB_ID } from './club.schema';
 import { ClubGiftSupervision, canContinueGiftOrder, giftExceptionScope } from './club-gift-supervision';
 import { continuationView } from './club-continuation.service';
@@ -491,8 +494,19 @@ export class ClubOrderService implements OnModuleInit {
     const scope =
       query.responsibility === 'dispatcher'
         ? { clubId, dispatcherUserId: userId }
-        : this.employeeScope(clubId, userId);
+        : query.responsibility === 'executor'
+          ? personalAssignmentScope(clubId, userId)
+          : this.employeeScope(clubId, userId);
     const { orders, nextCursor } = await this.list(scope, query);
+    if (query.responsibility === 'executor') {
+      const giftFacts = giftFactsByShare(await giftFactsForOrders(this.orders.db.collection('club_daily_reports'), orders));
+      return {
+        items: await Promise.all(orders.map(order => order.dispatchPricing?.priceUnit === 'gift_times'
+          ? giftAssignment(order, userId, giftFacts)
+          : this.historicalAssignment(order, userId))),
+        nextCursor,
+      };
+    }
     const activationOrders = await this.customerActivationOrders(orders, userId);
     return {
       items: orders.map((order) => ({
@@ -507,6 +521,76 @@ export class ClubOrderService implements OnModuleInit {
     await this.directory.requireMember(clubId, userId);
     const scope = this.employeeScope(clubId, userId);
     return employeeView(await this.get(orderId, scope), userId);
+  }
+
+  async getPersonalAssignment(clubId: string, userId: string, orderId: string) {
+    await this.directory.requireMember(clubId, userId);
+    const order = await this.get(orderId, personalAssignmentScope(clubId, userId));
+    if (order.dispatchPricing?.priceUnit !== 'gift_times') return this.historicalAssignment(order, userId);
+    const facts = await giftDayFacts(this.orders.db.collection('club_daily_reports'), order);
+    return giftAssignmentDetail(order, userId, giftFactsByShare(facts));
+  }
+
+  private async historicalAssignment(order: ClubOrder, userId: string) {
+    const { shares } = await this.historicalProgress(order);
+    const ownShares = shares.filter(share => share.userId === userId);
+    const own = order.shares.filter(share => share.userId === userId);
+    const observed = ownShares.reduce((sum, share) => sum + BigInt(share.observedHearts), 0n);
+    const remaining = ownShares.reduce((sum, share) => sum + share.remainingHearts, 0);
+    const credited = ownShares.reduce((sum, share) => sum + share.promisedHearts - share.remainingHearts, 0);
+    return {
+      id: order._id.toHexString(),
+      priceUnit: 'received_hearts' as const,
+      recipientGameAccount: order.recipientGameAccount,
+      personalSchedule: personalScheduleView(order, userId),
+      shares: own.map(share => ({
+        ...shareSummary(share),
+        executionGameAccounts: (share.executionGameAccounts ?? []).map(account => ({
+          id: account._id.toHexString(), name: account.name,
+        })),
+      })),
+      delivery: { myObservedHearts: jsonReportCount(observed), myCreditedHearts: credited, myRemainingHearts: remaining,
+        myExcessHearts: jsonReportCount(observed - BigInt(credited)) },
+    };
+  }
+
+  async recordPersonalSchedule(clubId: string, userId: string, orderId: string, input: PersonalScheduleDto) {
+    await this.directory.requireMember(clubId, userId);
+    const scope = personalAssignmentScope(clubId, userId);
+    const order = await this.get(orderId, scope);
+    const { startDate, endDate, expectedRevision } = input;
+    if ((startDate === null) !== (endDate === null) || (startDate && endDate && (startDate.startsWith('0000') || endDate < startDate))) {
+      throw new BadRequestException('请填写有效的本人排期起止日期，或同时清空');
+    }
+    const sameDates = (current: ReturnType<typeof personalScheduleView>) =>
+      current.startDate === startDate && current.endDate === endDate;
+    const current = personalScheduleView(order, userId);
+    if (sameDates(current) && [expectedRevision, expectedRevision + 1].includes(current.revision)) return current;
+    if (current.revision === expectedRevision) {
+      const saved = { startDate, endDate, revision: expectedRevision + 1 };
+      const entry = { userId, ...saved };
+      const { matchedCount } = await this.orders.updateOne(
+        {
+          ...scope,
+          _id: order._id,
+          ...(expectedRevision === 0
+            ? { 'personalSchedules.userId': { $ne: userId } }
+            : { personalSchedules: { $elemMatch: { userId, revision: expectedRevision } } }),
+        },
+        expectedRevision === 0
+          ? { $push: { personalSchedules: entry } }
+          : { $set: { 'personalSchedules.$[mine]': entry } },
+        {
+          runValidators: true, timestamps: false,
+          writeConcern: { w: 'majority', j: true },
+          ...(expectedRevision ? { arrayFilters: [{ 'mine.userId': userId, 'mine.revision': expectedRevision }] } : {}),
+        },
+      );
+      if (matchedCount) return saved;
+      const latest = personalScheduleView(await this.get(orderId, scope), userId);
+      if (latest.revision === expectedRevision + 1 && sameDates(latest)) return latest;
+    }
+    throw new ConflictException('本人排期已更新，请刷新后重新调整');
   }
 
   async getDispatchPreparation(

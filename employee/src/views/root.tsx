@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Flex } from "antd";
-import { Link } from "react-router";
 import Header from "#/components/Header";
 import Loading from "#/components/Loading";
 import ViewContainer from "#/components/view-container";
@@ -39,7 +38,6 @@ export default function Root() {
 
   return <>
     <Header />
-    <Link to="/club/dispatch" style={{ padding: "8px 16px", alignSelf: "flex-start" }}>派单准备</Link>
     {error && <Alert type="error" showIcon title={error} action={<Button onClick={load}>重试</Button>} />}
     {ready ? <ViewContainer><Home /></ViewContainer>
       : !error && <Flex flex={1} justify="center" align="center"><Loading on /></Flex>}

@@ -12,6 +12,13 @@ export const publishedGiftOrder = {
   'dispatchPricing.priceUnit': 'gift_times',
 };
 
+export function giftHistoryScopes(clubId: string, userId: string): QueryFilter<ClubOrder>[] {
+  return [
+    { ...publishedGiftOrder, clubId, dispatchWithdrawnAt: null, 'giftDispatch.segments.shares.userId': userId },
+    { ...publishedGiftOrder, clubId, 'giftDispatch.executionAccounts.userId': userId },
+  ];
+}
+
 export const writableGiftDispatch = {
   ...publishedGiftOrder,
   dispatchWithdrawnAt: null,

@@ -84,10 +84,14 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "请求失败，请重试";
 }
 
-export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
-  order: GiftClaimOrder;
+export default function GiftDeliveryDiary({ order, orderRoute, onClose, onSaved, personal = false }: {
+  order: Pick<GiftClaimOrder, "id" | "recipientGameAccount"> & {
+    segments: Pick<GiftClaimOrder["segments"][number], "segmentIndex" | "shares">[];
+  };
   orderRoute: string;
   onClose: () => void;
+  onSaved?: () => void;
+  personal?: boolean;
 }) {
   const { id: userId, token } = useAuthSession();
   const [history, setHistory] = useState<History>();
@@ -150,6 +154,7 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
       setFeedback(`${kindLabels[result.kind]}已生效 · ${result.businessDate}`);
       setAfter(undefined);
       setRevision(value => value + 1);
+      onSaved?.();
     } catch (error) {
       if (getAppToken("employee") !== token) return;
       if (error instanceof RequestError && [400, 403, 404, 409].includes(error.status)) {
@@ -185,11 +190,11 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
     }
   }
 
-  return <Modal open title="我的日报" footer={null} onCancel={onClose} width={640}
+  return <Modal open title="我的日报" className="member-diary-modal" footer={null} onCancel={onClose} width={640}
     closable={!saving} keyboard={!saving} mask={{ closable: !saving }}>
     <Flex vertical gap="middle">
       <Typography.Text>接收游戏号 {order.recipientGameAccount}</Typography.Text>
-      {history?.giftProgress && <ProgressSummary progress={history.giftProgress} />}
+      {history?.giftProgress && <ProgressSummary progress={history.giftProgress} personal={personal} />}
       {loadError ? <Alert type="error" showIcon title={loadError} action={<Button onClick={() => setRevision(value => value + 1)}>重试读取</Button>} /> : null}
       {saveError ? <Alert type="error" showIcon title={saveError} /> : null}
       {feedback ? <Alert type="success" showIcon role="status" title={feedback} /> : null}
@@ -227,7 +232,7 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
   </Modal>;
 }
 
-function ProgressSummary({ progress }: { progress: GiftDeliveryProgress }) {
+function ProgressSummary({ progress, personal }: { progress: GiftDeliveryProgress; personal: boolean }) {
   const { pendingCompensation, shares, segments } = progress;
   return <Card size="small" title="本人履约">
     <Flex vertical gap="small">
@@ -238,22 +243,22 @@ function ProgressSummary({ progress }: { progress: GiftDeliveryProgress }) {
         {progress.unknownReceivedLines} 条明细到账未知
       </Typography.Text>}
       <GiftPeriodFacts performance={progress} />
-      {pendingCompensation ? <>
+      {!personal && (pendingCompensation ? <>
         <Typography.Text strong>待结送心报酬 ¥{formatCentsAsYuan(pendingCompensation.memberCents)}</Typography.Text>
         <Typography.Text type="secondary">
           爱心款依据 ¥{formatCentsAsYuan(pendingCompensation.grossCents)} · 派抽 ¥{formatCentsAsYuan(pendingCompensation.dispatchFeeCents)} · 团抽 ¥{formatCentsAsYuan(pendingCompensation.clubFeeCents)}
         </Typography.Text>
       </> : <Typography.Text type="warning">
         待结送心报酬待核对 · {progress.compensationIssue === "out_of_range" ? "金额超出可核算范围" : "扣除抽成后为负金额"}
-      </Typography.Text>}
-      <Typography.Text type="secondary">
+      </Typography.Text>)}
+      {!personal && <Typography.Text type="secondary">
         全单已送 {progress.orderDeliveredGiftTimes} 次 · 剩余 {progress.orderRemainingGiftTimes} 次 · 建单预计到账 {actual(progress.estimatedReceivedHearts)}
-      </Typography.Text>
+      </Typography.Text>}
       {segments.map(segment => <details key={segment.segmentIndex}>
-        <summary>第 {segment.segmentIndex + 1} 段 · {segment.promotionalGiftTimes ? "促销赠送" : "报价"} {periodLabels[segment.quotePeriod]} · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次</summary>
+        <summary>第 {segment.segmentIndex + 1} 段 · {segment.promotionalGiftTimes ? "促销赠送" : "报价"} {periodLabels[segment.quotePeriod]}{!personal && ` · ¥${formatCentsAsYuan(segment.unitPriceCents)}/次`}</summary>
         {segment.pendingPromotionalGiftTimes ? <p>促销赠送有 {segment.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p> : null}
         <p>已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次
-          {segment.pendingCompensation && ` · 待结报酬 ¥${formatCentsAsYuan(segment.pendingCompensation.memberCents)}`}</p>
+          {!personal && segment.pendingCompensation && ` · 待结报酬 ¥${formatCentsAsYuan(segment.pendingCompensation.memberCents)}`}</p>
         <GiftPeriodFacts performance={segment} />
         <ul>{shares.filter(share => share.segmentIndex === segment.segmentIndex).map(share =>
           <li key={share.shareId}>份额 {share.shareId.slice(-6)} · 已送 {share.deliveredGiftTimes} 次 · 剩余 {share.remainingGiftTimes} 次
