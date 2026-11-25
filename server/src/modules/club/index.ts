@@ -69,6 +69,9 @@ import { ClubFinancialAdjustment, ClubFinancialAdjustmentSchema } from './club-f
 import { AdminClubFinancialAdjustmentController, EmployeeClubFinancialAdjustmentController } from './club-financial-adjustment.controller';
 import { ClubFinancialAdjustmentService } from './club-financial-adjustment.service';
 import { ClubTerminationService } from './club-termination.service';
+import { AdminClubServiceOrderController, ClientClubServiceOrderController, EmployeeClubServiceOrderController } from './club-service-order.controller';
+import { ClubServiceOrder, ClubServiceOrderSchema } from './club-service-order.schema';
+import { ClubServiceOrderService } from './club-service-order.service';
 import { AdminClubWithdrawalController, EmployeeClubWithdrawalController } from './club-withdrawal.controller';
 import { CLUB_WITHDRAWAL_EVENT_MODEL, ClubWithdrawalEventSchema } from './club-withdrawal.schema';
 import { ClubWithdrawalService } from './club-withdrawal.service';
@@ -85,6 +88,7 @@ import { ClubWithdrawalStore } from './club-withdrawal.store';
       { name: Club.name, schema: ClubSchema },
       { name: ClubMember.name, schema: ClubMemberSchema },
       { name: ClubOrder.name, schema: ClubOrderSchema },
+      { name: ClubServiceOrder.name, schema: ClubServiceOrderSchema },
       { name: ClubPromotionCoupon.name, schema: ClubPromotionCouponSchema },
       { name: ClubMemberInvitation.name, schema: ClubMemberInvitationSchema },
       { name: DailyReport.name, schema: DailyReportSchema },
@@ -100,6 +104,9 @@ import { ClubWithdrawalStore } from './club-withdrawal.store';
   ],
   controllers: [
     ClubDashboardController,
+    AdminClubServiceOrderController,
+    ClientClubServiceOrderController,
+    EmployeeClubServiceOrderController,
     ClubSettlementCorrectionController,
     AdminClubFinancialAdjustmentController,
     EmployeeClubFinancialAdjustmentController,
@@ -128,6 +135,7 @@ import { ClubWithdrawalStore } from './club-withdrawal.store';
   ],
   providers: [
     ClubDashboardService,
+    ClubServiceOrderService,
     ClubSettlementCorrectionService,
     ClubFinancialAdjustmentService,
     ClubWithdrawalService,

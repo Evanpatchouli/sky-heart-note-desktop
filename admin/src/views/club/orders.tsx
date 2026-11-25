@@ -6,15 +6,27 @@ import { getDashboardOrder, getDashboardOrders } from "@/api/club-dashboard.api"
 import type { AdminClubContext } from "../home";
 import { dispatchStatusLabel, metricLabels, received, sourceLabels } from "./dashboard-shared";
 import OrderFacts from "./order-facts";
+import { ServiceOrders } from "@sky-club/common/service-orders";
+import { useLoginStore } from "@/auth/store";
 
 export default function Orders() {
   const { club, loadFailed, reload } = useOutletContext<AdminClubContext>();
+  const [params, setParams] = useSearchParams();
+  const token = useLoginStore(state => state.token) ?? "";
+  const userId = useLoginStore(state => state.userInfo?.id) ?? "";
   if (loadFailed) return <Alert type="error" showIcon title="俱乐部加载失败" action={<Button onClick={reload}>重试</Button>} />;
   if (club === undefined) return <Spin aria-label="加载俱乐部" />;
   const canReadOrders = !!club?.permissions.includes("CLUB_ORDERS_READ");
   const canReadFinance = !!club?.permissions.includes("CLUB_FINANCE_READ");
   if (!canReadOrders && !canReadFinance) return <Empty description="当前账号没有订单或财务查看权限" />;
-  return <OrderList key={`${canReadOrders}/${canReadFinance}`} canReadOrders={canReadOrders} canReadFinance={canReadFinance} />;
+  const daily = params.get("business") === "daily_run";
+  function switchBusiness(value: boolean) {
+    const next = new URLSearchParams(params); if (value) next.set("business", "daily_run"); else next.delete("business"); next.delete("serviceOrder"); setParams(next);
+  }
+  return <><nav aria-label="业务类型" className="service-business-switch"><button aria-current={!daily ? "page" : undefined} onClick={() => switchBusiness(false)}>送心</button>{canReadOrders ? <button aria-current={daily ? "page" : undefined} onClick={() => switchBusiness(true)}>代跑</button> : null}</nav>
+    {daily && !canReadOrders ? <Empty description="当前账号没有代跑订单查看权限" /> : daily ? <ServiceOrders key={userId} app="admin" userId={userId} token={token} orderId={params.get("serviceOrder")} onOpen={id => {
+      const next = new URLSearchParams(params); if (id) next.set("serviceOrder", id); else next.delete("serviceOrder"); setParams(next);
+    }} /> : <OrderList key={`${canReadOrders}/${canReadFinance}`} canReadOrders={canReadOrders} canReadFinance={canReadFinance} />}</>;
 }
 
 function OrderList({ canReadOrders, canReadFinance }: { canReadOrders: boolean; canReadFinance: boolean }) {

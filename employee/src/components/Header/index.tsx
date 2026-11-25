@@ -43,6 +43,13 @@ export default function Header() {
     return () => controller.abort();
   }, [menuOpen, user.token]);
   const membership = club?.token === user.token ? club : undefined;
+  const supportsBusiness = ["/club/dispatch", "/claim-board", "/club/assignments"].includes(currentPath);
+  function businessUrl(daily: boolean) {
+    const next = new URLSearchParams(params);
+    if (daily) next.set("business", "daily_run"); else next.delete("business");
+    next.delete("serviceOrder");
+    return `${currentPath}?${next}`;
+  }
 
   return (
     <header className="member-appbar">
@@ -131,6 +138,7 @@ export default function Header() {
         </div>
       </div>
       {logoutError && <Alert type="error" showIcon role="alert" title={logoutError} />}
+      {supportsBusiness ? <nav aria-label="业务类型" className="service-business-switch"><Link to={businessUrl(false)} aria-current={params.get("business") !== "daily_run" ? "page" : undefined}>送心</Link><Link to={businessUrl(true)} aria-current={params.get("business") === "daily_run" ? "page" : undefined}>代跑</Link></nav> : null}
     </header>
   );
 }

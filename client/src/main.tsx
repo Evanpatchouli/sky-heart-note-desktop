@@ -8,6 +8,7 @@ import ClubInvitation from "./club-invitation";
 import { NavigationIcon, useMobileViewport } from "@sky-club/common/mobile-navigation";
 import { MyOrders, OrderDetail } from "./my-orders";
 import { NewOrder } from "./new-order";
+import { ServiceOrders } from "@sky-club/common/service-orders";
 import { orderCursor, orderListHref, orderSource, readClientContext, readClientNavigationOwner, rememberClientContext, rememberClientNavigationOwner, rememberedOrderList } from "./navigation";
 import "./my-orders.css";
 
@@ -22,6 +23,9 @@ function ClientApp() {
   const isOrderList = !path;
   const isCreate = path === "/order";
   const isAccount = path === "/account";
+  const dailyRun = query.get("business") === "daily_run";
+  const serviceOrder = query.get("serviceOrder");
+  const serviceHref = (selected?: string) => `${isCreate && !selected ? "/order" : "/"}?${new URLSearchParams({ business: "daily_run", ...(selected ? { serviceOrder: selected } : {}) })}`;
   const cursor = orderCursor();
   const source = orderSource();
   const list = isOrderList ? orderListHref(cursor, source) : rememberedOrderList(userId);
@@ -66,7 +70,8 @@ function ClientApp() {
       </nav>
       <NotificationBell app="client" token={token} />
     </header>
-    {isCreate ? <NewOrder /> : isDetail ? orderId && orderIdPattern.test(orderId)
+    {(isCreate || isOrderList) ? <nav aria-label="业务类型" className="service-business-switch"><a href={isCreate ? "/order" : "/"} aria-current={!dailyRun ? "page" : undefined}>送心</a><a href={isCreate ? "/order?business=daily_run" : "/?business=daily_run"} aria-current={dailyRun ? "page" : undefined}>代跑</a></nav> : null}
+    {dailyRun && (isCreate || isOrderList) ? <ServiceOrders key={`${userId}:${isCreate}`} app="client" userId={userId} token={token} create={isCreate} orderId={serviceOrder} onOpen={id => window.location.assign(serviceHref(id))} /> : isCreate ? <NewOrder /> : isDetail ? orderId && orderIdPattern.test(orderId)
       ? <OrderDetail key={orderId} orderId={orderId} />
       : <><h1>订单详情</h1><p role="alert">订单链接无效。</p></> : isAccount ? <ClientAccount /> : <MyOrders />}
     <nav className="client-bottom-tabs" aria-label="客户端底部导航">

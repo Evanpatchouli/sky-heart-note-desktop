@@ -1,0 +1,18 @@
+.service-orders { width: 100%; max-width: 880px; margin: 16px auto; color: #24334a; }
+.service-orders h2 { margin: 8px 0 16px; }
+.service-heading, .service-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.service-actions { justify-content: flex-start; margin-block: 12px; }
+.service-orders button { cursor: pointer; border: 1px solid #b7c5d8; border-radius: 6px; padding: 8px 14px; background: white; color: #174c89; font: inherit; }
+.service-orders button:disabled { opacity: .55; cursor: default; }
+.service-list { display: grid; gap: 10px; }
+.service-orders .service-row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 14px; overflow-wrap: anywhere; }
+.service-row small { color: #66758a; }
+.service-detail, .service-create { margin-block: 14px; border: 1px solid #dce4ed; border-radius: 8px; padding: 16px; overflow-wrap: anywhere; background: white; }
+.service-form fieldset { display: grid; gap: 12px; border: 0; padding: 12px 0; margin: 0; min-width: 0; }
+.service-form label { display: grid; gap: 4px; }
+.service-form input, .service-form textarea { box-sizing: border-box; width: 100%; max-width: 480px; border: 1px solid #b7c5d8; border-radius: 6px; padding: 9px; font: inherit; }
+.service-form textarea { min-height: 75px; resize: vertical; }
+.service-form [role="alert"] { color: #a8071a; }
+.service-business-switch { display: flex; gap: 8px; padding: 8px 16px; }
+.service-business-switch a, .service-business-switch button { padding: 6px 12px; border: 1px solid #d1dce9; border-radius: 6px; color: #315474; background: #fff; text-decoration: none; font: inherit; cursor: pointer; }
+.service-business-switch [aria-current="page"] { color: #fff; background: #1769b0; border-color: #1769b0; }

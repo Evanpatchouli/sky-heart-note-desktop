@@ -4,6 +4,8 @@ import Header from "#/components/Header";
 import Root from "./root";
 import ErrorPage from "./error";
 import MemberNavigation, { MemberHome } from "./mobile-navigation";
+import { useSearchParams } from "react-router";
+import ServiceOrderPage from "./service-orders";
 
 const ClubOperations = lazy(() => import("./club-operations"));
 const AdjustmentApprovals = lazy(() => import("./club-financial/approvals"));
@@ -13,6 +15,10 @@ const GiftClaims = lazy(() => import("./gift-claims"));
 const ClaimBoard = lazy(() => import("./claim-board"));
 const ClubAssignments = lazy(() => import("./club-assignments"));
 const errorElement = <><Header /><ErrorPage /></>;
+function BusinessPage({ scope, children }: { scope: "dispatch" | "board" | "mine"; children: React.ReactNode }) {
+  const [params] = useSearchParams();
+  return params.get("business") === "daily_run" ? <ServiceOrderPage scope={scope} /> : children;
+}
 
 export default createBrowserRouter([
   { element: <MemberNavigation />, children: [
@@ -40,12 +46,12 @@ export default createBrowserRouter([
   },
   {
     path: "/club/dispatch",
-    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载派单准备…</p></>}><ClubDispatch /></Suspense>,
+    element: <BusinessPage scope="dispatch"><Suspense fallback={<><Header /><p className="member-pending" role="status">加载派单准备…</p></>}><ClubDispatch /></Suspense></BusinessPage>,
     errorElement,
   },
   {
     path: "/claim-board",
-    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims legacyClaimPath="/club/heart-claims" /></Suspense>,
+    element: <BusinessPage scope="board"><Suspense fallback={<><Header /><p className="member-pending" role="status">加载接单区…</p></>}><GiftClaims legacyClaimPath="/club/heart-claims" /></Suspense></BusinessPage>,
     errorElement,
   },
   {
@@ -55,7 +61,7 @@ export default createBrowserRouter([
   },
   {
     path: "/club/assignments",
-    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载我的承接…</p></>}><ClubAssignments /></Suspense>,
+    element: <BusinessPage scope="mine"><Suspense fallback={<><Header /><p className="member-pending" role="status">加载我的承接…</p></>}><ClubAssignments /></Suspense></BusinessPage>,
     errorElement,
   },
   ] },

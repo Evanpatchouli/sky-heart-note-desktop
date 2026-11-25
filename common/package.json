@@ -28,6 +28,7 @@
     "./mobile-navigation": "./mobile-navigation/index.tsx",
     "./pwa": "./pwa/register.ts",
     "./notifications": "./pwa/notifications.tsx",
+    "./service-orders": "./service-orders/index.tsx",
     "./components": {
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components.js"

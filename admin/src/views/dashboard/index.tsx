@@ -65,7 +65,7 @@ function DashboardContent() {
   ] : [];
   return <Flex vertical gap="middle">
     <Flex justify="space-between" align="center" wrap gap="small">
-      <div><Typography.Title level={4} style={{ margin: 0 }}>俱乐部运营仪表盘</Typography.Title><Typography.Text type="secondary">{club?.name} · 全部订单</Typography.Text></div>
+      <div><Typography.Title level={4} style={{ margin: 0 }}>俱乐部运营仪表盘</Typography.Title><Typography.Text type="secondary">{club?.name} · 送心订单</Typography.Text></div>
       <Button onClick={() => setRevision(value => value + 1)}>刷新仪表盘</Button>
     </Flex>
     {operations ? <>
