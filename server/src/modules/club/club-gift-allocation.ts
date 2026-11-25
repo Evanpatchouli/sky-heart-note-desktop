@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type {
-  GiftClaimResult, GiftDayAllocation, GiftDispatchSegment, GiftOffer, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow,
+  GiftClaimResult, GiftDayAllocation, GiftExecutionAccount, GiftDispatchSegment, GiftOffer, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow,
 } from '@webapp-template/common';
 import { Types } from 'mongoose';
 
@@ -10,14 +10,25 @@ const maximumWindowDays = 3660;
 type DayAmounts = Map<number, number>;
 type GiftDayRun = GiftDayAllocation;
 export type StoredGiftOffer = Omit<GiftOffer, 'schedule'> & { days: GiftDayRun[] };
-export type StoredGiftShare = Omit<GiftShare, 'schedule' | 'netGiftTimes' | 'originalSchedule'> & { days: GiftDayRun[] };
+export type StoredGiftShare = Omit<GiftShare, 'schedule' | 'netGiftTimes' | 'originalSchedule' | 'executionGameAccounts'> & { days: GiftDayRun[] };
 export type StoredGiftSegment = GiftWindow & {
   segmentIndex: number;
   openToClaim: boolean;
   offers: StoredGiftOffer[];
   shares: StoredGiftShare[];
 };
+export type StoredGiftExecutionAccount = Omit<GiftExecutionAccount, 'linkedAt' | 'relationship'> & {
+  customerUserId: string | null;
+  customerNickname: string | null;
+  linkedAt: Date;
+  relationship: (Omit<NonNullable<GiftExecutionAccount['relationship']>, 'occurredAt' | 'recordedAt'> & {
+    occurredAt: Date;
+    recordedAt: Date;
+  }) | null;
+};
+
 export type GiftDispatchState = {
+  executionAccounts?: StoredGiftExecutionAccount[];
   segments: StoredGiftSegment[];
   configurations: { requestId: string; fingerprint: string }[];
   claims: StoredGiftClaim[];

@@ -66,6 +66,18 @@ export function withEmployeeDb<T>(
       ${createRecordTables}
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT, created_at TEXT, updated_at TEXT);
       CREATE TABLE IF NOT EXISTS shared_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS songxinhao_identity (
+        local_id INTEGER PRIMARY KEY, stable_id TEXT NOT NULL UNIQUE
+      );
+      CREATE TRIGGER IF NOT EXISTS songxinhao_identity_insert AFTER INSERT ON songxinhao
+      BEGIN
+        INSERT INTO songxinhao_identity (local_id, stable_id) VALUES (NEW.id, lower(hex(randomblob(16))))
+        ON CONFLICT(local_id) DO UPDATE SET stable_id = excluded.stable_id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS songxinhao_identity_delete AFTER DELETE ON songxinhao
+      BEGIN
+        DELETE FROM songxinhao_identity WHERE local_id = OLD.id;
+      END;
     `);
     return action(db);
   } finally {

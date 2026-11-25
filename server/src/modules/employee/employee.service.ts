@@ -37,8 +37,42 @@ function recordTimestamp(table: RecordTable) {
   return table === 'booking' ? dayjs().format('YYYY-MM-DD HH:mm:ss') : new Date().toISOString();
 }
 
+type LinkableGameAccount = { id: string; localId: string; name: string };
+type PersonalGameAccountRow = Omit<LinkableGameAccount, 'name'> & { name: unknown };
+
+const linkableAccountFields = `
+  SELECT identity.stable_id AS id, CAST(account.id AS TEXT) AS localId, account.name
+  FROM songxinhao_identity identity JOIN songxinhao account ON account.id = identity.local_id
+`;
+
+function linkableGameAccount(row: PersonalGameAccountRow): LinkableGameAccount {
+  const name = typeof row.name === 'string' ? row.name.trim() : '';
+  return { ...row, name: name || `送心号 #${row.localId}` };
+}
+
 @Injectable()
 export class EmployeeService {
+  listLinkableGameAccounts(owner: string) {
+    return withEmployeeDb(owner, db => {
+      // Backfill imported rows that predate the insert trigger.
+      db.exec(`
+        INSERT INTO songxinhao_identity (local_id, stable_id)
+        SELECT account.id, lower(hex(randomblob(16))) FROM songxinhao account
+        WHERE NOT EXISTS (SELECT 1 FROM songxinhao_identity WHERE local_id = account.id);
+      `);
+      const rows = db.prepare(linkableAccountFields + ' ORDER BY account.id').all() as PersonalGameAccountRow[];
+      return rows.map(linkableGameAccount);
+    });
+  }
+
+  findLinkableGameAccount(owner: string, accountId: string) {
+    return withEmployeeDb(owner, db => {
+      const row = db.prepare(linkableAccountFields + ' WHERE identity.stable_id = ?')
+        .get(accountId) as PersonalGameAccountRow | undefined;
+      return row && linkableGameAccount(row);
+    });
+  }
+
   settings(owner: string) {
     return withEmployeeDb(owner, db => db.prepare('SELECT key, value, created_at, updated_at FROM kv ORDER BY key').all());
   }

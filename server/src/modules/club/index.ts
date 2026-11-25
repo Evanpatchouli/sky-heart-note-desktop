@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { EmployeeModule } from '../employee';
+import { ClubGiftExecutionService } from './club-gift-execution.service';
 import { RoleModule } from '../role-module';
 import { UserDispatchActivationModule } from '../user-module/user-dispatch-activation.module';
 import { User, UserSchema } from '../user-module/user.schema';
@@ -24,6 +26,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
 @Module({
   imports: [
     RoleModule,
+    EmployeeModule,
     UserDispatchActivationModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
@@ -44,7 +47,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubOrderController,
     ClientOwnOrdersController,
   ],
-  providers: [ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService],
+  providers: [ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService],
   exports: [ClubDirectoryService, ClubOrderService],
 })
 export class ClubModule {}

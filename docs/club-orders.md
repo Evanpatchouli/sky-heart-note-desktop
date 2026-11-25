@@ -160,3 +160,19 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 团员端在当前标签页按账号、俱乐部、订单、段和动作保留待确认请求。刷新只查询本人回执。未查到时，可在「待确认的领取」点击「重试本次领取」，使用原标识和内容。领取结果或冲突返回后，页面刷新公开余量和本人定向份额。
 
 派单人从「派单准备」查看整单及各段汇总。 `GET /api/employee/clubs/:clubId/orders/:orderId/gift-dispatch` 返回 `totals` 和按报价段排列的 `segmentTotals`，包括付费总次数、净已领、公开待领、定向待确认、未配置和当前不可领。改派前的原份额、日程和实绩仍可查，已移出的份额转入待确认，接手人确认后计入其净承接。接单人只可查本人回执和份额。
+
+## 按次承接关联送心号与登记实际解锁
+
+团员在「按次接单」找到订单，在「我的承接」的份额下点「关联送心号」，逐个选择本人已有的送心号，也可先新建个人送心号。候选按名称和个人编号区分。关联后可登记「已有好友」或「实际新解锁成功」，确认时可填发生时间。同一团员在本单有追加份额、跨段份额时，可为这些份额选择同一个号。
+
+| 请求 | 用途 |
+| --- | --- |
+| `GET /api/employee/songxinhao/linkable` | 查本人的 SQLite 送心号。每项含稳定 `id`、十进制字符串 `localId` 和 `name`。 |
+| `GET /api/employee/clubs/:clubId/gift-claims/:orderId` | 查已承接份额的 `executionGameAccounts` 和按本人去重的 `fulfillment`。承接人可核对接收游戏号、本人各号的关系、发生与登记时间及费用。 |
+| `POST /api/employee/clubs/:clubId/orders/:orderId/shares/:shareId/execution-accounts` | 提交 `{ personalAccountId }` 关联个人号。返回稳定执行账号 `id`、已关联份额 `shareIds`、个人号名称和编号快照。 |
+| `POST /api/employee/clubs/:clubId/orders/:orderId/shares/:shareId/execution-accounts/:accountId/relationship` | 提交 `{ relationship, occurredAt? }`。关系取 `existing_friend` 或 `new_unlock`。发生时间为带时区的 ISO 时间，省略时按本次登记时间。相同关系和发生时间重试返回已登记记录，更换关系或发生时间返回 HTTP 409。 |
+| `GET /api/employee/clubs/:clubId/orders/:orderId/gift-dispatch` | 当单派单人在「派单准备」打开「解锁核对」，查看 `unlockReview`。分别显示原报价预估、原现金实收、实际新解锁和按送心员汇总的费用。明细列出接收游戏号、老板平台标识和昵称快照、经办团员、送心号及关系。 |
+
+绑定后显示待登记关系。已有好友费用为 0，新解锁费用取原报价约定的每次金额。报价时明确免费可填单价 0，接口可带 `unlock.unitPriceAgreed: true`。留空时页面保存 `unitPriceAgreed: false`，当时若尚未知仍可登记事实，费用为 `null`，另计入待核对次数。旧报价沿用原语义，0 次 × 0 分代表未约定。实际解锁在同一单内按接收游戏号、团员和个人稳定号登记一次，与本人关联的份额数无关。俱乐部、订单、有效成员以及份额归属均由服务端校验。客户侧继续按本人单据核对原报价和现金实收。
+
+个人 SQLite 用独立映射表保存稳定标识，旧记录首次列出时补齐。已有执行记录保存关联时的名称，同一数字编号删除重建后取得新的稳定标识。改派后，原送心者仍有历史记录和原关系；接手人按自己的份额选择自己的个人号。仅存名称的历史按颗执行账号继续按原编号和名称读取。跨单换号、失败、退款、补付与正式结算见[待确认规则](heart-delivery.md#需要业务方确认的决定)。

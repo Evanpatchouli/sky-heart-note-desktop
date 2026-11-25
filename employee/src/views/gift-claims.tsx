@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Select, Spin, Tag, Typography } from "antd";
 import { Link, useSearchParams } from "react-router";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { formatCentsAsYuan } from "@webapp-template/common";
 import type { GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 import { GiftSchedule } from "./club-dispatch/gift-allocation";
+import { GiftExecutionAccounts } from "./club-dispatch/gift-execution-accounts";
 
 type Club = { id: string; name: string };
 type Page = { items: GiftClaimOrder[]; nextCursor: string | null };
@@ -224,6 +226,8 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
         <p>订单 <code>{order.id}</code> · 派单人 {order.dispatcherUserId}</p>
         <p>建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "未记录" : `${order.estimatedReceivedHearts} 颗`}
           {order.recipientGameAccount ? ` · 接收游戏号 ${order.recipientGameAccount}` : ""}</p>
+        {order.fulfillment && <p>本人实际新解锁 {order.fulfillment.actualCount} 次 · ¥{formatCentsAsYuan(order.fulfillment.actualAmountCents)}
+          {order.fulfillment.unpricedCount > 0 && ` · ${order.fulfillment.unpricedCount} 次费用待核对`}</p>}
         {order.segments.map(segment => {
           const previousDaily = segment.myPublicRequestedDailyGiftTimes ?? 0;
           const myGiftTimes = segment.shares.reduce((sum, share) => sum + share.netGiftTimes, 0);
@@ -239,7 +243,7 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
               <Button disabled={busy || pending.some(entry => matchingAction(entry, publicTarget)) || previousDaily >= Number.MAX_SAFE_INTEGER}
                 onClick={() => select(publicTarget)}>{previousDaily ? "提高申报日量" : "抢单"}</Button>
             </>}
-            {segment.offers.filter(offer => !offer.accepted).map(offer => {
+            {order.acceptingClaims !== false && segment.offers.filter(offer => !offer.accepted).map(offer => {
               const directedTarget = { orderId: order.id, segmentIndex: segment.segmentIndex, offer };
               return <div key={offer.id} style={{ marginBlock: 8 }}>
                 <Tag color="gold">{offer.transferredFromShareId ? "改派待确认" : "指定待确认"}</Tag>{offer.giftTimes} 次
@@ -254,6 +258,10 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
               <div>接单实收爱心 {share.actualReceivedHearts === undefined ? "未记录" : `${share.actualReceivedHearts} 颗`}</div>
               <GiftSchedule schedule={share.schedule} />
               {share.originalSchedule && <details><summary>原领取日程</summary><GiftSchedule schedule={share.originalSchedule} /></details>}
+              {order.recipientGameAccount && <GiftExecutionAccounts
+                orderRoute={`clubs/${clubId}/orders/${order.id}`} share={share} recipient={order.recipientGameAccount}
+                unitPrice={order.fulfillment?.agreedUnitPriceCents ?? null} readOnly={order.acceptingClaims === false || !share.netGiftTimes}
+                onSaved={refresh} />}
             </div>)}
           </section>;
         })}

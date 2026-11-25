@@ -12,17 +12,10 @@ import {
 import type { ClaimGiftDispatchDto, ConfigureGiftDispatchDto, ReassignGiftDispatchDto } from './club-gift-dispatch.dto';
 import { ClubOrder } from './club-order.schema';
 
-const publishedGiftOrder = {
-  dispatchStatus: 'published' as const,
-  'dispatchPricing.priceUnit': 'gift_times',
-};
-const claimable = {
-  ...publishedGiftOrder,
-  dispatchWithdrawnAt: null,
-  termination: null,
-  'priceAdjustment.state': { $in: [null, 'continuing'] },
-};
-const durable = { writeConcern: { w: 'majority', j: true } } as const;
+import {
+  acceptsGiftExecution, giftExecutionAccounts, giftExecutionSummary, giftUnlockReview,
+  publishedGiftOrder, saveGiftDispatch, writableGiftDispatch as claimable,
+} from './club-gift-execution.service';
 const concurrentChange = () => new ConflictException('订单分工或履约正在更新，请重新加载后重试');
 const retryClaim = () => new ServiceUnavailableException('订单分工或履约正在更新，请重试本次领取');
 
@@ -31,15 +24,6 @@ function eligibleOrder(order: ClubOrder) {
       order.receipt.receivedAmountCents !== order.receipt.quote.totalAmountCents)
     throw new ConflictException('仅已核款并正式派发的按次订单可以分工');
   return order.dispatchPricing.giftSegments ?? [];
-}
-
-function acceptsClaims(order: ClubOrder & {
-  dispatchWithdrawnAt?: Date;
-  termination?: unknown;
-  priceAdjustment?: { state: string };
-}) {
-  return order.dispatchWithdrawnAt == null && order.termination == null &&
-    (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing');
 }
 
 function matchReplay(saved: { fingerprint: string }, fingerprint: string) {
@@ -75,23 +59,39 @@ function claimReceipt(state: GiftDispatchState, saved: StoredGiftClaim): GiftCla
 }
 
 function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
+  const acceptingClaims = acceptsGiftExecution(order);
+  const accountsByShare = new Map<string, ReturnType<typeof giftExecutionAccounts>>();
+  const accounts = giftExecutionAccounts(order, userId);
+  for (const account of accounts) {
+    for (const shareId of account.shareIds) {
+      const linked = accountsByShare.get(shareId) ?? [];
+      linked.push(account);
+      accountsByShare.set(shareId, linked);
+    }
+  }
   const authorizedSegments = (order.giftDispatch?.segments ?? []).filter(segment =>
-    segment.openToClaim || segment.offers.some(offer => offer.userId === userId) ||
-    segment.shares.some(share => share.userId === userId),
+    segment.shares.some(share => share.userId === userId) ||
+    acceptingClaims && (segment.openToClaim || segment.offers.some(offer => offer.userId === userId)),
   );
   const quotes = order.dispatchPricing!.giftSegments ?? [];
   const requested = publicRequestBySegment(order.giftDispatch?.claims ?? [], userId);
-  const segments = authorizedSegments.map(segment => ({
-    ...giftSegmentView(segment, quotes[segment.segmentIndex], userId),
-    myPublicRequestedDailyGiftTimes: requested.get(segment.segmentIndex) ?? 0,
-  }));
+  const segments = authorizedSegments.map(segment => {
+    const view = giftSegmentView(segment, quotes[segment.segmentIndex], userId, acceptingClaims);
+    return {
+      ...view,
+      shares: view.shares.map(share => ({ ...share, executionGameAccounts: accountsByShare.get(share.id) ?? [] })),
+      myPublicRequestedDailyGiftTimes: requested.get(segment.segmentIndex) ?? 0,
+    };
+  });
+  const hasOwnShare = segments.some(segment => segment.shares.length);
   const { requestedGiftTimes, estimatedReceivedHearts } = order.heartDelivery;
   return {
     id: order._id.toHexString(), source: order.source, dispatcherUserId: order.dispatcherUserId!,
     requestedGiftTimes: requestedGiftTimes!, ...(estimatedReceivedHearts === undefined ? {} : { estimatedReceivedHearts }),
-    ...(segments.some(segment => segment.shares.length) || order.dispatcherUserId === userId
+    ...(hasOwnShare ? { fulfillment: giftExecutionSummary(order, accounts) } : {}),
+    ...(hasOwnShare || order.dispatcherUserId === userId
       ? { recipientGameAccount: order.recipientGameAccount } : {}),
-    segments,
+    segments, acceptingClaims,
   };
 }
 
@@ -132,7 +132,7 @@ export class ClubGiftDispatchService {
     await this.directory.requireMember(clubId, userId);
     const order = await this.getOrder(orderId, { ...publishedGiftOrder, clubId, dispatcherUserId: userId });
     const quotes = eligibleOrder(order);
-    const acceptingClaims = acceptsClaims(order);
+    const acceptingClaims = acceptsGiftExecution(order);
     const candidates = await this.candidates(clubId, userId);
     const segments = await Promise.all((order.giftDispatch?.segments ?? []).map(async segment => {
       const view = giftSegmentView(segment, quotes[segment.segmentIndex], undefined, acceptingClaims);
@@ -162,7 +162,7 @@ export class ClubGiftDispatchService {
       paidGiftTimes: 0, claimedGiftTimes: 0, directedPendingGiftTimes: 0, publicRemainingGiftTimes: 0,
       unconfiguredGiftTimes: 0, unallocatedGiftTimes: 0,
     });
-    return { quotes, segments, candidates, acceptingClaims, totals, segmentTotals };
+    return { quotes, segments, candidates, acceptingClaims, totals, segmentTotals, unlockReview: giftUnlockReview(order) };
   }
 
   async configure(clubId: string, userId: string, orderId: string, input: ConfigureGiftDispatchDto) {
@@ -193,7 +193,7 @@ export class ClubGiftDispatchService {
     await this.directory.requireMember(clubId, userId);
     const limit = 25;
     const orders = await this.orders.find({
-      ...this.claimScope(clubId, userId), ...(after ? { _id: { $lt: new Types.ObjectId(after) } } : {}),
+      ...this.readScope(clubId, userId), ...(after ? { _id: { $lt: new Types.ObjectId(after) } } : {}),
     }).sort({ _id: -1 }).limit(limit + 1).lean();
     return { items: orders.slice(0, limit).map(order => readOrder(order, userId)),
       nextCursor: orders.length > limit ? orders[limit - 1]._id.toHexString() : null };
@@ -201,7 +201,7 @@ export class ClubGiftDispatchService {
 
   async detail(clubId: string, userId: string, orderId: string) {
     await this.directory.requireMember(clubId, userId);
-    return readOrder(await this.getOrder(orderId, this.claimScope(clubId, userId)), userId);
+    return readOrder(await this.getOrder(orderId, this.readScope(clubId, userId)), userId);
   }
 
   async receipt(clubId: string, userId: string, orderId: string, requestId: string) {
@@ -297,6 +297,12 @@ export class ClubGiftDispatchService {
     throw concurrentChange();
   }
 
+  private readScope(clubId: string, userId: string): QueryFilter<ClubOrder> {
+    return { $or: [this.claimScope(clubId, userId), {
+      ...publishedGiftOrder, clubId, 'giftDispatch.executionAccounts.userId': userId,
+    }] };
+  }
+
   private claimScope(clubId: string, userId: string): QueryFilter<ClubOrder> {
     return {
       ...claimable, clubId,
@@ -328,12 +334,8 @@ export class ClubGiftDispatchService {
     await Promise.all(ids.map(id => this.directory.requireAssignmentCandidate(clubId, id)));
   }
 
-  private async save(order: ClubOrder, scope: QueryFilter<ClubOrder>, state: GiftDispatchState) {
-    const { modifiedCount } = await this.orders.updateOne({
-      ...scope, _id: order._id, pendingDailyReport: null,
-      fulfillmentRevision: order.fulfillmentRevision ?? { $in: [null, 0] },
-    }, { $set: { giftDispatch: state }, $inc: { fulfillmentRevision: 1 } }, durable);
-    return modifiedCount === 1;
+  private save(order: ClubOrder, scope: QueryFilter<ClubOrder>, state: GiftDispatchState) {
+    return saveGiftDispatch(this.orders, order, scope, state);
   }
 
   private async sentGiftTimes(orderId: Types.ObjectId, shareId: string, userId: string, segmentIndex: number) {

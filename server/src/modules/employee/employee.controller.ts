@@ -54,6 +54,11 @@ export class EmployeeController {
     return Resp.success(this.service.list(user.id, 'songxinhao'));
   }
 
+  @Get('songxinhao/linkable')
+  linkableAccounts(@AuthUser() user: SessionUser) {
+    return Resp.success(this.service.listLinkableGameAccounts(user.id));
+  }
+
   @Post('songxinhao')
   createAccount(@AuthUser() user: SessionUser, @Body() body: unknown) {
     return Resp.success(this.service.create(user.id, 'songxinhao', body));

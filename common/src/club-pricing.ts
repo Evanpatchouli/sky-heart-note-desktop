@@ -78,6 +78,7 @@ export interface PriceSegment {
 export interface UnlockPricing {
   quantity: number;
   unitPriceCents: number;
+  unitPriceAgreed?: boolean;
 }
 
 export interface CustomerQuote extends GiftOrderPricing {

@@ -72,12 +72,16 @@ describe('团员数据', () => {
       INSERT INTO booking VALUES(8, 17, '旧订单', '2024-01-01 09:30:00');
       CREATE TABLE songxinhao(id INTEGER PRIMARY KEY, name TEXT);
       INSERT INTO songxinhao VALUES(17, '旧账号');
+      INSERT INTO songxinhao VALUES(18, x'0011');
       CREATE TABLE kv(key TEXT PRIMARY KEY, value TEXT);
       INSERT INTO kv VALUES('theme', 'dark');
     `);
     old.close();
-    expect(importDesktopDb(first, source)).toEqual({ booking: 1, songxinhao: 1, kv: 1 });
+    expect(importDesktopDb(first, source)).toEqual({ booking: 1, songxinhao: 2, kv: 1 });
+    const linkable = service.listLinkableGameAccounts(first);
+    expect(linkable).toMatchObject([{ localId: '17', name: '旧账号' }, { localId: '18', name: '送心号 #18' }]);
     expect(importDesktopDb(first, source)).toEqual({ booking: 0, songxinhao: 0, kv: 0 });
+    expect(service.listLinkableGameAccounts(first)).toEqual(linkable);
     expect(service.list(first, 'booking')).toMatchObject([{ id: 8, sid: 17, created_at: '2024-01-01 09:30:00' }]);
     expect(withEmployeeDb(first, db => db.prepare("SELECT value FROM kv WHERE key='theme'").get())).toMatchObject({ value: 'dark' });
     expect(service.create(first, 'booking', { title: '新订单' })).toBe(9);
@@ -87,8 +91,20 @@ describe('团员数据', () => {
     changed.close();
     expect(() => importDesktopDb(first, source)).toThrow('同键记录');
     expect(service.list(first, 'booking').map(row => row.id)).toEqual([8, 9]);
-    expect(service.list(first, 'songxinhao')).toMatchObject([{ id: 17, name: '旧账号' }]);
+    expect(service.list(first, 'songxinhao')).toMatchObject([{ id: 17, name: '旧账号' }, { id: 18, name: new Uint8Array([0, 17]) }]);
     expect(() => employeeDbPath('../other', directory)).toThrow();
     expect(() => employeeDbPath('00a1', directory)).toThrow();
+  });
+
+  it('已有个人库的送心号首次关联时补齐稳定标识，保留完整旧编号', () => {
+    const existing = new DatabaseSync(employeeDbPath(first, directory));
+    existing.exec(`
+      CREATE TABLE songxinhao(id INTEGER PRIMARY KEY, name TEXT, candles INTEGER, remark TEXT, created_at TEXT, updated_at TEXT);
+      INSERT INTO songxinhao(id, name) VALUES (9223372036854775807, '原账号');
+    `);
+    existing.close();
+    const [linkable] = service.listLinkableGameAccounts(first);
+    expect(linkable).toMatchObject({ id: expect.stringMatching(/^[a-f0-9]{32}$/), localId: '9223372036854775807', name: '原账号' });
+    expect(service.findLinkableGameAccount(first, linkable.id)).toEqual(linkable);
   });
 });

@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -77,6 +78,10 @@ class UnlockPricingDto {
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   unitPriceCents: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsBoolean()
+  unitPriceAgreed?: boolean;
 }
 
 export class UpdateOrderPricingDto {

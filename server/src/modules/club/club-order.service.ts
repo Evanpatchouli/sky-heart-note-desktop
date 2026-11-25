@@ -502,13 +502,16 @@ export class ClubOrderService implements OnModuleInit {
       throw new BadRequestException('各报价段付费次数合计须等于原订购次数，请核对每日次数和金额');
     }
 
+    if (input.unlock?.unitPriceAgreed === false && input.unlock.unitPriceCents !== 0)
+      throw new BadRequestException('未约定单次解锁费时，单价须留空');
+    const unlock = input.unlock ?? order.pricing?.unlock ?? NO_UNLOCK;
     const pricing = {
       basis: 'gift_times' as const,
       ruleVersion: rule.version,
       priceUnit: 'gift_times' as const,
       dispatchFeeCents: input.dispatchFeeCents,
       segments: [],
-      unlock: input.unlock ?? order.pricing?.unlock ?? NO_UNLOCK,
+      unlock,
       giftSegments: input.giftSegments,
       revision: input.expectedRevision + 1,
     };

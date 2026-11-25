@@ -80,6 +80,9 @@ class UnlockPricing {
 
   @Prop({ ...wholeNumber, min: 0 })
   unitPriceCents: number;
+
+  @Prop({ type: Boolean })
+  unitPriceAgreed?: boolean;
 }
 
 const UnlockPricingSchema = SchemaFactory.createForClass(UnlockPricing);

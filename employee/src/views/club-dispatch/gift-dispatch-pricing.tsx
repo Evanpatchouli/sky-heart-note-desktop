@@ -140,12 +140,14 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
         saveContinuation(continuationKey);
         setPendingContinuation(undefined);
       }
+      const unlock = data.pricing?.unlock;
+      const unlockAgreed = unlock && (unlock.unitPriceAgreed ?? (unlock.quantity > 0 || unlock.unitPriceCents > 0));
       form.setFieldsValue({
         dispatchFee: data.pricing ? formatCentsAsYuan(data.commissionReview?.dispatchFeeCents ?? data.pricing.dispatchFeeCents) : "",
         segments: data.pricing?.giftSegments?.map(segment => ({ ...segment, unitPrice: formatCentsAsYuan(segment.unitPriceCents) }))
           ?? initialSegments(requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes),
         unlockQuantity: data.pricing?.unlock?.quantity,
-        unlockPrice: data.pricing?.unlock ? formatCentsAsYuan(data.pricing.unlock.unitPriceCents) : undefined,
+        unlockPrice: unlockAgreed ? formatCentsAsYuan(unlock.unitPriceCents) : undefined,
       });
     }).catch(err => {
       if (!controller.signal.aborted) setLoadError(requestError(err));
@@ -190,7 +192,8 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
     const giftSegments = fields.segments.map(decodeSegment);
     const amounts = calculateGiftQuote(giftSegments);
     const quantity = fields.unlockQuantity ?? 0;
-    const unitPriceCents = parseYuanAsCents(fields.unlockPrice || "0");
+    const unitPriceAgreed = !!fields.unlockPrice?.trim();
+    const unitPriceCents = parseYuanAsCents(unitPriceAgreed ? fields.unlockPrice! : "0");
     if (!ruleReady || !rule || dispatchFeeCents === null || unitPriceCents === null ||
         !Number.isSafeInteger(quantity) || quantity < 0 ||
         !amounts || amounts.paidGiftTimes !== requestedGiftTimes ||
@@ -200,7 +203,7 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
     }
     void write("/pricing", "PATCH", {
       ruleVersion: rule.version, expectedRevision: pricing?.revision ?? 0, dispatchFeeCents, giftSegments,
-      unlock: { quantity, unitPriceCents },
+      unlock: { quantity, unitPriceCents, unitPriceAgreed },
     });
   }
 
@@ -279,7 +282,9 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
           </>}</Form.List>
           <Flex gap="small" wrap>
             <Form.Item name="unlockQuantity" label="预估解锁数"><InputNumber min={0} max={Number.MAX_SAFE_INTEGER} precision={0} /></Form.Item>
-            <Form.Item name="unlockPrice" label="单次解锁费（元）"><Input inputMode="decimal" /></Form.Item>
+            <Form.Item name="unlockPrice" label="单次解锁费（元）">
+              <Input inputMode="decimal" placeholder="未约定请留空，免费填 0" />
+            </Form.Item>
           </Flex>
           <Button type="primary" htmlType="submit" loading={busy} style={{ marginTop: 8 }}>保存报价</Button>
         </Form> : <>
