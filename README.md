@@ -4,6 +4,8 @@
 
 项目标识为 `sky-club`。[文档地图](docs/README.md)按架构、规格、运行手册及任务计划组织项目资料。俱乐部平台的需求与计划见[业务说明](docs/club-business.md)、[送心业务细则](docs/heart-delivery.md)、[路线图](docs/roadmap.md)和[开发任务清单](docs/todo.md)。
 
+客户可在「下单」和「我的订单」切换送心、代跑和陪玩。团员从派单、接单和本人承接入口办理，财务从管理端「结算核对」按业务线追查收退款与余额分录。本轮代跑和陪玩的规则来自委托模拟的[代跑样单](docs/specs/daily-run.md)和[陪玩样单](docs/specs/companionship.md)。
+
 三端的[设计评审入口](docs/design/README.md)包含可联动的 P1 交互原型、视觉规范及手机、Pad 和桌面预览。[管理端原型](docs/design/admin/README.md)直接复用现有后台布局与 Ant Design 组件。
 
 | 包 | 用途 | 开发地址 | 准入角色 |

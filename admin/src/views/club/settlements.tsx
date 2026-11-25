@@ -44,6 +44,7 @@ export default function Settlements() {
   const orderId = params.get("order") ?? undefined;
   const calculationId = params.get("calculation") ?? undefined;
   const business = params.get("business") === "companionship" ? "companionship" : params.get("business") === "daily_run" ? "daily_run" : undefined;
+  const serviceOrderId = business ? params.get("serviceOrder") : null;
   const { md } = Grid.useBreakpoint();
 
   function showOrder(order?: string, calculation?: string) {
@@ -53,6 +54,9 @@ export default function Settlements() {
   function showBalanceOrder(id: string, business?: ServiceBusinessType) {
     if (business) setParams({ business, serviceOrder: id });
     else showOrder(id);
+  }
+  function showServiceOrder(id?: string) {
+    if (business && selected) setParams({ business, ...(id ? { serviceOrder: id } : {}) });
   }
 
   return <Flex vertical gap="middle">
@@ -69,7 +73,12 @@ export default function Settlements() {
             <Button type={business === "daily_run" ? "primary" : "default"} onClick={() => setParams({ business: "daily_run" })}>代跑</Button>
             <Button type={business === "companionship" ? "primary" : "default"} onClick={() => setParams({ business: "companionship" })}>陪玩</Button>
           </nav>
-          {business ? <ServiceOrders key={`${userId}:${business}`} app="admin" userId={userId} token={token} business={business} scope="finance" orderId={params.get("serviceOrder")} onOpen={id => setParams({ business, ...(id ? { serviceOrder: id } : {}) })} /> : <SettlementList onOpen={showOrder} />}
+          {business ? <ServiceOrders key={`${userId}:${business}`} app="admin" userId={userId} token={token}
+            business={business} scope="finance" onOpen={showServiceOrder} /> : <SettlementList onOpen={showOrder} />}
+          {business && serviceOrderId ? <Drawer title="订单结算核对" open onClose={() => showServiceOrder()} size={md ? 760 : "100%"}>
+            <ServiceOrders key={serviceOrderId} app="admin" userId={userId} token={token} business={business}
+              scope="finance" orderId={serviceOrderId} onOpen={showServiceOrder} />
+          </Drawer> : null}
         </> : null}
         {selected && !business ? <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
           {orderId ? <SettlementDetail key={`${orderId}/${calculationId ?? ""}`}

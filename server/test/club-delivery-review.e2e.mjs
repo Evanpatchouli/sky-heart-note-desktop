@@ -228,7 +228,7 @@ test('历史按颗订单的分期实绩、拟价差与客户公开进度从真�
   assert.deepEqual((await fulfillment(discount)).deliveryReview.comparison.issues, ['promotion_allocation']);
   assert.equal((await customer(discount)).quote.heartsAmountCents, 240);
 
-  await t.test('按次订单的到账倍率变化无法产生补退记录', async () => {
+  await t.test('按次订单的到账倍率变化无法产生补退记录', async context => {
     const requestId = randomUUID();
     const order = await call(owner, customerRoutes, 'POST', {
       requestId, recipientGameAccount: '按次客户游戏号', dispatcherUserId: dispatcher.id,
@@ -262,7 +262,13 @@ test('历史按颗订单的分期实绩、拟价差与客户公开进度从真�
     });
     const facts = await fulfillment({ path });
     assert.deepEqual([facts.deliveredGiftTimes, facts.actualReceivedHearts, facts.heartAmountCents, facts.periodOnlyDifferenceCents], [4, 8, 200, 0]);
-    const before = await storedOrder(requestId);
+    // Finish the intake notification before comparing snapshots of this order.
+    const before = await context.waitFor(async () => {
+      const stored = await storedOrder(requestId);
+      assert.ok(stored);
+      assert.equal(stored.intakeNoticePendingAt, undefined);
+      return stored;
+    }, { timeout: 15000 });
     await call(dispatcher, `${path}/price-adjustment`, 'POST', {
       ...changePeriod, requestId: randomUUID(), expectedVersion: 'a'.repeat(64), reason: '只改变到账倍率',
     }, 409);

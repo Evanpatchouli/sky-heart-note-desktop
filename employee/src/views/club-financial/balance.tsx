@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin, Typography } from "antd";
-import { clubPenaltyPostingLabel, clubSettlementPostingLabel, servicePostingLabel, type PersonalClubBalance } from "@sky-club/common";
+import { clubPenaltyPostingLabel, clubSettlementPostingLabel, serviceBusinessLabels, servicePostingLabel, type ClubBalanceEntry, type PersonalClubBalance } from "@sky-club/common";
 import { Link } from "react-router";
 import { useAuthSession } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
@@ -8,6 +8,19 @@ import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";
 import { money, showDate } from "./adjustment-summary";
 import { Withdrawals } from "./withdrawals";
+
+function OrderLink({ entry }: { entry: ClubBalanceEntry }) {
+  if (!entry.orderId) return null;
+  if ("businessType" in entry) {
+    const route = entry.kind === "service_dispatch_fee" ? "/club/dispatch" : "/club/assignments";
+    const params = new URLSearchParams({ business: entry.businessType, serviceOrder: entry.orderId });
+    return <Link to={`${route}?${params}`}>查看{serviceBusinessLabels[entry.businessType]}订单</Link>;
+  }
+  const dispatch = entry.kind === "dispatch_fee" || entry.kind === "personal_discount";
+  if (!dispatch && entry.kind !== "member_reward") return null;
+  const route = dispatch ? "/club/dispatch" : "/club/assignments";
+  return <Link to={`${route}?orderId=${encodeURIComponent(entry.orderId)}`}>查看送心订单</Link>;
+}
 
 export default function MemberBalance() {
   const { token } = useAuthSession();
@@ -45,7 +58,7 @@ function BalanceEntries() {
             <Typography.Text>{entry.reason}</Typography.Text>
             {"withdrawalId" in entry ? <Typography.Text type="secondary" copyable>提现申请 {entry.withdrawalId}</Typography.Text> : null}
             {entry.orderId ? <Typography.Text type="secondary" copyable>{entry.orderId}</Typography.Text> : null}
-            {"businessType" in entry ? <Link to={`${entry.kind === "service_dispatch_fee" ? "/club/dispatch" : "/club/assignments"}?${new URLSearchParams({ business: entry.businessType, serviceOrder: entry.orderId })}`}>查看{entry.businessType === "companionship" ? "陪玩" : "代跑"}订单</Link> : null}
+            <OrderLink entry={entry} />
             <Typography.Text type="secondary">{showDate(entry.occurredAt)}</Typography.Text>
           </Flex>
         </Card>) : <Empty description="暂无入账流水" image={Empty.PRESENTED_IMAGE_SIMPLE} />}

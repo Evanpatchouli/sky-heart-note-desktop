@@ -27,3 +27,5 @@
 三端在现有订单入口选择「陪玩」。业务类型为 `companionship`，沿用[服务订单接口](daily-run.md#三端办理入口)。建单提交 `scheduledStartAt` 和 `units`。例如 `2026-11-20T20:00:00+08:00` 加四个时段，预约结束于北京时间 22:00。
 
 承接后，执行人向 `POST /api/employee/club/service-orders/:id/start` 登记 `occurredAt`。逐段交付使用同一订单下的 `POST deliveries`，提交 `unit`、`evidence` 和 `finishedAt`。老板逐段确认，或带原因停单。写请求使用 UUID v4，重试复用原编号。列表与详情可用业务类型定位，只有实际承接或经办后，团员才可读取客户身份及游戏号。
+
+财务从「结算核对 → 陪玩」或任一陪玩入账流水进入原单。计算按本单已确认时段和冻结的金额，`businessType=companionship&scope=finance` 返回首款、应退、实退、待退、净收与分配。停单时未确认时段从现金中退回。分次退款和结单使用[共用实退与结单接口](daily-run.md#退款与结单)。明细保留服务类型与订单号，同一成员可在个人账簿分别核对三条业务线的收入。

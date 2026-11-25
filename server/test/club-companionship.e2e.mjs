@@ -12,8 +12,8 @@ const iso = at => new Date(at).toISOString();
 const slotEnd = (startAt, unit) => iso(Date.parse(startAt) + unit * slotMs);
 const orderIds = page => page.items.map(order => order.id);
 
-test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保留证据', { timeout: 120_000 }, async t => {
-  const { api, administrator, register, seedClub, startPeer } = await startClubSystem(t, {
+test('陪玩预约按半小时履约，取消留痕，按验收时段结算', { timeout: 120_000 }, async t => {
+  const { api, administrator, register, seedClub, startPeer, restartServer } = await startClubSystem(t, {
     database: 'club_companionship_e2e', adminUsername: 'play_admin',
   });
   const dispatcher = await register('play_dispatcher', 'employee');
@@ -21,14 +21,18 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
   const anotherWorker = await register('play_other_worker', 'employee');
   const boss = await register('play_boss', 'client');
   const otherBoss = await register('play_other_boss', 'client');
+  const operations = await register('play_operations', 'admin');
+  const finance = await register('play_finance', 'admin');
   await seedClub('member', dispatcher.id, 'active', 'dispatcher');
-  for (const actor of [worker, anotherWorker, administrator]) await seedClub('member', actor.id, 'active', 'member');
+  for (const actor of [worker, anotherWorker, operations, finance, administrator]) await seedClub('member', actor.id, 'active', 'member');
   for (const permission of ['CLUB_ORDERS_READ', 'CLUB_FINANCE_READ']) await seedClub('grant', administrator.id, permission);
+  await seedClub('grant', operations.id, 'CLUB_ORDERS_READ');
+  await seedClub('grant', finance.id, 'CLUB_FINANCE_READ');
   const peer = await startPeer();
 
   const get = (app, actor, path, status = 200, server) => api(app, path, { token: actor.token, status, server });
   const post = (app, actor, path, body, status = 201, server) => api(app, path, { token: actor.token, method: 'POST', body, status, server });
-  const list = (app, actor, params = {}) => get(app, actor, `${root(app)}?${new URLSearchParams({ businessType, ...params })}`);
+  const list = (app, actor, params = {}, status) => get(app, actor, `${root(app)}?${new URLSearchParams({ businessType, ...params })}`, status);
   const detail = (app, actor, id, status) => get(app, actor, `${root(app)}/${id}?businessType=${businessType}`, status);
   const create = (app, actor, input, status, server) => post(app, actor, root(app), input, status, server);
   const action = (app, actor, id, name, input, status, server) => post(app, actor, `${root(app)}/${id}/${name}`, input, status, server);
@@ -37,6 +41,55 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
   const deliver = (id, input, status, server) => action('employee', worker, id, 'deliveries', input, status, server);
   const accept = (id, input, status, server) => action('client', boss, id, 'accept', input, status, server);
   const stop = (id, reason) => action('client', boss, id, 'stop', request({ reason }));
+  const refund = (id, input, status, server) => action('employee', dispatcher, id, 'refund', input, status, server);
+  const close = (id, input, status, server) => action('employee', dispatcher, id, 'close', input, status, server);
+  const financeDetail = (id, actor = finance, status) => get('admin', actor, `${root('admin')}/${id}?businessType=${businessType}&scope=finance`, status);
+  const orderEntries = (balance, id) => balance.entries.filter(row => row.orderId === id && row.businessType === businessType);
+  const balances = () => Promise.all([
+    get('employee', dispatcher, '/employee/club/balance'),
+    get('employee', worker, '/employee/club/balance'),
+    get('admin', finance, '/admin/club/balance'),
+  ]);
+
+  function cash({ accounting: { status, acceptedUnits, receivedCents, refundDueCents, refundedCents, refundRemainingCents, netReceivedCents } }) {
+    return [status, acceptedUnits, receivedCents, refundDueCents, refundedCents, refundRemainingCents, netReceivedCents];
+  }
+
+  function split({ accounting: { dispatchFeeCents, rewardCents, clubFeeCents, allocatedCents } }) {
+    return [dispatchFeeCents, rewardCents, clubFeeCents, allocatedCents];
+  }
+
+  async function assertCustomerCash(id, expected) {
+    const customerOrder = await detail('client', boss, id);
+    assert.deepEqual(cash(customerOrder), expected);
+    assert.deepEqual(split(customerOrder), [undefined, undefined, undefined, undefined]);
+    assert.equal(customerOrder.accounting.refunds, undefined);
+  }
+
+  async function closeTwice(id, input) {
+    const [closed, replay] = await Promise.all([close(id, input), close(id, input, 201, peer)]);
+    assert.deepEqual(replay, closed);
+    assert.equal(closed.accounting.status, 'closed');
+    assert.ok(Number.isFinite(Date.parse(closed.accounting.closedAt)));
+    await close(id, request(), 409);
+    return closed;
+  }
+
+  async function assertPostings(id, prior, closeInput, closedAt, amounts) {
+    const posted = await balances();
+    assert.deepEqual(posted.map((account, index) => account.balanceCents - prior[index].balanceCents), amounts);
+    const kinds = ['service_dispatch_fee', 'service_reward', 'service_club_fee'];
+    for (const [index, account] of posted.entries()) {
+      const entries = orderEntries(account, id);
+      const expected = amounts[index] ? [[kinds[index], amounts[index], closeInput.requestId, closedAt]] : [];
+      assert.deepEqual(entries.map(row => [row.kind, row.amountCents, row.closeRequestId, row.occurredAt]), expected);
+      assert.equal(account.entries.filter(row => row.orderId === id).length, expected.length);
+    }
+    for (const [actor, account] of [[dispatcher, posted[0]], [worker, posted[1]]]) {
+      const byFinance = await get('admin', finance, `/admin/club/balance/members/${actor.id}`);
+      assert.deepEqual(orderEntries(byFinance, id), orderEntries(account, id));
+    }
+  }
 
   const booking = (recipientGameAccount, scheduledStartAt, units = 4) => request({
     businessType, recipientGameAccount, scheduledStartAt, units, serviceDescription: '陪同完成约定的双人任务',
@@ -124,6 +177,31 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
     assert.equal(completed.startedAt, iso(at));
     assert.ok(completed.deliveries.every(row => row.acceptedAt));
     assert.ok(completed.deliveries.every(row => Date.parse(row.submittedAt) > Date.parse(order.scheduledEndAt)));
+
+    const pending = await financeDetail(order.id);
+    assert.deepEqual(cash(pending), ['ready_to_close', 4, 6000, 0, 0, 0, 6000]);
+    assert.deepEqual(split(pending), [600, 5000, 400, 6000]);
+    assert.deepEqual(pending.deliveries, completed.deliveries);
+    assert.deepEqual((await list('admin', finance, { scope: 'finance' })).items.find(row => row.id === order.id), pending);
+    await detail('admin', finance, order.id, 403);
+    await financeDetail(order.id, operations, 403);
+    await list('admin', operations, { scope: 'finance' }, 403);
+    const opsOrder = await detail('admin', operations, order.id);
+    assert.equal(opsOrder.receipt, undefined);
+    assert.equal(opsOrder.accounting, undefined);
+    assert.deepEqual(opsOrder.deliveries, pending.deliveries);
+    assert.deepEqual((await detail('employee', worker, order.id)).accounting,
+      { status: 'ready_to_close', acceptedUnits: 4, rewardCents: 5000 });
+    const before = await balances();
+    for (const account of before) assert.deepEqual(orderEntries(account, order.id), []);
+    const closeInput = request();
+    await action('employee', worker, order.id, 'close', closeInput, 404);
+    const closed = await closeTwice(order.id, closeInput);
+    assert.deepEqual(cash(closed), ['closed', 4, 6000, 0, 0, 0, 6000]);
+    assert.deepEqual(split(closed), [600, 5000, 400, 6000]);
+    assert.deepEqual((await financeDetail(order.id)).accounting, closed.accounting);
+    await assertCustomerCash(order.id, ['closed', 4, 6000, 0, 0, 0, 6000]);
+    await assertPostings(order.id, before, closeInput, closed.accounting.closedAt, [600, 5000, 400]);
   });
 
   await t.test('C2 代录后提前离场，保留前两段且仅释放剩余未履约时段', async () => {
@@ -150,12 +228,49 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
     assert.equal((await claim(later.id)).executorUserId, worker.id);
     const earlier = await openSlot('星港已履约时段', '2026-11-21T20:30:00+08:00', 1);
     await claim(earlier.id, request(), 409);
+
+    const pending = await financeDetail(order.id);
+    assert.deepEqual(cash(pending), ['refund_pending', 2, 6000, 3000, 0, 3000, 6000]);
+    await assertCustomerCash(order.id, ['refund_pending', 2, 6000, 3000, 0, 3000, 6000]);
+    const before = await balances();
+    for (const account of before) assert.deepEqual(orderEntries(account, order.id), []);
+    const closeInput = request();
+    await close(order.id, closeInput, 409);
+    const firstRefund = request({ amountCents: 1000, occurredAt: new Date().toISOString(), transferReference: 'C2-退款-1' });
+    await action('employee', worker, order.id, 'refund', firstRefund, 404);
+    const [partial, partialReplay] = await Promise.all([refund(order.id, firstRefund), refund(order.id, firstRefund, 201, peer)]);
+    assert.deepEqual(partialReplay, partial);
+    assert.deepEqual(cash(partial), ['refund_pending', 2, 6000, 3000, 1000, 2000, 5000]);
+    assert.equal(partial.accounting.refunds.length, 1);
+    await assertCustomerCash(order.id, ['refund_pending', 2, 6000, 3000, 1000, 2000, 5000]);
+    await close(order.id, closeInput, 409);
+    await refund(order.id, { ...firstRefund, requestId: randomUUID() }, 409);
+    const finalRefund = request({ amountCents: 2000, occurredAt: new Date().toISOString(), transferReference: 'C2-退款-2' });
+    const refunded = await refund(order.id, finalRefund);
+    assert.deepEqual(cash(refunded), ['ready_to_close', 2, 6000, 3000, 3000, 0, 3000]);
+    assert.deepEqual(split(refunded), [300, 2500, 200, 3000]);
+    assert.deepEqual(await balances(), before);
+    const proof = [firstRefund, finalRefund].map(({ amountCents, occurredAt, transferReference }) => ({ amountCents, occurredAt, transferReference }));
+    assert.deepEqual((await financeDetail(order.id)).accounting.refunds, proof);
+
+    const closed = await closeTwice(order.id, closeInput);
+    assert.deepEqual(cash(closed), ['closed', 2, 6000, 3000, 3000, 0, 3000]);
+    assert.deepEqual(closed.deliveries, accepted.deliveries);
+    await restartServer();
+    assert.deepEqual(await close(order.id, closeInput), closed);
+    assert.deepEqual(await refund(order.id, firstRefund), closed);
+    assert.deepEqual(await refund(order.id, finalRefund), closed);
+    assert.deepEqual((await financeDetail(order.id)).accounting, closed.accounting);
+    await assertCustomerCash(order.id, ['closed', 2, 6000, 3000, 3000, 0, 3000]);
+    assert.deepEqual((await detail('employee', worker, order.id)).accounting,
+      { status: 'closed', acceptedUnits: 2, rewardCents: 2500, closedAt: closed.accounting.closedAt });
+    await assertPostings(order.id, before, closeInput, closed.accounting.closedAt, [300, 2500, 200]);
   });
 
   await t.test('双实例争抢重叠预约，紧邻可接，未开场取消释放全部占用', async () => {
     const future = iso(Math.ceil(Date.now() / slotMs) * slotMs + slotMs);
-    const first = await openSlot('同时预约甲', future, 2);
-    const second = await openSlot('同时预约乙', future, 2);
+    const first = await openSlot('同时预约甲', future, 4);
+    const second = await openSlot('同时预约乙', future, 4);
     const claims = [request(), request()];
     const result = await Promise.all([claim(first.id, claims[0], [201, 409]), claim(second.id, claims[1], [201, 409], peer)]);
     assert.equal(result.filter(Boolean).length, 1);
@@ -165,7 +280,7 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
     const loser = [first, second][loserIndex];
     assert.equal((await detail('client', boss, loser.id)).status, 'published');
 
-    const adjacent = await openSlot('紧邻预约', slotEnd(future, 2), 1);
+    const adjacent = await openSlot('紧邻预约', slotEnd(future, first.units), 1);
     assert.equal((await claim(adjacent.id)).executorUserId, worker.id);
     await start(winner.id, request({ occurredAt: future }), 400);
     const cancelled = await stop(winner.id, '预约开始前取消');
@@ -173,6 +288,18 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
     assert.equal(cancelled.startedAt, undefined);
     assert.deepEqual(cancelled.deliveries, []);
     assert.equal((await claim(loser.id, claims[loserIndex], 201, peer)).executorUserId, worker.id);
+
+    await assertCustomerCash(winner.id, ['refund_pending', 0, 6000, 6000, 0, 6000, 6000]);
+    const before = await balances();
+    const closeInput = request();
+    await close(winner.id, closeInput, 409);
+    const refunded = await refund(winner.id, request({ amountCents: 6000, occurredAt: new Date().toISOString(), transferReference: '开场前整单退款' }));
+    assert.deepEqual(cash(refunded), ['ready_to_close', 0, 6000, 6000, 6000, 0, 0]);
+    assert.deepEqual(split(refunded), [0, 0, 0, 0]);
+    const closed = await closeTwice(winner.id, closeInput);
+    await assertCustomerCash(winner.id, ['closed', 0, 6000, 6000, 6000, 0, 0]);
+    assert.deepEqual(split(await financeDetail(winner.id)), [0, 0, 0, 0]);
+    await assertPostings(winner.id, before, closeInput, closed.accounting.closedAt, [0, 0, 0]);
   });
 
   await t.test('迟到与跨北京业务日按完整时段计，已提交但未验收的时段仍占用', async () => {
@@ -185,6 +312,9 @@ test('陪玩预约按半小时履约，跨实例承接隔离时段，取消保�
     assert.deepEqual(submitted.deliveries.map(row => [row.unit, row.businessDate, row.acceptedAt]), [[2, '2026-11-23', undefined]]);
     const cancelled = await stop(order.id, '客户尚未验收就停单');
     assert.deepEqual(cancelled.deliveries, submitted.deliveries);
+    const accounting = await financeDetail(order.id);
+    assert.deepEqual(cash(accounting), ['refund_pending', 0, 3000, 3000, 0, 3000, 3000]);
+    assert.deepEqual(split(accounting), [0, 0, 0, 0]);
     const released = await openSlot('跨日未提交时段', at, 1);
     assert.equal((await claim(released.id)).executorUserId, worker.id);
     const held = await openSlot('跨日已提交时段', slotEnd(at, 1), 1);
