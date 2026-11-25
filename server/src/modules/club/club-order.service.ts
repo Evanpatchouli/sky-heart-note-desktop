@@ -722,6 +722,20 @@ export class ClubOrderService implements OnModuleInit {
       ...(!promotions && originalHeartsAmountCents !== undefined ? { discountedHeartsAmountCents: heartsAmountCents } : {}),
       dispatchFeeCents: commission.dispatchFeeCents,
     };
+    const recipientUserIds = await this.directory.eligibleGiftMembers(clubId);
+    if (!recipientUserIds.includes(userId)) {
+      throw new ForbiddenException('需要本俱乐部有效成员身份');
+    }
+    const publishedAt = new Date();
+    const publication = {
+      id: new Types.ObjectId(),
+      clubId,
+      orderId: order._id,
+      publishedAt,
+      recipientUserIds,
+      pending: true,
+      nextAttemptAt: publishedAt,
+    };
     const committed = await this.orders.findOneAndUpdate(
       {
         ...scope, _id: order._id,
@@ -734,7 +748,7 @@ export class ClubOrderService implements OnModuleInit {
       },
       {
         $set: {
-          dispatchStatus: 'published', publishedAt: new Date(), dispatchPricing,
+          dispatchStatus: 'published', publishedAt, dispatchPricing, publication,
           giftPublicationRequestId: requestId,
           ...(giftDispatch ? { giftDispatch, giftPublicationScheduleFingerprint: giftDispatchFingerprint(input.giftDispatchSegments!) } : {}),
         },
@@ -749,7 +763,11 @@ export class ClubOrderService implements OnModuleInit {
   }
 
   private dispatchReceipt(order: ClubOrder) {
-    return { ...orderSummary(order), dispatchPricing: order.dispatchPricing };
+    return {
+      ...orderSummary(order),
+      publicationId: order.publication?.id.toHexString(),
+      dispatchPricing: order.dispatchPricing,
+    };
   }
 
   private replayDispatch(order: ClubOrder, input: PublishOrderDto) {

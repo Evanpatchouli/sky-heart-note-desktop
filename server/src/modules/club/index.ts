@@ -17,6 +17,9 @@ import { User, UserSchema } from '../user-module/user.schema';
 import { AdminClubController } from './admin-club.controller';
 import { ClubCustomerService } from './club-customer.service';
 import { ClubDirectoryService } from './club-directory.service';
+import { ClubDispatchNoticeController } from './club-dispatch-notice.controller';
+import { ClubDispatchNotice, ClubDispatchNoticeSchema } from './club-dispatch-notice.schema';
+import { ClubDispatchNoticeService } from './club-dispatch-notice.service';
 import { EmployeeClubOperationsController } from './employee-club-operations.controller';
 import { ClubGiftDispatchController } from './club-gift-dispatch.controller';
 import { ClubGiftDispatchService } from './club-gift-dispatch.service';
@@ -44,6 +47,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
       { name: Club.name, schema: ClubSchema },
       { name: ClubMember.name, schema: ClubMemberSchema },
       { name: ClubOrder.name, schema: ClubOrderSchema },
+      { name: ClubDispatchNotice.name, schema: ClubDispatchNoticeSchema },
       { name: ClubPromotionCoupon.name, schema: ClubPromotionCouponSchema },
       { name: DailyReport.name, schema: DailyReportSchema },
       { name: ClubMemberInvitation.name, schema: ClubMemberInvitationSchema },
@@ -57,6 +61,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     AdminClubController,
     ClubGiftDispatchController,
     ClubDeliveryController,
+    ClubDispatchNoticeController,
     ClientClubInvitationController,
     EmployeeClubInvitationController,
     EmployeeClubController,
@@ -65,7 +70,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubController,
     ClientClubOrderController,
   ],
-  providers: [ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
+  providers: [ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService, ClubDispatchNoticeService],
   exports: [ClubDirectoryService, ClubOrderService],
 })
 export class ClubModule {}

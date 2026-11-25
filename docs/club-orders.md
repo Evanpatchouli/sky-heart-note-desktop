@@ -147,7 +147,19 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 后台规则更新后，可通过 `PATCH /api/employee/club/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
 
-实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/club/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。
+实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/club/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。服务在订单中同时保存派发状态、时间、首段快照和待投递事件。相同标识及内容重试返回同一发布结果及 `publicationId`。
+
+### 全团站内派单通知
+
+直接派单和客户端下单统一在本单派单人成功发布后通知本团。收件名单固定为发布当时具有团员端准入的有效团员，包括派单人、没有派单标记的团员和未订阅系统推送的团员。工作人员保存草稿或老板下单、系统确定接待派单人时，订单仍待派发。此时本单派单人可在同一铃铛查看待接待的客户端订单。
+
+后台按发布 ID 和收件人去重写入，服务重启后可补齐原名单中的通知，保留已写记录及首次已读时间。新派单在团员端以「重要」显示，当前团员可核对订单号和发布时间、标记已读或查看原有「按次接单」页。订单详情仍按当前业务权限核对。
+
+| 方法 | 路由 | 操作 |
+| --- | --- | --- |
+| `GET` | `/api/employee/dispatch-notices` | 查询本人通知。使用 `limit`（默认 25，最多 100）和 `after` 分页，返回 `items`、`nextCursor` 和 `hasUnread`。通知的 `type` 为 `important`，`targetApp` 为 `employee`。 |
+| `GET` | `/api/employee/dispatch-notices/unread` | 返回本团有效团员本人通知的 `hasUnread`。 |
+| `PATCH` | `/api/employee/dispatch-notices/:noticeId/read` | 标记本人通知已读，返回通知 ID 和首次已读时间。 |
 
 ### 按次优惠
 

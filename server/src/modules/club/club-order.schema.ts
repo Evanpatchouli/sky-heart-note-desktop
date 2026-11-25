@@ -3,6 +3,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
 import type { DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { SchemaTypes, Types } from 'mongoose';
+import { DispatchPublication, DispatchPublicationSchema } from './club-dispatch-notice.schema';
 import type { GiftDispatchState } from './club-gift-allocation';
 import type { StoredGiftPriceAdjustment } from './club-gift-price-basis';
 import {
@@ -183,6 +184,9 @@ export class ClubOrder {
   @Prop({ type: Date })
   publishedAt?: Date;
 
+  @Prop({ type: DispatchPublicationSchema })
+  publication?: DispatchPublication;
+
   @Prop({ type: OrderPricingSchema })
   pricing?: OrderPricing;
 
@@ -252,6 +256,11 @@ ClubOrderSchema.index(
   { unique: true },
 );
 ClubOrderSchema.index({ clubId: 1, _id: -1 });
+ClubOrderSchema.index({ 'publication.id': 1 }, { unique: true, sparse: true });
+ClubOrderSchema.index(
+  { 'publication.nextAttemptAt': 1, _id: 1 },
+  { partialFilterExpression: { 'publication.pending': true } },
+);
 ClubOrderSchema.index({ 'pendingDailyReport._id': 1 }, { sparse: true });
 ClubOrderSchema.index(
   { clubId: 1, dispatchStatus: 1, _id: -1 },

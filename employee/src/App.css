@@ -53,6 +53,19 @@
   gap: clamp(10px, 1.15vw, 20px);
   min-width: 0;
 }
+.member-dispatch-notice-list { padding: 0; margin: 0; list-style: none; }
+.member-dispatch-notice-list li + li { border-top: 1px solid #e5edf2; }
+.member-dispatch-notice {
+  display: grid;
+  gap: 6px;
+  padding-block: 12px;
+  overflow-wrap: anywhere;
+}
+.member-dispatch-notice__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
 .member-appbar__dispatch-link {
   display: inline-flex;
   align-items: center;
