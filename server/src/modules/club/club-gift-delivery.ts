@@ -3,6 +3,7 @@ import { giftSegmentTimes } from '@webapp-template/common';
 import { Types, type Collection, type PipelineStage } from 'mongoose';
 import { jsonReportCount } from './club-daily-report-view';
 import type { ClubOrder } from './club-order.schema';
+import type { DailyReport } from './club-delivery.schema';
 import { acceptsGiftExecution } from './club-gift-execution.service';
 import { activeGiftSegments } from './club-gift-allocation';
 
@@ -26,22 +27,26 @@ export function giftDayFacts(
   shareId?: Types.ObjectId,
   userId?: string,
   through?: string,
+  prospectiveReport?: DailyReport,
 ) {
   const shareIds = shareId ? [shareId] : (order.giftDispatch?.segments ?? [])
     .flatMap(segment => segment.shares.map(share => new Types.ObjectId(share.id)));
-  return giftFactsForOrderIds(collection, [order._id], shareIds, userId, through);
+  const pending = prospectiveReport ?? (order.settlementClose ? order.pendingDailyReport : undefined);
+  const included = pending && (!userId || pending.userId === userId) && (!through || pending.businessDate <= through);
+  return giftFactsForOrderIds(collection, [order._id], shareIds, userId, through, included ? [pending] : []);
 }
 
 export function giftFactsForOrders(collection: Collection, orders: ClubOrder[]) {
   const giftOrders = orders.filter(order => order.dispatchPricing?.priceUnit === 'gift_times');
   const shareIds = giftOrders.flatMap(order => (order.giftDispatch?.segments ?? [])
     .flatMap(segment => segment.shares.map(share => new Types.ObjectId(share.id))));
-  return giftFactsForOrderIds(collection, giftOrders.map(order => order._id), shareIds);
+  const admitted = giftOrders.flatMap(order => order.settlementClose && order.pendingDailyReport ? [order.pendingDailyReport] : []);
+  return giftFactsForOrderIds(collection, giftOrders.map(order => order._id), shareIds, undefined, undefined, admitted);
 }
 
 function giftFactsForOrderIds(
   collection: Collection, orderIds: Types.ObjectId[], shareIds: Types.ObjectId[],
-  userId?: string, through?: string,
+  userId?: string, through?: string, additionalReports: DailyReport[] = [],
 ) {
   if (!shareIds.length) return Promise.resolve([]);
   const decimal = (value: string) => ({ $toDecimal: { $toLong: value } });
@@ -54,6 +59,12 @@ function giftFactsForOrderIds(
         { priceUnit: null, $or: [{ shareId: { $in: shareIds } }, { 'lines.shareId': { $in: shareIds } }] },
       ],
     } },
+    ...additionalReports.map((report): PipelineStage => ({
+      $unionWith: { coll: collection.collectionName, pipeline: [
+        { $match: { _id: report.originalId } },
+        { $replaceWith: { $literal: report } },
+      ] },
+    })),
     { $sort: { version: -1 } },
     { $group: {
       _id: { $ifNull: ['$originalId', '$_id'] }, lines: { $first: '$lines' },

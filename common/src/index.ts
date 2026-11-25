@@ -15,4 +15,5 @@ export * from './club-gift-price-adjustment';
 export * from './club-gift-delivery';
 export * from './club-gift-settlement';
 export * from './club-financial-adjustments';
+export * from './club-settlement-corrections';
 export * from './club-gift-termination';

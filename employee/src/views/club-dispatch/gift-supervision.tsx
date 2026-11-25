@@ -80,7 +80,8 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
       <p>按已送次数核对爱心款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。实际履约按适用段的单价核对。</p>
       <GiftPeriodFacts performance={progress} />
     </>}
-    {!compact && <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>}
+    {!compact && <p>{progress.closedAt && !["completed", "stopped"].includes(progress.fulfillmentStatus) ? "履约已结束" : fulfillment[progress.fulfillmentStatus]}
+      {" · "}{progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>}
     {progress.segments.map(segment => <section key={segment.segmentIndex}>
       <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段 · {segment.promotionalGiftTimes ? "促销赠送" : "付费"} · {periodLabels[segment.period]}</Typography.Title>
       <p>约定 {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次

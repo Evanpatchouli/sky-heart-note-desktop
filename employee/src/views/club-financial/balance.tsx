@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin, Typography } from "antd";
-import { clubPenaltyPostingLabel, type PersonalClubBalance } from "@webapp-template/common";
+import { clubPenaltyPostingLabel, clubSettlementPostingLabel, type PersonalClubBalance } from "@webapp-template/common";
 import { useAuthSession } from "@webapp-template/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
@@ -37,8 +37,11 @@ function BalanceEntries() {
         <Typography.Title level={3} style={{ margin: 0 }}>{money(data.balanceCents)}</Typography.Title>
         {data.entries.length ? data.entries.map(entry => <Card size="small" key={entry.eventId}>
           <Flex vertical>
-            <Typography.Text strong>已生效罚款 · {money(entry.amountCents)}</Typography.Text>
+            <Typography.Text strong>{entry.kind === "member_penalty" ? "已生效罚款" : entry.kind === "customer_compensation" ? "额外补偿实退" :
+              entry.kind === "compensation_cash_correction" ? "补偿实退更正" : clubSettlementPostingLabel[entry.kind]}
+              {"correctionRequestId" in entry && entry.kind !== "compensation_cash_correction" ? "（日报更正）" : ""} · {money(entry.amountCents)}</Typography.Text>
             <Typography.Text>{entry.reason}</Typography.Text>
+            {entry.orderId ? <Typography.Text type="secondary" copyable>{entry.orderId}</Typography.Text> : null}
             <Typography.Text type="secondary">{showDate(entry.occurredAt)}</Typography.Text>
           </Flex>
         </Card>) : <Empty description="暂无入账流水" image={Empty.PRESENTED_IMAGE_SIMPLE} />}

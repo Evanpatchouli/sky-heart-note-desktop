@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, Input, InputNumber, Modal, Radio, Select, Spin, Tag, Typography } from "antd";
 import dayjs from "dayjs";
-import { formatCentsAsYuan, type GiftClaimOrder, type GiftDailyReport, type GiftDeliveryProgress, type GiftReportPeriod } from "@webapp-template/common";
+import { formatCentsAsYuan, type GiftClaimOrder, type GiftDailyReport, type GiftDeliveryProgress, type GiftReportPeriod, type SettlementCorrection } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { GiftPeriodFacts, giftHearts as actual, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
@@ -11,9 +11,10 @@ type Fields = { accountId: string; businessDate: string; reason?: string; lines:
 type Draft = { kind: "daily" | "supplement" } | { kind: "correction"; report: GiftDailyReport };
 type Pending = Pick<Fields, "lines" | "reason"> & { requestId: string } & (
   | { kind: "daily" | "supplement"; shareId: string; accountId: string; businessDate: string }
-  | { kind: "correction"; originalId: string; expectedVersion: number }
+  | { kind: "correction" | "closed_correction"; originalId: string; expectedVersion: number }
 );
-type History = { items: GiftDailyReport[]; nextCursor: string | null; giftProgress: GiftDeliveryProgress };
+type History = { items: GiftDailyReport[]; nextCursor: string | null; giftProgress: GiftDeliveryProgress;
+  canRequestClosedCorrection?: boolean; settlementCorrections?: Extract<SettlementCorrection, { kind: "daily_report" }>[] };
 
 const kindLabels = { daily: "日报", supplement: "补报", correction: "更正" };
 const periodOptions = [
@@ -59,7 +60,7 @@ function readPending(key: string): Pending | undefined {
       lines: input.lines.map(({ shareId, period, giftTimes, receivedHearts }) =>
         ({ shareId, period, giftTimes, receivedHearts: receivedHearts ?? null })),
     };
-    if (input.kind === "correction" && isId(input.originalId) && input.reason &&
+    if ((input.kind === "correction" || input.kind === "closed_correction") && isId(input.originalId) && input.reason &&
       isCount(input.expectedVersion) && input.expectedVersion > 0 && input.expectedVersion < Number.MAX_SAFE_INTEGER)
       return { ...base, kind: input.kind, originalId: input.originalId, expectedVersion: input.expectedVersion };
     if ((input.kind === "daily" || input.kind === "supplement" && input.reason) &&
@@ -140,18 +141,30 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose, onSaved,
     writePending(storageKey, entry);
     try {
       const { kind, requestId, lines, reason } = entry;
-      const path = kind === "correction" ? `${historyRoute}/${entry.originalId}/corrections`
-        : `${orderRoute}/shares/${entry.shareId}/execution-accounts/${entry.accountId}/daily-reports`;
-      const body = kind === "correction" ? { requestId, lines, reason, expectedVersion: entry.expectedVersion }
-        : { requestId, lines, reason, kind, businessDate: entry.businessDate };
-      const result = await employeeRequest<GiftDailyReport>(path, "POST", body, controller.signal);
+      let success: string;
+      if ("originalId" in entry && kind === "closed_correction") {
+        const result = await employeeRequest<SettlementCorrection>(
+          `${historyRoute}/${entry.originalId}/correction-requests`, "POST",
+          { requestId, lines, reason, expectedVersion: entry.expectedVersion }, controller.signal,
+        );
+        if (result.requestedByUserId !== userId || result.orderId !== order.id || result.kind !== "daily_report" || result.requestId !== requestId)
+          throw new Error("未收到有效更正申请回执");
+        success = result.status === "pending" ? "更正申请待团长或副团长确认" : "已查到更正审批结果";
+      } else {
+        const path = "originalId" in entry ? `${historyRoute}/${entry.originalId}/corrections`
+          : `${orderRoute}/shares/${entry.shareId}/execution-accounts/${entry.accountId}/daily-reports`;
+        const body = "originalId" in entry ? { requestId, lines, reason, expectedVersion: entry.expectedVersion }
+          : { requestId, lines, reason, kind, businessDate: entry.businessDate };
+        const result = await employeeRequest<GiftDailyReport>(path, "POST", body, controller.signal);
+        if (result?.userId !== userId || result.orderId !== order.id || result.priceUnit !== "gift_times" || result.kind !== entry.kind || !result.id)
+          throw new Error("未收到有效日报回执");
+        success = `${kindLabels[result.kind]}已生效 · ${result.businessDate}`;
+      }
       if (getAppToken("employee") !== token || controller.signal.aborted) return;
-      if (result?.userId !== userId || result.orderId !== order.id || result.priceUnit !== "gift_times" || result.kind !== entry.kind || !result.id)
-        throw new Error("未收到有效日报回执");
       setDraft(undefined);
       setPending(undefined);
       writePending(storageKey);
-      setFeedback(`${kindLabels[result.kind]}已生效 · ${result.businessDate}`);
+      setFeedback(success);
       setAfter(undefined);
       setRevision(value => value + 1);
       onSaved?.();
@@ -181,7 +194,8 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose, onSaved,
     const input = { requestId: crypto.randomUUID(), lines, reason: fields.reason?.trim() };
     if (draft.kind === "correction") {
       void submit({
-        ...input, kind: draft.kind, originalId: draft.report.originalId, expectedVersion: draft.report.version,
+        ...input, kind: history?.canRequestClosedCorrection ? "closed_correction" : draft.kind,
+        originalId: draft.report.originalId, expectedVersion: draft.report.version,
       });
     } else {
       void submit({
@@ -203,7 +217,8 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose, onSaved,
         {history?.giftProgress.canSubmitDaily && <Button type="primary" onClick={() => setDraft({ kind: "daily" })}>填日报</Button>}
         <Button onClick={() => setDraft({ kind: "supplement" })}>补报漏填日期</Button>
       </Flex> : <Alert type="info" showIcon title="请先在本人份额中关联送心号" /> : null}
-      {history?.giftProgress.canCorrectReports === false && <Alert type="info" showIcon title="订单已结单，日报可供查阅" />}
+      {history?.giftProgress.canCorrectReports === false && <Alert type="info" showIcon
+        title={history.canRequestClosedCorrection ? "订单已结单，可从本人日报发起更正申请" : "订单已结单，日报可供查阅"} />}
       {draft && <ReportForm draft={draft} accounts={accounts} shares={shares} saving={saving} onSave={save} onCancel={() => setDraft(undefined)} />}
       {loading ? <Spin aria-label="加载日报" /> : history?.items.length ? history.items.map(report =>
         <Card key={report.id} size="small" title={`${report.businessDate} · ${kindLabels[report.kind]} · 版本 ${report.version}`}
@@ -219,8 +234,14 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose, onSaved,
               <Typography.Text>{report.previous ? "更正后 · " : ""}{report.giftTimes} 次 · 实际到账 {actual(report.receivedHearts)}</Typography.Text>
               <ReportLines lines={report.lines} />
             </div>
-            {!draft && !pending && canReport && history.giftProgress.canCorrectReports !== false && report.version === report.latestVersion ?
-              <Button onClick={() => setDraft({ kind: "correction", report })}>更正这份日报</Button> : null}
+            {history.settlementCorrections?.filter(row => row.originalReportId === report.originalId && row.expectedVersion === report.version)
+              .map(row => <div key={row.requestId}>
+                <Tag>{row.status === "pending" ? "更正待确认" : row.status === "approved" ? "更正已生效" : "更正已驳回"}</Tag>
+                <Typography.Text>{row.reason}{row.decisionReason ? ` · ${row.decisionReason}` : ""}</Typography.Text>
+              </div>)}
+            {!draft && !pending && canReport && (history.giftProgress.canCorrectReports !== false || history.canRequestClosedCorrection) &&
+              report.version === report.latestVersion && !history.settlementCorrections?.some(row => row.status === "pending" && row.originalReportId === report.originalId) ?
+              <Button onClick={() => setDraft({ kind: "correction", report })}>{history.canRequestClosedCorrection ? "申请更正这份日报" : "更正这份日报"}</Button> : null}
           </Flex>
         </Card>,
       ) : !loadError && <Empty description="暂无日报" image={Empty.PRESENTED_IMAGE_SIMPLE} />}

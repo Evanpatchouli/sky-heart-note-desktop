@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Empty, Flex, Form, Input, Modal, Spin, Typography } from "antd";
+import { Alert, Button, Card, Empty, Flex, Form, Input, Modal, Spin, Tabs, Typography } from "antd";
 import type { ClubAdjustmentDecision, ClubAdjustmentList, ClubAdjustmentRecord } from "@webapp-template/common";
 import { useAuthSession } from "@webapp-template/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
 import { requestMessage } from "../club-assignments/types";
 import { AdjustmentSummary, money } from "./adjustment-summary";
+import SettlementCorrectionApprovals from "./settlement-correction-approvals";
 
 const route = "club/financial-adjustments";
 type Decision = { row: ClubAdjustmentRecord; decision: ClubAdjustmentDecision };
@@ -16,7 +17,10 @@ export default function AdjustmentApprovals() {
     <Header />
     <main className="club-claim-page">
       <Typography.Title level={2}>调整审批</Typography.Title>
-      <PendingApprovals key={token} />
+      <Tabs key={token} items={[
+        { key: "adjustments", label: "罚款与补偿", children: <PendingApprovals /> },
+        { key: "settlements", label: "结单更正", children: <SettlementCorrectionApprovals /> },
+      ]} />
     </main>
   </>;
 }

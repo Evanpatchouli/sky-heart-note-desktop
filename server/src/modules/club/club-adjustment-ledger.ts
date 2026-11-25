@@ -32,9 +32,9 @@ export function adjustmentPostings(record: ClubFinancialAdjustment, settlement?:
 }
 
 export function adjustmentBalance(records: readonly ClubFinancialAdjustment[], memberUserId: string | null, includeOrder: boolean,
-  settlements: ReadonlyMap<string, PostedOrderPenalties>): ClubBalance {
-  const entries: ClubBalanceEntry[] = [];
-  let balance = 0n;
+  settlements: ReadonlyMap<string, PostedOrderPenalties>, posted: readonly ClubBalanceEntry[] = []): ClubBalance {
+  const entries: ClubBalanceEntry[] = [...posted];
+  let balance = posted.reduce((sum, entry) => sum + BigInt(entry.amountCents), 0n);
   for (const record of records) {
     const settlement = record.orderId ? settlements.get(record.orderId.toHexString()) : undefined;
     for (const { memberUserId: account, orderId, ...data } of adjustmentPostings(record, settlement)) {

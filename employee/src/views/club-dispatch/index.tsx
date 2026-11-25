@@ -123,6 +123,7 @@ function ClubOrders({ canAssign, onReady }: { canAssign?: boolean; onReady: () =
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
   const [fulfillmentRevision, setFulfillmentRevision] = useState(0);
+  const [settledOrderId, setSettledOrderId] = useState<string>();
   const [exceptionOrder, setExceptionOrder] = useState<Order>();
   const fulfillmentPanel = useRef<HTMLDivElement>(null);
   const [linkedOrder, setLinkedOrder] = useState<Order>();
@@ -233,10 +234,13 @@ function ClubOrders({ canAssign, onReady }: { canAssign?: boolean; onReady: () =
           revision={fulfillmentRevision} onRefresh={refreshFulfillment} onShowCurrent={() => setThrough(undefined)} />
       </div>}
       {order.dispatchStatus === "published" && order.requestedGiftTimes !== undefined ?
-        <GiftSettlementCard key={order.id} route={`${route}/${order.id}`} revision={fulfillmentRevision} role="dispatcher" /> : null}
+        <GiftSettlementCard key={`settlement:${order.id}`} route={`${route}/${order.id}`} revision={fulfillmentRevision} role="dispatcher"
+          onClosed={() => { setSettledOrderId(order.id); refreshFulfillment(); }} /> : null}
       {order.dispatchStatus === "published" && order.requestedGiftTimes !== undefined ?
-        <OrderAdjustments key={`adjustments:${order.id}`} orderRoute={`${route}/${order.id}`} onChanged={refreshFulfillment} /> : null}
-      {order.requestedGiftTimes !== undefined ? <GiftDispatchPricing onFulfillmentChanged={refreshFulfillment} key={order.id} route={`${route}/${order.id}`} order={order}
+        <OrderAdjustments key={`adjustments:${order.id}`} orderRoute={`${route}/${order.id}`} onChanged={refreshFulfillment}
+          settlementClosed={settledOrderId === order.id} /> : null}
+      {order.requestedGiftTimes !== undefined ? <GiftDispatchPricing onFulfillmentChanged={refreshFulfillment}
+        key={`pricing:${order.id}`} route={`${route}/${order.id}`} order={order} settlementClosed={settledOrderId === order.id}
         onPublished={() => { setLinkedOrder(previous => previous?.id === order.id ? { ...previous, dispatchStatus: "published" } : previous); setPage(previous => previous && {
           ...previous, items: previous.items.map(item => item.id === order.id ? { ...item, dispatchStatus: "published" } : item),
         }); }} />

@@ -90,3 +90,10 @@ ClubFinancialAdjustmentSchema.index({ clubId: 1, requestedByUserId: 1, requestId
   unique: true, partialFilterExpression: { requestId: { $type: 'string' } },
 });
 ClubFinancialAdjustmentSchema.index({ clubId: 1, kind: 1, status: 1, memberUserId: 1 });
+
+export type OrderAdjustmentCommand = { id: Types.ObjectId } & (
+  { kind: 'create'; record: ClubFinancialAdjustment } |
+  { kind: 'decide'; adjustmentId: Types.ObjectId; revision: number;
+    decision: Pick<ClubFinancialAdjustment, 'status' | 'decidedAt' | 'decidedByUserId' | 'decisionReason'> } |
+  { kind: 'refund'; adjustmentId: Types.ObjectId; revision: number; refund: CompensationRefund }
+);

@@ -128,11 +128,12 @@ function ReceiptDetails({ receipt }: { receipt: Receipt }) {
   </Typography.Paragraph>;
 }
 
-export default function GiftDispatchPricing({ route, order, onPublished, onFulfillmentChanged }: {
+export default function GiftDispatchPricing({ route, order, onPublished, onFulfillmentChanged, settlementClosed }: {
   route: string;
   order: GiftOrder;
   onPublished?: () => void;
   onFulfillmentChanged?: () => void;
+  settlementClosed?: boolean;
 }) {
   const { id: userId, token } = useAuthSession();
   const { requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes } = order;
@@ -289,7 +290,7 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
         <Alert type="info" showIcon title="已停送" />
         {quote ? <QuoteSummary quote={quote} /> : null}
         {receipt ? <ReceiptDetails receipt={receipt} /> : null}
-        <GiftSettlementCard route={route} revision={attempt} role="dispatcher" />
+        <GiftSettlementCard route={route} revision={attempt} role="dispatcher" onClosed={onFulfillmentChanged} />
       </Flex>
       : isPublished && frozen ? <>
         <Typography.Paragraph>首段规则 V{frozen.version} · 派抽 {money(frozen.dispatchFeeCents)}/次 · 团抽 {money(frozen.clubFeeCents)}/次</Typography.Paragraph>
@@ -297,11 +298,11 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
         {quote ? <QuoteSummary quote={quote} /> : null}
         {receipt ? <ReceiptDetails receipt={receipt} /> : null}
         <GiftContinuationManagement route={route} requests={preparation.continuationRequests ?? []} quotes={preparation.continuationQuotes}
-          enabled={!!preparation.canManageContinuation} onChange={() => {
+          enabled={!!preparation.canManageContinuation && !settlementClosed} onChange={() => {
             setAttempt(value => value + 1);
             onFulfillmentChanged?.();
           }} />
-        {preparation.canManageContinuation && <details>
+        {preparation.canManageContinuation && !settlementClosed && <details>
         <summary>直接新增续段报价</summary>
         {pendingContinuation ? <>
           <SegmentPrice segment={pendingContinuation.segment} />

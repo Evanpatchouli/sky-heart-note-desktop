@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin, Typography } from "antd";
-import { formatCentsAsYuan, type ClubBalance } from "@webapp-template/common";
+import { clubSettlementPostingLabel, formatCentsAsYuan, type ClubBalance } from "@webapp-template/common";
 import { getClubBalance } from "@/api/club-finance.api";
 
 const money = (cents: number) => `${cents < 0 ? "−" : ""}¥${formatCentsAsYuan(Math.abs(cents))}`;
@@ -25,7 +25,9 @@ export default function ClubBalanceCard() {
           <summary>入账流水</summary>
           <Flex vertical gap="small" style={{ marginTop: 8 }}>
             {data.entries.map(entry => <section key={entry.eventId}>
-              <Typography.Text strong>{entry.kind === "member_penalty" ? "罚款收入" : "额外补偿实退"} · {money(entry.amountCents)}</Typography.Text>
+              <Typography.Text strong>{entry.kind === "member_penalty" ? "罚款收入" : entry.kind === "customer_compensation" ? "额外补偿实退" :
+                entry.kind === "compensation_cash_correction" ? "补偿实退更正" : clubSettlementPostingLabel[entry.kind]}
+                {"correctionRequestId" in entry && entry.kind !== "compensation_cash_correction" ? "（日报更正）" : ""} · {money(entry.amountCents)}</Typography.Text>
               <div>{entry.reason} · {new Date(entry.occurredAt).toLocaleString("zh-CN")}</div>
               {entry.orderId ? <Typography.Text type="secondary" copyable>{entry.orderId}</Typography.Text> : null}
             </section>)}

@@ -6,7 +6,7 @@
 
 新单的个人让利、平台优惠和促销赠送在原有报价、核款、派发与履约流程中办理。[按次优惠](#按次优惠)
 
-按次优惠结算待 P1-16～P1-18 接入。已履约部分按原单价及抽成核算报酬，按确认报价追溯每类已兑现优惠。本单派单人确认结单后，个人账簿分列派抽原额和个人让利，团费账簿分列团抽原额、「平台优惠」与「赠送成本」。个人让利可超过本单派抽，个人余额可记为负数。[优惠结算算例](heart-delivery.md#优惠的使用和出资)
+已履约部分按原单价及抽成核算报酬，按确认报价追溯每类已兑现优惠。本单派单人确认结单后，个人账簿分列派抽原额和个人让利，团费账簿分列团抽原额、「平台优惠」与「赠送成本」。个人让利可超过本单派抽，个人余额可记为负数。[优惠结算算例](heart-delivery.md#优惠的使用和出资)
 
 P1-14 待按确认报价锁定的分摊明细核平已履约爱心款和应退爱心款。未履约付费次数按其折后价款核算，剩余促销赠送次数对应零退款。满减资格沿用确认报价时的判定，已履约次数保留成交优惠。退单返券以最新有效日报累计的实际赠送次数为准，累计 0 次可返券。券返还和现金应退分别处理。应退服务款和实退分别记录。[正式退款规则与算例](heart-delivery.md#活动与异常如何处理) · [退单与优惠券返还](heart-delivery.md#退单与优惠券返还)
 
@@ -329,9 +329,31 @@ pnpm --dir server club:configure notify employee important sample.event.001 00A1
 
 额外客户补偿和责任扣款由结算查询读取同团同单的 `club_financial_adjustments`。一笔责任扣款用一条 `member_penalty` 记录，`status` 同时描述申请和生效状态。额外团费补偿使用 `customer_compensation`。财务可查申请与决议依据。只有 `approved` 记录计入分配，批准的补偿转为应退，按实际退款记录进入实退。待确认或驳回的记录不改变分配、待结状态或最终计算单。全团罚款按无 `orderId` 的独立记录处理。关联订单的责任扣款归入团费，目标团员有本人送心报酬时另列扣款及净额。对本单无派发或承接权限的责任团员，订单依然不可见。
 
-写入方使用 `clubId` 和关联订单的 MongoDB `orderId`，保存整分金额、原因、申请或发布人、决定人和发生时间。额外补偿的每笔实退保存独立请求标识、整分金额、实际发生与登记时间、登记人。`revision` 从 1 起，每次状态或退款变更原子递增。P1-15 提供调整申请、审批、实退登记和调整流水。结单确认及送心报酬、派抽和团抽入账由 P1-17 接续。
+写入方使用 `clubId` 和关联订单的 MongoDB `orderId`，保存整分金额、原因、申请或发布人、决定人和发生时间。额外补偿的每笔实退保存独立请求标识、整分金额、实际发生与登记时间、登记人。`revision` 从 1 起，每次状态或退款变更原子递增。
 
 通知由已持久化的 `member_penalty` 生效记录驱动。费用业务可在成功写入后调用 `AppNotificationService.publishApprovedPenalty(penaltyId)`，后台也会定期补齐未处理记录。通知与结算都要求已批准、有效的决定人与时间、正整数分、有效的被罚款人与提交人，并且没有退款记录。决定之后的职务变化不影响原决定。事件键为 `club.penalty.approved:<罚款ID>`，只向团员端的被罚款人和提交人各投递一次重要通知。核对字段 `notificationPublishedAt` 记录通知事件入库时间，沿用原罚款 `revision` 与结算依据。
+
+### 确认结单与结单后更正
+
+本单派单人在团员端「派单准备 → 本人派单结算」查到「待结单」后，可以按该份计算单确认结单。结单同时显示「已入账」，标明结单人、时间和原计算单。客户侧继续从订单详情核对履约、结单时间和现金。未结单时，老板可续段，包括原约定已经送完的订单。已结单的原约定、收退款和计算单可追溯。
+
+下表按各列所示路径请求，提交用的 `requestId` 为 UUID v4。
+
+| 请求 | 用途与载荷 |
+| --- | --- |
+| `POST /api/employee/club/orders/:orderId/settlement/close` | 原派单人提交 `{ requestId, calculationId }`，使用当前 `finalCalculation.id`。成功返回 `status: "closed"`、结单人、时间、请求和计算单版本。 |
+| `GET /api/employee/club/orders/:orderId/daily-reports/:originalReportId/correction-requests` | 送心员核对本人日报的更正。本人日报页也标明申请结果。 |
+| `POST /api/employee/club/orders/:orderId/daily-reports/:originalReportId/correction-requests` | 送心员提交 `{ requestId, expectedVersion, lines, reason }`。未结单的日报更正继续使用原立即生效接口。 |
+| `GET /api/employee/club/orders/:orderId/settlement/cash-correction-requests` | 原派单人核对可更正的实收实退及申请。款项各有原登记额、当前金额和版本。 |
+| `POST /api/employee/club/orders/:orderId/settlement/cash-correction-requests` | 原派单人提交 `{ requestId, movementRequestId, movementKind?, expectedRevision, correctedAmountCents, evidence, reason }`。同一来源编号用于多类款项时，须同时指定类别。 |
+| `GET /api/employee/club/settlement-corrections` | 团长或副团长从「调整审批 → 结单更正」读取待审批记录。 |
+| `PATCH /api/employee/club/orders/:orderId/settlement/corrections/:requestId/decision` | 团长或副团长提交 `{ expectedRevision: 1, decision, reason? }`。决定为 `approved` 或 `rejected`。 |
+
+结单与续段、日报和款项更新核对同一订单上的版本。关联调整先在订单登记待写入操作，再写调整记录，最后清除标记。单机 MongoDB 也可从标记恢复。结单在一个订单写入中发布原计算单标识、结单时间、基础分项流水和本次实际纳入的罚款 ID。个人让利、平台优惠和赠送成本只记已履约部分，原派抽、原团抽和送心报酬分别列账。先前登记的真实补偿退款沿用其原有流水。入账允许个人及团费余额为负。
+
+日报申请待审期间保留当前有效版本和余额。获批后保留原日报和计算单，追加更正版、关联原计算单的差额和更正计算单。现金更正保留原转账记录，只登记由审批确认的金额差额。普通款项更正影响订单现金核对。更正已记团费的额外补偿实退时，按该原团费流水的差额追加一笔。现金更正无需登记第二笔线下转账。财务端须有 `CLUB_FINANCE_READ`，可查原结单、审批依据及差额。普通团员从「个人余额」只查看本人分录。
+
+退单已返券的订单，获批更正把最新有效实绩从零改为正数时，同时恢复原单用券并保留先前返还时间。后续获批将实绩改回零可以再次返还。另一单已占用原券时，更正继续待审，原单与另一单的实绩和款项保留当前状态。
 
 ### 罚款与额外补偿经办
 

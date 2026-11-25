@@ -11,6 +11,7 @@ import { addGiftTimesByShare, allPaidGiftsDelivered, eligiblePromotionalFacts, g
 import { acceptsGiftExecution, publishedGiftOrder, writableGiftDispatch } from './club-gift-execution.service';
 import { activeGiftSegments } from './club-gift-allocation';
 import { ClubOrder } from './club-order.schema';
+import { correctionView } from './club-settlement-close';
 
 type Submission =
   | (CreateDailyReportDto & { shareId: string; accountId: string })
@@ -40,15 +41,23 @@ export class ClubGiftDeliveryService {
     const history = await this.store.history(order, userId, after);
     if (order.dispatchPricing?.priceUnit !== 'gift_times') return { ...history, priceUnit: 'received_hearts' };
     const facts = await giftDayFacts(this.reports.collection, order);
-    return { ...history, priceUnit: 'gift_times', giftProgress: giftProgress(order, userId, eligiblePromotionalFacts(order, facts)) };
+    return { ...history, priceUnit: 'gift_times', giftProgress: giftProgress(order, userId, eligiblePromotionalFacts(order, facts)),
+      canRequestClosedCorrection: !!order.settlementClose,
+      settlementCorrections: order.settlementCorrections?.filter(row => row.kind === 'daily_report' && row.requestedByUserId === userId).map(correctionView),
+    };
   }
 
-  async submit(clubId: string, userId: string, orderId: string, input: Submission) {
+  async submit(clubId: string, userId: string, orderId: string, input: Submission):
+    Promise<NonNullable<Awaited<ReturnType<ClubDailyReportStore['replay']>>>>;
+  async submit(clubId: string, userId: string, orderId: string, input: Submission, prepare: true):
+    Promise<{ report: DailyReport; previous: DailyReport }>;
+  async submit(clubId: string, userId: string, orderId: string, input: Submission, prepare = false):
+    Promise<NonNullable<Awaited<ReturnType<ClubDailyReportStore['replay']>>> | { report: DailyReport; previous: DailyReport }> {
     const correction = input.kind === 'correction';
     const targetId = reportObjectId(correction ? input.reportId : input.shareId);
     const requestedAccountId = correction ? undefined : reportObjectId(input.accountId);
     const requestHash = createHash('sha256').update(JSON.stringify([
-      input.kind, targetId, requestedAccountId, correction ? input.expectedVersion : input.businessDate, input.reason,
+      prepare ? 'closed_correction' : input.kind, targetId, requestedAccountId, correction ? input.expectedVersion : input.businessDate, input.reason,
       input.lines.map(line => [line.shareId?.toLowerCase(), line.period, line.quoteSegment, line.giftTimes, line.receivedHearts ?? null]),
     ])).digest('hex');
 
@@ -60,13 +69,16 @@ export class ClubGiftDeliveryService {
       const scope = { orderId: order._id, userId, requestId: input.requestId };
       if (order.pendingDailyReport?.requestId === input.requestId && order.pendingDailyReport.userId === userId)
         await this.store.flushPendingReport(order);
-      const prior = await this.store.replay(scope, requestHash, true);
+      const prior = prepare ? null : await this.store.replay(scope, requestHash, true);
       if (prior) return prior;
+      if (prepare && await this.reports.exists(scope))
+        throw new ConflictException('相同提交标识已用于其他日报');
       if (order.pendingDailyReport) {
         await this.store.flushPendingReport(order);
         continue;
       }
-      if (order.closedAt) throw new ConflictException('该单已确认结单，日报更正需另行核对');
+      if (prepare ? !order.settlementClose || !correction : !!order.closedAt)
+        throw new ConflictException(prepare ? '本单尚未确认结单' : '该单已确认结单，请发起日报更正申请');
       if (input.kind === 'daily' && !acceptsGiftExecution(order))
         throw new ConflictException('本单已停止当前送心，请通过补报登记过去实绩');
       const previous = correction ? await this.reports.findOne({
@@ -75,7 +87,7 @@ export class ClubGiftDeliveryService {
       if (correction) {
         if (!previous) throw new NotFoundException('该日报不存在');
         if (previous.version !== input.expectedVersion) {
-          const replayed = await this.store.replay(scope, requestHash, true);
+          const replayed = prepare ? null : await this.store.replay(scope, requestHash, true);
           if (replayed) return replayed;
           throw new ConflictException('已有新的日报版本，请刷新后核对');
         }
@@ -211,6 +223,7 @@ export class ClubGiftDeliveryService {
         originalId: previous?.originalId ?? id, requestHash, reason: input.reason,
         lines, receivedHearts: lines.some(line => line.receivedHearts === null) ? null : hearts,
       };
+      if (prepare) return { report, previous: previous! };
       // A rejected duplicate must never invalidate the quote along with a report that was not admitted.
       if (priceAdjustment && !correction && await this.reports.exists({
         orderId: order._id, userId, accountId, businessDate, version: 1,

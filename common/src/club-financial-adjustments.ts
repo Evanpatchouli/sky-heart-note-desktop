@@ -55,15 +55,28 @@ export type RecordCompensationRefund = {
   evidence?: string;
 };
 
+export const clubSettlementPostingLabel = {
+  dispatch_fee: "派抽原额",
+  personal_discount: "个人让利",
+  member_reward: "送心报酬",
+  club_fee: "团抽原额",
+  platform_discount: "平台优惠",
+  promotional_gift: "赠送成本",
+} as const;
+
+export type ClubSettlementPostingKind = keyof typeof clubSettlementPostingLabel;
+
 export type ClubBalanceEntry = {
   eventId: string;
-  adjustmentId: string;
   orderId?: string;
-  kind: ClubAdjustmentKind;
   amountCents: number;
   occurredAt: string;
   reason: string;
-};
+} & (
+  { kind: ClubAdjustmentKind; adjustmentId: string } |
+  { kind: ClubSettlementPostingKind; calculationId: string; correctionRequestId?: string; revisedCalculationId?: string } |
+  { kind: 'compensation_cash_correction'; calculationId: string; correctionRequestId: string; sourceMovementRequestId: string }
+);
 
 export type ClubBalance = { balanceCents: number; entries: ClubBalanceEntry[] };
 export type PersonalClubBalance = ClubBalance & {

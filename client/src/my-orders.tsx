@@ -180,8 +180,8 @@ function OrderFacts({ order, manageContinuation = false }: { order: Order; manag
       <dt>{hasContinuation ? "原报价应付服务款" : "应付服务款"}</dt><dd>¥{formatCentsAsYuan(order.quote.totalAmountCents)}</dd>
     </dl> : null}
     {order.receipt ? <>
-      <p>{hasContinuation ? "原收款" : "已登记实收"} ¥{formatCentsAsYuan(order.receipt.receivedAmountCents)} · {new Date(order.receipt.receivedAt).toLocaleString("zh-CN")}</p>
-      {hasContinuation && <p>累计已登记收款 ¥{formatCentsAsYuan(totalGiftPayments(order.receipt.receivedAmountCents, order.continuationQuotes))}</p>}
+      <p>{order.settlement?.cashCorrected ? "原登记首款" : hasContinuation ? "原收款" : "已登记实收"} ¥{formatCentsAsYuan(order.receipt.receivedAmountCents)} · {new Date(order.receipt.receivedAt).toLocaleString("zh-CN")}</p>
+      {hasContinuation && <p>{order.settlement?.cashCorrected ? "累计原登记收款" : "累计已登记收款"} ¥{formatCentsAsYuan(totalGiftPayments(order.receipt.receivedAmountCents, order.continuationQuotes))}</p>}
     </> : null}
     {!manageContinuation && <ContinuationFacts requests={order.continuationRequests} quotes={order.continuationQuotes} />}
   </>;

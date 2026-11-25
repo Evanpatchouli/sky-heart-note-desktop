@@ -25,7 +25,8 @@ export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress
     <p>约定 {progress.agreedGiftTimes} 次 · 已送 {progress.deliveredGiftTimes} 次 · 剩余 {progress.remainingGiftTimes} 次</p>
     {progress.promotionalGiftTimes ? <p>付费 {progress.deliveredPaidGiftTimes}/{progress.paidGiftTimes} 次 · 促销赠送 {progress.deliveredPromotionalGiftTimes}/{progress.promotionalGiftTimes} 次</p> : null}
     <progress aria-label="约定赠送完成进度" value={progress.deliveredGiftTimes} max={progress.agreedGiftTimes} />
-    <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>
+    <p>{progress.closedAt && !["completed", "stopped"].includes(progress.fulfillmentStatus) ? "履约已结束" : fulfillment[progress.fulfillmentStatus]}
+      {" · "}{progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>
     <dl>
       <dt>建单预计实收爱心</dt><dd>{giftCount(progress.estimatedReceivedHearts)}</dd>
       <dt>按实报赠送次数和实际时段预计到账</dt><dd>{giftCount(progress.estimatedDeliveredHearts)}</dd>

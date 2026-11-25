@@ -26,9 +26,9 @@ export class ClubSettlementEvidenceService {
     @InjectModel(ClubSettlementEvidence.name) private readonly evidence: Model<ClubSettlementEvidence>,
   ) {}
 
-  async latest(clubId: string, orderId: Types.ObjectId, exclude?: string) {
+  async latest(clubId: string, orderId: Types.ObjectId, exclude?: string, before?: Date) {
     return settlementReference(await this.calculations.findOne({
-      clubId, orderId, ...(exclude ? { _id: { $ne: exclude } } : {}),
+      clubId, orderId, ...(exclude ? { _id: { $ne: exclude } } : {}), ...(before ? { calculatedAt: { $lt: before } } : {}),
     }).select(selectMetadata).sort({ calculatedAt: -1, _id: -1 }).lean());
   }
 

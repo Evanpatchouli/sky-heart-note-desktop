@@ -18,6 +18,7 @@ import {
 } from './club-delivery.dto';
 import { ClubGiftDeliveryService } from './club-gift-delivery.service';
 import { ClubGiftSettlementService } from './club-gift-settlement.service';
+import { CloseGiftSettlementDto } from './club-settlement-close.dto';
 
 @AppAccess('employee')
 @UsePipes(
@@ -37,6 +38,11 @@ export class ClubDeliveryController {
   @Get('settlement')
   async settlement(@AuthUser() user: SessionUser, @Param('orderId') orderId: string) {
     return Resp.success(await this.settlements.personal(CLUB_ID, user.id, orderId));
+  }
+
+  @Post('settlement/close')
+  async close(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: CloseGiftSettlementDto) {
+    return Resp.success(await this.settlements.close(CLUB_ID, user.id, orderId, input));
   }
 
   @Get('daily-reports')

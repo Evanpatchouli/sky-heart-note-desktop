@@ -59,6 +59,7 @@ export interface GiftSettlementAmounts {
   clubNetCents: number | null;
   allocatedCents: number | null;
   customerCompensationCents?: number | null;
+  compensationCashCorrectionCents?: number;
   memberPenaltyCents?: number | null;
   memberNetCents?: number | null;
 }
@@ -146,6 +147,16 @@ export interface GiftSettlementRow {
   agreedGiftTimes: number;
   status: GiftSettlementStatus;
   finalCalculation: GiftSettlementReference | null;
+  close?: GiftSettlementClose;
+}
+
+export interface GiftSettlementClose {
+  status: 'closed';
+  closedAt: string;
+  closedByUserId: string;
+  requestId: string;
+  calculationId: string;
+  calculationVersion: number;
 }
 
 export interface GiftSettlementCalculation extends GiftSettlementProgress, Omit<GiftSettlementRow, 'finalCalculation'> {
@@ -181,6 +192,7 @@ export interface GiftSettlementCalculation extends GiftSettlementProgress, Omit<
 }
 
 export interface AdminGiftSettlement extends GiftSettlementCalculation {
+  corrections?: import('./club-settlement-corrections').SettlementCorrection[];
   finalCalculation: GiftSettlementReference | null;
   previousCalculation: GiftSettlementReference | null;
   memberNames: Record<string, string>;
@@ -191,6 +203,8 @@ export interface PersonalGiftSettlement {
   status: GiftSettlementStatus;
   stopped: boolean;
   finalCalculation: GiftSettlementReference | null;
+  close?: GiftSettlementClose;
+  canClose?: boolean;
   member: (Omit<GiftSettlementMember, 'userId' | 'segments'> & {
     segments: Omit<GiftSettlementMemberSegment, 'grossCents' | 'dispatchFeeCents' | 'clubFeeCents'>[];
   }) | null;
@@ -208,6 +222,8 @@ export interface PersonalGiftSettlement {
 
 export interface CustomerGiftSettlement {
   status: GiftSettlementStatus;
+  closedAt?: string;
+  cashCorrected?: boolean;
   cash: GiftSettlementCash | null;
   termination?: CustomerGiftTermination;
 }

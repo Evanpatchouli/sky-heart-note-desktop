@@ -1,6 +1,9 @@
 import type { DailyReport } from './club-delivery.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { StoredGiftTermination } from './club-gift-termination';
+import type { StoredSettlementClose } from './club-settlement-close';
+import type { OrderAdjustmentCommand } from './club-financial-adjustment.schema';
+import type { StoredSettlementCorrection } from './club-settlement-correction.service';
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
 import type { DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { SchemaTypes, Types } from 'mongoose';
@@ -263,6 +266,21 @@ export class ClubOrder {
   @Prop({ type: Date })
   closedAt?: Date;
 
+  @Prop({ type: SchemaTypes.Mixed })
+  settlementClose?: StoredSettlementClose;
+
+  @Prop({ type: Number })
+  financialRevision?: number;
+
+  @Prop({ type: SchemaTypes.Mixed })
+  pendingFinancialAdjustment?: OrderAdjustmentCommand;
+
+  @Prop({ type: [SchemaTypes.Mixed], default: undefined })
+  settlementCorrections?: StoredSettlementCorrection[];
+
+  @Prop({ type: Number })
+  settlementCorrectionRevision?: number;
+
   // Frozen atomically with closedAt by the order settlement writer.
   @Prop({ type: [SchemaTypes.ObjectId], default: undefined })
   settlementPenaltyIds?: Types.ObjectId[];
@@ -289,6 +307,9 @@ ClubOrderSchema.index(
   { unique: true },
 );
 ClubOrderSchema.index({ clubId: 1, _id: -1 });
+ClubOrderSchema.index({ clubId: 1, closedAt: 1 }, { partialFilterExpression: { closedAt: { $type: 'date' } } });
+ClubOrderSchema.index({ 'pendingFinancialAdjustment.id': 1 }, { sparse: true });
+ClubOrderSchema.index({ clubId: 1, 'settlementCorrections.status': 1 }, { sparse: true });
 ClubOrderSchema.index({ 'publication.id': 1 }, { unique: true, sparse: true });
 ClubOrderSchema.index({ intakeNoticePendingAt: 1 }, { sparse: true });
 ClubOrderSchema.index({ 'publication.pushNextAttemptAt': 1 }, { sparse: true });

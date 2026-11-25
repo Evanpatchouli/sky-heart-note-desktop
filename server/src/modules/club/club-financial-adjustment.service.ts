@@ -8,9 +8,10 @@ import { AppNotificationService } from './app-notification.service';
 import { adjustmentBalance } from './club-adjustment-ledger';
 import { ClubDirectoryService } from './club-directory.service';
 import type { DecideClubAdjustmentDto, PublishClubPenaltyDto, RecordCompensationRefundDto, RequestClubAdjustmentDto } from './club-financial-adjustment.dto';
-import { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
+import { ClubFinancialAdjustment, type OrderAdjustmentCommand } from './club-financial-adjustment.schema';
 import { financialAdjustmentView, personalPenalty, type PostedOrderPenalties } from './club-gift-settlement-adjustments';
 import { ClubOrder } from './club-order.schema';
+import { settlementBalanceEntries } from './club-settlement-close';
 import { CLUB_ID } from './club.schema';
 
 const durable = { writeConcern: { w: 'majority', j: true } } as const;
@@ -28,6 +29,15 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
 
   async onModuleInit() {
     await this.adjustments.init();
+    const pending = this.orders.find({ 'pendingFinancialAdjustment.id': { $exists: true } })
+      .select({ pendingFinancialAdjustment: 1 }).lean().cursor();
+    for await (const order of pending) {
+      try {
+        await this.flushOrderAdjustment(order);
+      } catch {
+        this.logger.warn(`订单 ${order._id.toHexString()} 有待完成的资金调整，将在访问该单时重试`);
+      }
+    }
   }
 
   async listPenalties(actor: SessionUser) {
@@ -75,19 +85,14 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
     await this.requireLeadership(actor);
     this.requireObjectId(id);
     const key = { _id: id, clubId: CLUB_ID };
-    if (input.decision === 'approved') {
-      const pending = await this.adjustments.findOne({ ...key, status: 'pending', revision: input.expectedRevision,
-        kind: 'member_penalty', orderId: { $type: 'objectId' } }).select({ orderId: 1 }).lean();
-      if (pending?.orderId) {
-        const order = await this.requireOrder(pending.orderId.toHexString());
-        const issue = this.penaltyOrderIssue(order);
-        if (issue && await this.adjustments.exists({ ...key, status: 'pending' })) throw new ConflictException(issue);
-      }
-    }
-    const record = await this.adjustments.findOneAndUpdate({ ...key, status: 'pending', revision: input.expectedRevision }, {
-      $set: { status: input.decision, decidedByUserId: actor.id, decidedAt: new Date(), decisionReason: input.reason },
-      $inc: { revision: 1 },
-    }, { ...durable, returnDocument: 'after', runValidators: true }).lean();
+    const pending = await this.adjustments.findOne({ ...key, status: 'pending', revision: input.expectedRevision }).lean();
+    const command = {
+      id: new Types.ObjectId(), kind: 'decide' as const, adjustmentId: new Types.ObjectId(id), revision: input.expectedRevision,
+      decision: { status: input.decision, decidedByUserId: actor.id, decidedAt: new Date(), decisionReason: input.reason },
+    };
+    const record = !pending ? null : pending.orderId ?
+      await this.runOrderAdjustment(pending.orderId, command, input.decision === 'approved' && pending.kind === 'member_penalty') :
+      await this.applyAdjustment(command);
     const saved = record ?? await this.adjustments.findOne(key).readConcern('majority').lean();
     if (!saved) throw new NotFoundException('调整记录不存在');
     if (!record && (input.expectedRevision !== 1 || saved.status !== input.decision ||
@@ -132,10 +137,10 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
     if (paid + BigInt(amountCents) > BigInt(record.amountCents)) {
       throw new ConflictException('实退金额不能超过该补偿待退金额');
     }
-    const saved = await this.adjustments.findOneAndUpdate({ ...key, status: 'approved', revision: expectedRevision }, {
-      $push: { refunds: { requestId, amountCents, occurredAt, recordedAt, recordedByUserId: actor.id, evidence } },
-      $inc: { revision: 1 },
-    }, { ...durable, returnDocument: 'after', runValidators: true }).lean();
+    const saved = await this.runOrderAdjustment(order._id, {
+      id: new Types.ObjectId(), kind: 'refund', adjustmentId: record._id, revision: expectedRevision,
+      refund: { requestId, amountCents, occurredAt, recordedAt, recordedByUserId: actor.id, evidence },
+    });
     if (saved) return financialAdjustmentView(saved);
     const latest = await this.adjustments.findOne(key).readConcern('majority').lean();
     const recovered = latest && replay(latest);
@@ -145,10 +150,10 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
 
   async personalBalance(actor: SessionUser): Promise<PersonalClubBalance> {
     await this.directory.requireMember(CLUB_ID, actor.id);
+    const { settlements, posted } = await this.balanceSettlements(actor.id);
     const records = await this.approvedRecords(actor.id);
-    const settlements = await this.settlementsFor(records);
     return {
-      ...adjustmentBalance(records, actor.id, false, settlements),
+      ...adjustmentBalance(records, actor.id, false, settlements, posted),
       pendingPenalties: records.flatMap(record => {
         const view = financialAdjustmentView(record, settlements.get(record.orderId?.toHexString() ?? ''));
         const { penaltyPosting } = view;
@@ -160,8 +165,22 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
   async financeBalance(actor: SessionUser, userId?: string) {
     await this.directory.requireAdminPermission(CLUB_ID, actor, 'CLUB_FINANCE_READ');
     if (userId !== undefined && !USER_ID_PATTERN.test(userId)) throw new BadRequestException('请输入四位用户 ID');
+    const { settlements, posted } = await this.balanceSettlements(userId ?? null);
     const records = await this.approvedRecords(userId);
-    return adjustmentBalance(records, userId ?? null, true, await this.settlementsFor(records));
+    return adjustmentBalance(records, userId ?? null, true, settlements, posted);
+  }
+
+  private async balanceSettlements(userId: string | null) {
+    // Read the close marker and its base and penalty postings from the same document snapshot.
+    const orders = await this.orders.find({ clubId: CLUB_ID, closedAt: { $type: 'date' } })
+      .select({ closedAt: 1, settlementPenaltyIds: 1, settlementClose: 1, settlementCorrections: 1 }).readConcern('majority').lean();
+    const settlements = new Map<string, PostedOrderPenalties>();
+    for (const order of orders) {
+      settlements.set(order._id.toHexString(), {
+        closedAt: order.closedAt!, adjustmentIds: new Set(order.settlementPenaltyIds?.map(id => id.toHexString())),
+      });
+    }
+    return { settlements, posted: orders.flatMap(order => settlementBalanceEntries(order, userId)) };
   }
 
   private approvedRecords(userId?: string) {
@@ -196,14 +215,12 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
       status: direct ? 'approved' : 'pending', revision: 1, createdAt: now,
       ...(direct ? { decidedByUserId: userId, decidedAt: now } : {}),
     });
-    let saved: ClubFinancialAdjustment;
-    try {
-      saved = (await adjustment.save(durable.writeConcern)).toObject();
-    } catch (error) {
-      if (!isDuplicateKey(error, 'requestId')) throw error;
-      const concurrent = await this.adjustments.findOne(key).readConcern('majority').lean();
-      if (!concurrent) throw error;
-      return replay(concurrent);
+    const command = { id: new Types.ObjectId(), kind: 'create' as const, record: adjustment.toObject() };
+    const saved = order ? await this.runOrderAdjustment(order._id, command, kind === 'member_penalty') : await this.applyAdjustment(command);
+    if (!saved || !saved._id.equals(adjustment._id)) {
+      const concurrent = saved ?? await this.adjustments.findOne(key).readConcern('majority').lean();
+      if (concurrent) return replay(concurrent);
+      throw new ConflictException('该调整未登记，请刷新后重新核对');
     }
     if (direct) this.notify(saved._id);
     return this.adjustmentView(saved);
@@ -222,6 +239,68 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
       records: rows.map(record => financialAdjustmentView(record, settlements.get(record.orderId?.toHexString() ?? ''))),
       memberNames: Object.fromEntries(names),
     };
+  }
+
+  // Admission and close compare the same order document. Any instance can finish
+  // the admitted mutation before releasing its slot, including after a restart.
+  private async runOrderAdjustment(orderId: Types.ObjectId, command: OrderAdjustmentCommand, requireOpen = false) {
+    const scope = { _id: orderId, clubId: CLUB_ID };
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const reserved = await this.orders.updateOne({
+        ...scope, pendingFinancialAdjustment: null,
+        ...(requireOpen ? {
+          closedAt: null, dispatchStatus: { $nin: ['cancelled', 'pending_assignment'] },
+          dispatcherUserId: { $type: 'string' },
+        } : {}),
+      }, { $set: { pendingFinancialAdjustment: command }, $inc: { financialRevision: 1 } }, durable);
+      if (reserved.modifiedCount) return this.flushOrderAdjustment({ _id: orderId, pendingFinancialAdjustment: command });
+      const owner = await this.orders.findOne(scope).readConcern('majority').lean();
+      if (!owner) throw new NotFoundException('本单不存在');
+      if (owner.pendingFinancialAdjustment) await this.flushOrderAdjustment(owner);
+      if (requireOpen) {
+        const issue = this.penaltyOrderIssue(owner);
+        if (issue) {
+          // If the preceding worker finished the same operation, return its stored
+          // record so the caller can validate and replay the original request.
+          if (command.kind === 'create') {
+            const { clubId, requestedByUserId, requestId } = command.record;
+            const saved = await this.adjustments.findOne({ clubId, requestedByUserId, requestId }).readConcern('majority').lean();
+            if (saved) return saved;
+          } else if (command.kind === 'decide') {
+            const saved = await this.adjustments.findOne({ _id: command.adjustmentId, clubId: CLUB_ID }).readConcern('majority').lean();
+            if (saved?.status !== 'pending') return null;
+          }
+          throw new ConflictException(issue);
+        }
+      }
+    }
+    throw new ConflictException('本单的资金调整正在更新，请重试');
+  }
+
+  async flushOrderAdjustment({ _id, pendingFinancialAdjustment }: Pick<ClubOrder, '_id' | 'pendingFinancialAdjustment'>) {
+    if (!pendingFinancialAdjustment) return null;
+    const saved = await this.applyAdjustment(pendingFinancialAdjustment);
+    await this.orders.updateOne({ _id, 'pendingFinancialAdjustment.id': pendingFinancialAdjustment.id },
+      { $unset: { pendingFinancialAdjustment: 1 } }, durable);
+    if (saved && hasApprovedPenalty(saved)) this.notify(saved._id);
+    return saved;
+  }
+
+  private async applyAdjustment(command: OrderAdjustmentCommand) {
+    if (command.kind === 'create') {
+      try {
+        return (await new this.adjustments(command.record).save(durable.writeConcern)).toObject();
+      } catch (error) {
+        if (isDuplicateKey(error, '_id') || isDuplicateKey(error, 'requestId')) return null;
+        throw error;
+      }
+    }
+    const deciding = command.kind === 'decide';
+    return this.adjustments.findOneAndUpdate({
+      _id: command.adjustmentId, clubId: CLUB_ID, status: deciding ? 'pending' : 'approved', revision: command.revision,
+    }, {
+      ...(deciding ? { $set: command.decision } : { $push: { refunds: command.refund } }), $inc: { revision: 1 },
+    }, { ...durable, returnDocument: 'after', runValidators: true }).lean();
   }
 
   private async adjustmentView(record: ClubFinancialAdjustment) {

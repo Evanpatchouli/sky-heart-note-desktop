@@ -1,6 +1,6 @@
 import { Alert, Button, Collapse, Descriptions, Flex, Table, Tag, Typography } from "antd";
 import {
-  clubPenaltyPostingLabel, formatCentsAsYuan, giftSettlementIssueLabel, giftSettlementStatusLabel,
+  clubPenaltyPostingLabel, clubSettlementPostingLabel, formatCentsAsYuan, giftSettlementIssueLabel, giftSettlementStatusLabel, settlementCashMovementLabel,
   type AdminGiftSettlement, type GiftSettlementAmounts, type GiftSettlementProgress,
 } from "@webapp-template/common";
 
@@ -17,7 +17,7 @@ const distribution: [keyof GiftSettlementAmounts, string][] = [
   ["clubNetCents", "团费净额"], ["allocatedCents", "分配合计"],
 ];
 const cashLabels = {
-  originalReceivedCents: "原实收", continuationReceivedCents: "续段实收", supplementReceivedCents: "改价实补",
+  originalReceivedCents: "首款实收", continuationReceivedCents: "续段实收", supplementReceivedCents: "改价实补",
   refundDueCents: "应退", refundedCents: "实退", refundRemainingCents: "待退",
   excessRefundCents: "超退", netReceivedCents: "净实收",
   compensationRefundDueCents: "其中额外补偿应退", compensationRefundedCents: "其中额外补偿实退",
@@ -47,7 +47,7 @@ export default function GiftSettlementDetail({ data, history, compact, onChange,
     <Flex align="center" wrap justify="space-between" gap="small">
       <div>
         <Tag color={data.status === "ready_to_close" ? "green" : "blue"}>{history ? "历史计算单" : giftSettlementStatusLabel[data.status]}</Tag>
-        {data.status !== "closed" ? <Tag>未入账</Tag> : null}
+        {!history ? (data.status === "closed" ? <Tag color="green">已入账</Tag> : <Tag>未入账</Tag>) : null}
         {data.stopped ? <Tag>已停送</Tag> : null}
       </div>
       <Button onClick={() => history ? onChange() : refresh()}>{history ? "查看当前核算" : "刷新核算"}</Button>
@@ -56,6 +56,29 @@ export default function GiftSettlementDetail({ data, history, compact, onChange,
       计算单 V{finalCalculation.version} · {datetime(finalCalculation.calculatedAt)}
     </Typography.Text> : null}
     {previousCalculation ? <Button onClick={() => onChange(previousCalculation.id)}>查阅上一份最终计算单</Button> : null}
+    {data.close ? <Flex align="center" wrap gap="small">
+      <Typography.Text>结单人 {name(data.close.closedByUserId)} · {datetime(data.close.closedAt)}</Typography.Text>
+      <Button onClick={() => onChange(data.close!.calculationId)}>查阅结单原计算单</Button>
+    </Flex> : null}
+    {data.corrections?.length ? <Collapse size="small" items={[{ key: "corrections", label: "结单后更正", children: <Flex vertical gap="middle">
+      {data.corrections.map(row => <section key={row.requestId}>
+        <Tag>{adjustmentStatus[row.status]}</Tag>
+        <Typography.Text strong>{row.kind === "cash" ? settlementCashMovementLabel[row.movement.kind] : `${row.businessDate} 日报`}</Typography.Text>
+        <div>{name(row.requestedByUserId)} · {datetime(row.requestedAt)} · {row.reason}</div>
+        {row.decidedAt && row.decidedByUserId ? <div>审批 {name(row.decidedByUserId)} · {datetime(row.decidedAt)}{row.decisionReason ? ` · ${row.decisionReason}` : ""}</div> : null}
+        {row.kind === "cash" ? <>
+          <div>{money(row.movement.effectiveAmountCents)} → {money(row.correctedAmountCents)}{row.deltaCents !== undefined ? ` · 差额 ${money(row.deltaCents)}` : ""}</div>
+          <div style={{ overflowWrap: "anywhere" }}>原转账凭据 · {row.evidence}</div>
+        </> : <>
+          {row.postings?.map(line => <div key={`${line.kind}:${line.memberUserId}`}>
+            {line.memberUserId ? name(line.memberUserId) : "团费"} · {clubSettlementPostingLabel[line.kind]} · {money(line.amountCents)}
+          </div>)}
+          {row.couponChange ? <div>{row.couponChange.status === "used" ? "恢复原单用券" : "返还原券"} · {datetime(row.couponChange.changedAt)}
+            {row.couponChange.previousReturnedAt ? ` · 上次返还 ${datetime(row.couponChange.previousReturnedAt)}` : ""}</div> : null}
+          {row.revisedCalculationId ? <Button size="small" onClick={() => onChange(row.revisedCalculationId)}>查阅更正计算单</Button> : null}
+        </>}
+      </section>)}
+    </Flex> }]} /> : null}
     {data.issues.length ? <Alert type="warning" showIcon title="核对事项"
       description={data.issues.map(issue => giftSettlementIssueLabel[issue]).join("、")} /> : null}
     <Descriptions size="small" column={compact ? 1 : 2} bordered items={[
@@ -79,6 +102,8 @@ export default function GiftSettlementDetail({ data, history, compact, onChange,
           ["customerCompensationCents", "团费额外补偿"], ["memberPenaltyCents", "责任团员扣款"],
           ["memberNetCents", "团员报酬与扣款净额"],
         ] as [keyof GiftSettlementAmounts, string][] : []),
+        ...(data.totals.compensationCashCorrectionCents !== undefined
+          ? [["compensationCashCorrectionCents", "补偿实退更正差额"]] as [keyof GiftSettlementAmounts, string][] : []),
       ].map(([key, label]) => ({ key, label, planned: data.planned[key] === undefined ? "—" : money(data.planned[key]!),
         actual: data.totals[key] === undefined ? "—" : money(data.totals[key]!) }))}
       columns={[{ title: "分配项目", dataIndex: "label" }, { title: "按约定预计", dataIndex: "planned" },
@@ -110,7 +135,7 @@ export default function GiftSettlementDetail({ data, history, compact, onChange,
     <Collapse size="small" items={[
       { key: "payments", label: "确认报价、收退款与改价依据", children: <Flex vertical gap="small">
         {receipt ? <>
-          <Typography.Text>确认报价 V{receipt.quote.revision} · 折后 {money(receipt.quote.totalAmountCents)} · 原实收 {money(receipt.receivedAmountCents)}</Typography.Text>
+          <Typography.Text>确认报价 V{receipt.quote.revision} · 折后 {money(receipt.quote.totalAmountCents)} · 原登记实收 {money(receipt.receivedAmountCents)}</Typography.Text>
           <Typography.Text>收款人 {name(receipt.receivedByUserId)} · {datetime(receipt.receivedAt)}</Typography.Text>
           {receipt.quote.giftSegments?.map((segment, index) => <Typography.Text key={index}>
             原第 {index + 1} 段 · {periods[segment.period]} · 付费 {segment.paidGiftTimes} 次 · {money(segment.unitPriceCents)}/次

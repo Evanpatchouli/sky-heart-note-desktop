@@ -43,6 +43,8 @@ import { ClubOrderService } from './club-order.service';
 import { ClubPromotionCoupon, ClubPromotionCouponSchema } from './club-promotion.schema';
 import { ClubPromotionService } from './club-promotion.service';
 import { ClubGiftSettlementService } from './club-gift-settlement.service';
+import { ClubSettlementCorrectionController } from './club-settlement-correction.controller';
+import { ClubSettlementCorrectionService } from './club-settlement-correction.service';
 import { ClubSettlementEvidenceService } from './club-settlement-evidence.service';
 import { ClubFinancialAdjustment, ClubFinancialAdjustmentSchema } from './club-financial-adjustment.schema';
 import { AdminClubFinancialAdjustmentController, EmployeeClubFinancialAdjustmentController } from './club-financial-adjustment.controller';
@@ -74,6 +76,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ]),
   ],
   controllers: [
+    ClubSettlementCorrectionController,
     AdminClubFinancialAdjustmentController,
     EmployeeClubFinancialAdjustmentController,
     ClientGiftPriceAdjustmentController,
@@ -96,7 +99,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubController,
     ClientClubOrderController,
   ],
-  providers: [ClubFinancialAdjustmentService, ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService, ClubDispatchNoticeService, ClubDispatchPushService, AppNotificationService, ClubGiftSettlementService, ClubSettlementEvidenceService],
+  providers: [ClubSettlementCorrectionService, ClubFinancialAdjustmentService, ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService, ClubDispatchNoticeService, ClubDispatchPushService, AppNotificationService, ClubGiftSettlementService, ClubSettlementEvidenceService],
   exports: [ClubDirectoryService, ClubOrderService, AppNotificationService],
 })
 export class ClubModule {}

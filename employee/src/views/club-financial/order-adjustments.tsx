@@ -11,7 +11,9 @@ type RequestFields = { memberUserId?: string; amount: string; reason: string };
 type RefundFields = { amount: string; occurredAt: string; evidence?: string };
 type AdjustmentAction = { requestId: string } & ({ kind: ClubAdjustmentKind } | { refund: ClubAdjustmentRecord });
 
-export default function OrderAdjustments({ orderRoute, onChanged }: { orderRoute: string; onChanged: () => void }) {
+export default function OrderAdjustments({ orderRoute, onChanged, settlementClosed }: {
+  orderRoute: string; onChanged: () => void; settlementClosed?: boolean;
+}) {
   const route = `${orderRoute}/financial-adjustments`;
   const [data, setData] = useState<OrderAdjustmentList>();
   const [action, setAction] = useState<AdjustmentAction>();
@@ -27,7 +29,7 @@ export default function OrderAdjustments({ orderRoute, onChanged }: { orderRoute
       .then(value => { if (!controller.signal.aborted) setData(value); })
       .catch(reason => { if (!controller.signal.aborted) setError(requestMessage(reason)); });
     return () => controller.abort();
-  }, [route, attempt]);
+  }, [route, attempt, settlementClosed]);
 
   function open(next: Omit<Extract<AdjustmentAction, { kind: string }>, "requestId"> | { refund: ClubAdjustmentRecord }) {
     setSuccess("");
@@ -51,7 +53,7 @@ export default function OrderAdjustments({ orderRoute, onChanged }: { orderRoute
     {error ? <Alert type="error" showIcon title={error} /> : !data ? <Spin aria-label="加载资金调整" /> :
       <Flex vertical gap="middle">
         {data.canRequest ? <Flex gap="small" wrap="wrap">
-          {data.canRequestPenalty ? <Button onClick={() => open({ kind: "member_penalty" })}>申请罚款</Button> : null}
+          {data.canRequestPenalty && !settlementClosed ? <Button onClick={() => open({ kind: "member_penalty" })}>申请罚款</Button> : null}
           <Button onClick={() => open({ kind: "customer_compensation" })}>申请额外补偿</Button>
         </Flex> : null}
         {success ? <Alert type="success" showIcon title={success} /> : null}

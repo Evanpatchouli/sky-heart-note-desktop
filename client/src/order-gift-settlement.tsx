@@ -9,8 +9,10 @@ export function OrderGiftSettlement({ value, showTerminationEvidence = true }: {
   return <section aria-label="本单结算状态">
     <h3>本单结算状态</h3>
     <p><strong>{giftSettlementStatusLabel[value.status]}</strong></p>
+    {value.closedAt ? <p>结单时间 {new Date(value.closedAt).toLocaleString("zh-CN")}</p> : null}
+    {value.cashCorrected ? <p>实收实退已按审批更正</p> : null}
     {cash ? <dl>
-      <dt>原实收</dt><dd>{money(cash.originalReceivedCents)}</dd>
+      <dt>首款实收</dt><dd>{money(cash.originalReceivedCents)}</dd>
       {cash.continuationReceivedCents ? <><dt>续段实收</dt><dd>{money(cash.continuationReceivedCents)}</dd></> : null}
       {cash.supplementReceivedCents ? <><dt>改价实补</dt><dd>{money(cash.supplementReceivedCents)}</dd></> : null}
       {cash.refundDueCents || cash.refundedCents ? <>
