@@ -8,9 +8,18 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { USER_ID_PATTERN } from '@webapp-template/common';
 import { Model } from 'mongoose';
-import { canAccess } from '../../auth/app-access';
+import {
+  canAccess,
+  type SessionUser,
+  type WebApp,
+} from '../../auth/app-access';
 import { RoleService } from '../role-module/role.service';
 import { User } from '../user-module/user.schema';
+import {
+  CLUB_PERMISSIONS,
+  isClubPermission,
+  type ClubPermission,
+} from './club-permissions';
 import { Club, ClubMember, CLUB_ID_PATTERN } from './club.schema';
 
 @Injectable()
@@ -46,6 +55,90 @@ export class ClubDirectoryService implements OnModuleInit {
     return clubs.map(({ _id, name }) => ({ id: _id, name }));
   }
 
+  async requireAdminPermission(
+    clubId: string,
+    actor: SessionUser,
+    permission: ClubPermission,
+  ) {
+    this.requireAdminSession(actor);
+    await this.requireClub(clubId);
+    const permitted = await this.members.exists({
+      clubId,
+      userId: actor.id,
+      active: true,
+      permissions: permission,
+    });
+    if (!permitted) {
+      throw new ForbiddenException('需要本俱乐部有效成员身份及相应业务授权');
+    }
+  }
+
+  async listAdminClubs(actor: SessionUser) {
+    this.requireAdminSession(actor);
+    const memberships = await this.members
+      .find({
+        userId: actor.id,
+        active: true,
+        permissions: { $in: CLUB_PERMISSIONS },
+      })
+      .select({ clubId: 1, permissions: 1, _id: 0 })
+      .lean();
+    const clubs = await this.clubs
+      .find({ _id: { $in: memberships.map(({ clubId }) => clubId) } })
+      .sort({ _id: 1 })
+      .lean();
+    const permissionsByClub = new Map(
+      memberships.map(({ clubId, permissions }) => [
+        clubId,
+        CLUB_PERMISSIONS.filter((permission) =>
+          permissions.includes(permission),
+        ),
+      ]),
+    );
+    return clubs.map(({ _id, name }) => ({
+      id: _id,
+      name,
+      permissions: permissionsByClub.get(_id),
+    }));
+  }
+
+  async listAdminMembers(clubId: string, actor: SessionUser) {
+    await this.requireAdminPermission(clubId, actor, 'CLUB_MEMBERS_MANAGE');
+    const members = await this.members
+      .find({ clubId })
+      .select({ userId: 1, active: 1, dispatcher: 1, _id: 0 })
+      .sort({ userId: 1 })
+      .lean();
+    const nicknames = await this.memberNicknames(
+      members.map(({ userId }) => userId),
+    );
+    return members.map((member) => ({
+      ...member,
+      nickname: nicknames.get(member.userId) ?? null,
+    }));
+  }
+
+  async setMemberDispatcher(
+    clubId: string,
+    actor: SessionUser,
+    userId: string,
+    dispatcher: boolean,
+  ) {
+    await this.requireAdminPermission(clubId, actor, 'CLUB_MEMBERS_MANAGE');
+    this.requireUserId(userId);
+    const member = await this.members
+      .findOneAndUpdate(
+        { clubId, userId, active: true },
+        { $set: { dispatcher } },
+        { returnDocument: 'after' },
+      )
+      .select({ userId: 1, active: 1, dispatcher: 1, _id: 0 })
+      .lean();
+    if (!member) throw new NotFoundException('本俱乐部有效成员不存在');
+    const nicknames = await this.memberNicknames([userId]);
+    return { ...member, nickname: nicknames.get(userId) ?? null };
+  }
+
   async eligibleDispatchers(
     clubId: string,
     requestedUserId?: string,
@@ -56,7 +149,7 @@ export class ClubDirectoryService implements OnModuleInit {
       dispatcher: true,
       ...(requestedUserId === undefined ? {} : { userId: requestedUserId }),
     });
-    return this.enabledEmployeeIds(userIds);
+    return this.enabledAppUserIds('employee', userIds);
   }
 
   async saveClub(clubId: string, name: string) {
@@ -78,9 +171,11 @@ export class ClubDirectoryService implements OnModuleInit {
     dispatcher: boolean,
   ) {
     await this.requireClub(clubId);
-    if (!USER_ID_PATTERN.test(userId))
-      throw new BadRequestException('请输入四位用户 ID');
-    if (active && !(await this.enabledEmployeeIds([userId])).length) {
+    this.requireUserId(userId);
+    if (
+      active &&
+      !(await this.enabledAppUserIds('employee', [userId])).length
+    ) {
       throw new BadRequestException('成员须是拥有团员端准入权限的有效平台账号');
     }
     const key = { clubId, userId };
@@ -88,17 +183,69 @@ export class ClubDirectoryService implements OnModuleInit {
       throw new NotFoundException('俱乐部成员不存在');
     await this.members.updateOne(
       key,
-      { $set: { active, dispatcher } },
+      { $set: { active, dispatcher, ...(active ? {} : { permissions: [] }) } },
       { upsert: active, runValidators: true },
     );
   }
 
-  private async enabledEmployeeIds(userIds: string[]): Promise<string[]> {
+  async setAdminPermission(
+    clubId: string,
+    userId: string,
+    permission: ClubPermission,
+    granted: boolean,
+  ) {
+    await this.requireClub(clubId);
+    this.requireUserId(userId);
+    if (!isClubPermission(permission))
+      throw new BadRequestException('无效的俱乐部业务权限');
+    if (granted && !(await this.enabledAppUserIds('admin', [userId])).length) {
+      throw new BadRequestException(
+        '授权对象须是拥有管理端准入权限的有效平台账号',
+      );
+    }
+    const key = { clubId, userId };
+    const { matchedCount } = granted
+      ? await this.members.updateOne(
+          { ...key, active: true },
+          { $addToSet: { permissions: permission } },
+          { runValidators: true },
+        )
+      : await this.members.updateOne(key, {
+          $pull: { permissions: permission },
+        });
+    if (!matchedCount) {
+      throw new NotFoundException(
+        granted ? '本俱乐部有效成员不存在' : '俱乐部成员不存在',
+      );
+    }
+  }
+
+  private requireAdminSession(actor: SessionUser) {
+    if (actor.app !== 'admin' || !canAccess('admin', actor.roles)) {
+      throw new ForbiddenException('需要管理端会话');
+    }
+  }
+
+  private requireUserId(userId: string) {
+    if (!USER_ID_PATTERN.test(userId))
+      throw new BadRequestException('请输入四位用户 ID');
+  }
+
+  private async memberNicknames(userIds: string[]) {
+    const users = await this.users
+      .find({ _id: { $in: userIds } })
+      .select({ _id: 1, nickname: 1 })
+      .lean();
+    return new Map(users.map(({ _id, nickname }) => [_id, nickname]));
+  }
+
+  private async enabledAppUserIds(
+    app: WebApp,
+    userIds: string[],
+  ): Promise<string[]> {
     if (!userIds.length) return [];
     const allowedRoles = (await this.roles.findAll())
-      .filter(
-        (role) => role.status === 1 && canAccess('employee', [role.role_code]),
-      )
+      .filter((role) => role.status === 1 && canAccess(app, [role.role_code]))
       .map((role) => role._id);
     return this.users.distinct('_id', {
       _id: { $in: userIds },

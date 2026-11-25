@@ -13,9 +13,25 @@ pnpm --dir server exec node dist/src/commands/club.js member sky-hearts 00A1 act
 pnpm --dir server exec node dist/src/commands/club.js member sky-hearts 00B2 active member
 ```
 
-Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/commands/club.js`，后接相同参数。重复使用同一俱乐部标识和四位账号会更新既有成员记录。用 `inactive` 停用成员可撤销团员侧订单访问，同时保留历史归属。`dispatcher` 标记用于客户下单的派单候选。有效成员均可发起自己的直接派单草稿。
+Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/commands/club.js`，后接相同参数。重复使用同一俱乐部标识和四位账号会更新既有成员记录。用 `inactive` 停用成员会撤销团员侧订单访问并清空该成员在本俱乐部的管理权限，同时保留历史归属。重新启用成员后需逐项重新授权。`dispatcher` 标记用于客户下单的派单候选。有效成员均可发起自己的直接派单草稿。
 
-这组命令用于运维初始化。管理端的成员和标记维护入口随 P1-01、P1-04 的俱乐部授权落实。[开发任务](todo.md)
+## 管理端俱乐部授权
+
+管理操作需要当前管理端会话、在目标俱乐部的有效成员身份，以及针对该操作的俱乐部权限。部署人员通过同一运维命令逐项授予或撤销权限。以下示例中的 `00C3` 代表具有管理端准入的本俱乐部有效成员。
+
+```powershell
+pnpm --dir server exec node dist/src/commands/club.js grant sky-hearts 00C3 CLUB_ORDERS_READ
+pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLUB_ORDERS_READ
+```
+
+| 权限码 | 业务范围 |
+| --- | --- |
+| `CLUB_ORDERS_READ` | 查看指定俱乐部的订单监管视图 |
+| `CLUB_MEMBERS_MANAGE` | 查看指定俱乐部的成员名单，编辑有效成员的派单标记 |
+| `CLUB_COMMISSION_MANAGE` | 修改指定俱乐部团抽规则，由 P1-05 的规则接口接入 |
+| `CLUB_FINANCE_READ` | 读取指定俱乐部的资金明细，由财务接口接入 |
+
+现有会话在下次请求时按当前数据检查权限。成员授权和启停继续由运维命令处理。管理端通过 `GET /api/admin/clubs` 读取本账号已获业务授权的俱乐部及各俱乐部的权限码。运营订单视图只返回订单和份额信息。团抽与财务服务的接入点是 `ClubDirectoryService.requireAdminPermission`，传入管理端会话、目标俱乐部标识和对应权限码。服务在准入、当前成员状态或单项权限不满足时返回 403。测试用已登录账号和同一测试数据库验证授权及撤销。实际团抽修改与资金查询随对应任务接入。[开发任务](todo.md)
 
 ## 写入与查询
 
@@ -28,6 +44,10 @@ Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/
 | `GET` | `/api/{employee\|client}/clubs/:clubId/orders/:orderId` | 按列表相同的归属范围查询详情。 |
 | `GET` | `/api/client/orders` | 跨俱乐部查询归属本人的订单，使用相同的筛选和分页参数。 |
 | `GET` | `/api/employee/clubs` | 读取当前团员的有效成员俱乐部。 |
+| `GET` | `/api/admin/clubs/:clubId/orders` | 按俱乐部授权监管该俱乐部所有订单，返回业务状态、客户归属及份额分配。 |
+| `GET` | `/api/admin/clubs/:clubId/orders/:orderId` | 在同一监管范围内查询指定订单。 |
+| `GET` | `/api/admin/clubs/:clubId/members` | 查询指定俱乐部成员的昵称、四位 ID、成员状态和派单标记。 |
+| `PATCH` | `/api/admin/clubs/:clubId/members/:userId/dispatcher` | 用 `{"dispatcher": true}` 或 `{"dispatcher": false}` 更新有效成员的派单标记。 |
 
 写入需要相应端的访问令牌和 JSON 请求体。两个入口共用 `requestId`、`recipientGameAccount`、`requestedHearts`。每次新建生成一个 UUID v4，请求重试时沿用相同的 `requestId` 与内容。同一俱乐部、来源和创建人的重复提交返回已保存的订单，相同提交标识配不同内容返回 HTTP 409。候选为空同样返回 HTTP 409，订单无法创建。显式指定当前候选范围之外的账号返回 HTTP 400。
 
@@ -47,6 +67,6 @@ Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/
 
 客户端「我的订单」可以按「订单来源」筛选直接派单和客户端下单。接口支持 `source=direct_dispatch`、`source=client_order` 和 `limit`（默认 25，最多 100）、`after` 分页。成功响应的 `data.items` 是该页订单，存在下一页时把 `data.nextCursor` 传给 `after`。
 
-派单人能查单内已建立的份额和客户平台归属状态。承接人可见履约用的接收游戏账号与本人份额，并可查该份额内的执行游戏账号。执行账号具有独立标识，名称是订单内显示快照。客户可查看订单来源、业务类型、接收游戏账号、数量和派发状态。直接派单须核实平台客户归属后才进入客户查单范围。
+派单人能查单内已建立的份额和客户平台归属状态。承接人可见履约用的接收游戏账号、本人份额及该份额的执行游戏账号。同单兼任派单和承接时，可同时查看派单信息和本人份额的执行账号。执行账号具有独立标识，名称是订单内显示快照。客户可查看订单来源、业务类型、接收游戏账号、数量和派发状态。直接派单须核实平台客户归属后才进入客户查单范围。
 
 本阶段提供草稿、客户提交和订单查询。实际发布、承接、绑定个人送心号及 Q7 候选范围例外处理随对应业务流程接入。[待确认规则](heart-delivery.md#需要业务方确认的决定)

@@ -8,6 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
+import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';
 import { ClubCustomerService } from './club-customer.service';
 import { ClubDirectoryService } from './club-directory.service';
@@ -27,7 +28,7 @@ type Submission =
   | { source: 'direct_dispatch'; input: CreateDirectOrderDto }
   | { source: 'client_order'; input: CreateClientOrderDto };
 
-function customerView(order: ClubOrder) {
+function orderSummary(order: ClubOrder) {
   return {
     id: order._id.toHexString(),
     clubId: order.clubId,
@@ -43,24 +44,40 @@ function customerView(order: ClubOrder) {
   };
 }
 
+function orderOwnership(order: ClubOrder) {
+  return {
+    createdByUserId: order.createdByUserId,
+    customerUserId: order.customerUserId ?? null,
+    customerLinkStatus: order.customerLinkStatus,
+    customerLabel: order.customerLabel ?? null,
+  };
+}
+
+function shareSummary(share: ClubOrder['shares'][number]) {
+  return {
+    id: share._id.toHexString(),
+    userId: share.userId,
+    hearts: share.hearts,
+  };
+}
+
+function adminOrderView(order: ClubOrder) {
+  return {
+    ...orderSummary(order),
+    ...orderOwnership(order),
+    shares: order.shares.map(shareSummary),
+  };
+}
+
 function employeeView(order: ClubOrder, userId: string) {
   const dispatches = order.dispatcherUserId === userId;
   return {
-    ...customerView(order),
-    ...(dispatches
-      ? {
-          createdByUserId: order.createdByUserId,
-          customerUserId: order.customerUserId ?? null,
-          customerLinkStatus: order.customerLinkStatus,
-          customerLabel: order.customerLabel ?? null,
-        }
-      : {}),
+    ...orderSummary(order),
+    ...(dispatches ? orderOwnership(order) : {}),
     shares: order.shares
       .filter((share) => dispatches || share.userId === userId)
       .map((share) => ({
-        id: share._id.toHexString(),
-        userId: share.userId,
-        hearts: share.hearts,
+        ...shareSummary(share),
         ...(share.userId === userId
           ? {
               executionGameAccounts: share.executionGameAccounts.map(
@@ -126,7 +143,7 @@ export class ClubOrderService implements OnModuleInit {
     input: CreateClientOrderDto,
   ) {
     await this.directory.requireClub(clubId);
-    return customerView(
+    return orderSummary(
       await this.create(clubId, userId, { source: 'client_order', input }),
     );
   }
@@ -149,12 +166,12 @@ export class ClubOrderService implements OnModuleInit {
       { ...(clubId ? { clubId } : {}), customerUserId: userId, customerLinkStatus: 'verified' },
       query,
     );
-    return { items: orders.map(customerView), nextCursor };
+    return { items: orders.map(orderSummary), nextCursor };
   }
 
   async getCustomerOrder(clubId: string, userId: string, orderId: string) {
     await this.directory.requireClub(clubId);
-    return customerView(
+    return orderSummary(
       await this.get(orderId, {
         clubId,
         customerUserId: userId,
@@ -179,6 +196,29 @@ export class ClubOrderService implements OnModuleInit {
   async getEmployeeOrder(clubId: string, userId: string, orderId: string) {
     const scope = await this.employeeScope(clubId, userId);
     return employeeView(await this.get(orderId, scope), userId);
+  }
+
+  async listAdminOrders(
+    clubId: string,
+    actor: SessionUser,
+    query: ClubOrderQuery,
+  ) {
+    await this.directory.requireAdminPermission(
+      clubId,
+      actor,
+      'CLUB_ORDERS_READ',
+    );
+    const { orders, nextCursor } = await this.list({ clubId }, query);
+    return { items: orders.map(adminOrderView), nextCursor };
+  }
+
+  async getAdminOrder(clubId: string, actor: SessionUser, orderId: string) {
+    await this.directory.requireAdminPermission(
+      clubId,
+      actor,
+      'CLUB_ORDERS_READ',
+    );
+    return adminOrderView(await this.get(orderId, { clubId }));
   }
 
   private async employeeScope(

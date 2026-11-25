@@ -137,6 +137,7 @@ ClubOrderSchema.index(
   { clubId: 1, source: 1, createdByUserId: 1, requestId: 1 },
   { unique: true },
 );
+ClubOrderSchema.index({ clubId: 1, _id: -1 });
 ClubOrderSchema.index({
   clubId: 1,
   customerUserId: 1,

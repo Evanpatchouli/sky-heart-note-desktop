@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RoleModule } from '../role-module';
 import { User, UserSchema } from '../user-module/user.schema';
+import { AdminClubController } from './admin-club.controller';
 import { ClubCustomerService } from './club-customer.service';
 import { ClubDirectoryService } from './club-directory.service';
 import {
@@ -24,7 +25,13 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
       { name: ClubOrder.name, schema: ClubOrderSchema },
     ]),
   ],
-  controllers: [EmployeeClubController, EmployeeClubOrderController, ClientClubOrderController, ClientOwnOrdersController],
+  controllers: [
+    AdminClubController,
+    EmployeeClubController,
+    EmployeeClubOrderController,
+    ClientClubOrderController,
+    ClientOwnOrdersController,
+  ],
   providers: [ClubDirectoryService, ClubCustomerService, ClubOrderService],
   exports: [ClubDirectoryService],
 })

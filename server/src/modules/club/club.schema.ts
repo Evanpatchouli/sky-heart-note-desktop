@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { USER_ID_PATTERN } from '@webapp-template/common';
+import { CLUB_PERMISSIONS, type ClubPermission } from './club-permissions';
 
 export const CLUB_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
@@ -37,8 +38,12 @@ export class ClubMember {
 
   @Prop({ type: Boolean, required: true })
   dispatcher: boolean;
+
+  @Prop({ type: [String], enum: CLUB_PERMISSIONS, default: [] })
+  permissions: ClubPermission[];
 }
 
 export const ClubMemberSchema = SchemaFactory.createForClass(ClubMember);
 ClubMemberSchema.index({ clubId: 1, userId: 1 }, { unique: true });
 ClubMemberSchema.index({ clubId: 1, active: 1, dispatcher: 1 });
+ClubMemberSchema.index({ userId: 1, active: 1 });

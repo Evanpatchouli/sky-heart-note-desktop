@@ -5,6 +5,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import AppConfig from '../app.config';
 import { ClubModule } from '../modules/club';
 import { ClubDirectoryService } from '../modules/club/club-directory.service';
+import {
+  CLUB_PERMISSIONS,
+  isClubPermission,
+} from '../modules/club/club-permissions';
 
 const mongo = AppConfig.DataBase.Mongo;
 
@@ -27,9 +31,17 @@ async function run(args: string[]) {
     args.length === 5 &&
     (status === 'active' || status === 'inactive') &&
     (mark === 'dispatcher' || mark === 'member');
-  if (!saveClub && !saveMember) {
+  const changePermission =
+    (command === 'grant' || command === 'revoke') &&
+    args.length === 4 &&
+    isClubPermission(status);
+  if (!saveClub && !saveMember && !changePermission) {
     throw new Error(
-      '用法：club <俱乐部标识> <名称> 或 member <俱乐部标识> <四位用户ID> <active|inactive> <dispatcher|member>',
+      [
+        '用法：club <俱乐部标识> <名称>',
+        '      member <俱乐部标识> <四位用户ID> <active|inactive> <dispatcher|member>',
+        `      <grant|revoke> <俱乐部标识> <四位用户ID> <${CLUB_PERMISSIONS.join('|')}>`,
+      ].join('\n'),
     );
   }
 
@@ -40,12 +52,19 @@ async function run(args: string[]) {
   try {
     const directory = app.get(ClubDirectoryService);
     if (saveClub) await directory.saveClub(clubId, value);
-    else
+    else if (saveMember)
       await directory.saveMember(
         clubId,
         value,
         status === 'active',
         mark === 'dispatcher',
+      );
+    else if (changePermission)
+      await directory.setAdminPermission(
+        clubId,
+        value,
+        status,
+        command === 'grant',
       );
     console.log('已保存俱乐部配置');
   } finally {
