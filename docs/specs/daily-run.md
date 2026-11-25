@@ -35,3 +35,11 @@
 | `POST …/:id/accept`、`POST …/:id/stop` | 老板确认相应日的交付。停单提交 `reason`，保留已确认日期及凭据。 |
 
 写入携带 UUID v4 的 `requestId`，同一次操作重试沿用原标识。服务端依据当前会话校验归属及动作，客户仅能读取本人订单。运营人员与财务的可见金额按授权返回。
+
+## 退款与结单
+
+财务从管理端「结算核对」选择代跑。获授 `CLUB_FINANCE_READ` 的有效成员通过 `GET /api/admin/club/service-orders?businessType=daily_run&scope=finance` 查订单，在同一路径下按订单 ID 和 `scope=finance` 查现金与分配依据。老板核对自己的付款和退款，执行人核对本人应得。
+
+本单派单人在团员端登记线下实际退款，向 `POST /api/employee/club/service-orders/:id/refund` 提交 `requestId`、整数分 `amountCents`、带时区的 `occurredAt` 和选填的 `transferReference`。停单已验收日继续计价，余下部分列为应退。可分次登记，待退清零后复核净收。
+
+派单人通过 `POST /api/employee/club/service-orders/:id/close` 提交结单请求号。结单保留原完单或停单结果，并按冻结的单价、派抽和团抽入账。个人明细分列执行报酬与派抽，团费记录团抽，可从财务流水回到对应代跑单。已入账的服务报酬计入可提现余额。

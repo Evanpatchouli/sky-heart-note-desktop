@@ -1,15 +1,19 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { BUSINESS_DATE_PATTERN, dailyRunUnitPriceCents, type ServiceOrderAction, type ServiceOrderPage, type ServiceOrderScope, type ServiceOrderView } from '@sky-club/common';
+import {
+  BUSINESS_DATE_PATTERN, dailyRunUnitPriceCents, type ServiceOrderAccounting, type ServiceOrderAction,
+  type ServiceOrderPage, type ServiceOrderScope, type ServiceOrderView,
+} from '@sky-club/common';
 import { createHash, randomInt } from 'node:crypto';
 import { isObjectIdOrHexString, Model, Types, type QueryFilter } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
 import { isDuplicateKey } from '../user-module/user-id';
 import { ClubCustomerService } from './club-customer.service';
 import { ClubDirectoryService } from './club-directory.service';
+import { serviceOrderAccounting, serviceOrderPostings } from './club-service-order-accounting';
 import type {
   AssignServiceOrderDto, CreateClientServiceOrderDto, CreateEmployeeServiceOrderDto, CreateServiceOrderDto,
-  DeliverServiceOrderDto, PublishServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StopServiceOrderDto,
+  DeliverServiceOrderDto, PublishServiceOrderDto, RefundServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StopServiceOrderDto,
 } from './club-service-order.dto';
 import { ClubServiceOrder } from './club-service-order.schema';
 import { CLUB_ID } from './club.schema';
@@ -19,9 +23,12 @@ const dailyRunPrices = { unitPriceCents: dailyRunUnitPriceCents, dispatchFeeCent
 const dayMs = 86_400_000;
 const beijingOffset = 8 * 60 * 60 * 1000;
 
-type OrderAccess = { actor: SessionUser; canAssign?: boolean; finance?: boolean };
+type OrderAccess = { actor: SessionUser; canAssign?: boolean; finance?: boolean; financeScope?: boolean };
 type OrderChange = Partial<Pick<ClubServiceOrder, 'status' | 'dispatcherUserId' | 'receipt' | 'publishedAt' |
-  'executorUserId' | 'claimedAt' | 'completedAt' | 'deliveries' | 'stop'>>;
+  'executorUserId' | 'claimedAt' | 'completedAt' | 'deliveries' | 'stop' | 'refunds' | 'close'>>;
+const financeOrders: QueryFilter<ClubServiceOrder> = {
+  $or: [{ 'receipt.occurredAt': { $type: 'date' } }, { 'close.closedAt': { $type: 'date' } }, { status: 'stopped' }],
+};
 
 function dateForUnit(startDate: string, unit: number) {
   return new Date(Date.parse(`${startDate}T00:00:00.000Z`) + (unit - 1) * dayMs).toISOString().split('T')[0];
@@ -61,7 +68,7 @@ export class ClubServiceOrderService implements OnModuleInit {
   }
 
   async list(actor: SessionUser, { businessType = 'daily_run', scope, after, limit = 25, source }: ServiceOrderQuery): Promise<ServiceOrderPage> {
-    const access = await this.readAccess(actor);
+    const access = await this.readAccess(actor, scope);
     const orders = await this.orders.find({
       clubId: CLUB_ID, businessType, ...this.listScope(access, scope),
       ...(source ? { source } : {}), ...(after ? { _id: { $lt: parseOrderId(after) } } : {}),
@@ -70,13 +77,13 @@ export class ClubServiceOrderService implements OnModuleInit {
     return { items, nextCursor: orders.length > limit ? items[limit - 1].id : null };
   }
 
-  async detail(actor: SessionUser, id: string) {
-    const access = await this.readAccess(actor);
+  async detail(actor: SessionUser, id: string, { scope: requestedScope, businessType = 'daily_run' }: ServiceOrderQuery) {
+    const access = await this.readAccess(actor, requestedScope);
     const scope = actor.app === 'employee' ? {
       $or: [{ dispatcherUserId: actor.id }, { executorUserId: actor.id }, { status: 'published' },
         ...(access.canAssign ? [{ status: 'pending_assignment' }] : [])],
-    } : actor.app === 'client' ? { customerUserId: actor.id } : {};
-    return this.view(await this.requireOrder({ ...scope, _id: parseOrderId(id), clubId: CLUB_ID }), access);
+    } : actor.app === 'client' ? { customerUserId: actor.id } : access.financeScope ? financeOrders : {};
+    return this.view(await this.requireOrder({ ...scope, _id: parseOrderId(id), clubId: CLUB_ID, businessType }), access);
   }
 
   async createClient(actor: SessionUser, input: CreateClientServiceOrderDto) {
@@ -147,6 +154,35 @@ export class ClubServiceOrderService implements OnModuleInit {
     }));
   }
 
+  refund(actor: SessionUser, id: string, { requestId, amountCents, occurredAt, transferReference }: RefundServiceOrderDto) {
+    const at = new Date(occurredAt);
+    if (!Number.isFinite(at.getTime())) throw new BadRequestException('请输入有效的实退时间');
+    return this.mutate(actor, id, 'refund', requestId, [amountCents, at.toISOString(), transferReference], (order, now) => {
+      if (order.status !== 'stopped' || !order.receipt || order.close)
+        throw new ConflictException('仅已收款、停单且尚未结单的订单可登记实退');
+      if (at > now || at < order.receipt.occurredAt) throw new BadRequestException('实退时间须在原收款与当前时间之间');
+      const refunds = order.refunds ?? [];
+      if (transferReference !== undefined) {
+        if (refunds.some(item => item.transferReference === transferReference)) throw new ConflictException('此线下凭据已用于本单实退');
+      } else if (refunds.some(item => item.amountCents === amountCents && item.occurredAt.getTime() === at.getTime())) {
+        throw new ConflictException('此时间及金额的实退已登记。如为另一笔转账，请填写可区分的线下凭据');
+      }
+      if (amountCents > serviceOrderAccounting(order).refundRemainingCents) throw new ConflictException('实退金额不能超过待退余额');
+      return { refunds: [...refunds, { requestId, amountCents, occurredAt: at, recordedAt: now, recordedByUserId: actor.id, transferReference }] };
+    });
+  }
+
+  close(actor: SessionUser, id: string, { requestId }: ServiceOrderRequestDto) {
+    return this.mutate(actor, id, 'close', requestId, [], (order, now) => {
+      const accounting = serviceOrderAccounting(order);
+      if (accounting.status !== 'ready_to_close') throw new ConflictException('本单须完成履约或停单并核平款项后才能结单');
+      return { close: {
+        requestId, closedAt: now, closedByUserId: actor.id, acceptedUnits: accounting.acceptedUnits,
+        netReceivedCents: accounting.netReceivedCents, postings: serviceOrderPostings(order, accounting),
+      } };
+    });
+  }
+
   private async create(source: ClubServiceOrder['source'], actorId: string, customerUserId: string,
     input: CreateServiceOrderDto, requestedDispatcherId?: string) {
     const { businessType, requestId, recipientGameAccount, serviceDescription, startDate, units } = input;
@@ -200,7 +236,7 @@ export class ClubServiceOrderService implements OnModuleInit {
           throw new ConflictException('相同请求标识已用于本单其他操作');
         return this.actionResult(action, order, access);
       }
-      checkActive(order);
+      if (action !== 'refund' && action !== 'close') checkActive(order);
       const update = await change(order, new Date());
       const saved = await this.orders.findOneAndUpdate({ ...scope, revision: order.revision }, {
         $set: update, $push: { commands: { requestId, action, actorUserId: actor.id, inputHash } }, $inc: { revision: 1 },
@@ -215,7 +251,8 @@ export class ClubServiceOrderService implements OnModuleInit {
     // Assignment fixes the dispatcher once. Reconstruct its original receipt
     // from immutable terms without disclosing later work to the assigning user.
     return this.view({
-      ...order, status: 'pending_dispatch', executorUserId: undefined, receipt: undefined, stop: undefined, deliveries: [],
+      ...order, status: 'pending_dispatch', executorUserId: undefined, receipt: undefined, stop: undefined,
+      close: undefined, refunds: undefined, deliveries: [],
     }, access);
   }
 
@@ -228,7 +265,9 @@ export class ClubServiceOrderService implements OnModuleInit {
     return { dispatcherUserId: actor.id };
   }
 
-  private async readAccess(actor: SessionUser): Promise<OrderAccess> {
+  private async readAccess(actor: SessionUser, scope?: ServiceOrderScope): Promise<OrderAccess> {
+    const financeScope = scope === 'finance';
+    if (financeScope && actor.app !== 'admin') throw new ForbiddenException('财务核对须使用管理端会话');
     if (actor.app === 'client') {
       await this.directory.requireClub(CLUB_ID);
       return { actor };
@@ -239,13 +278,18 @@ export class ClubServiceOrderService implements OnModuleInit {
       return { actor, canAssign: member.canAssignPendingOrders };
     }
     const { permissions } = await this.directory.getAdminClub(actor);
+    const finance = permissions.includes('CLUB_FINANCE_READ');
+    if (financeScope) {
+      if (!finance) throw new ForbiddenException('需要本俱乐部财务核对权限');
+      return { actor, finance, financeScope };
+    }
     if (!permissions.includes('CLUB_ORDERS_READ')) throw new ForbiddenException('需要本俱乐部订单查阅权限');
-    return { actor, finance: permissions.includes('CLUB_FINANCE_READ') };
+    return { actor, finance };
   }
 
-  private listScope({ actor, canAssign }: OrderAccess, scope: ServiceOrderScope = 'dispatch'): QueryFilter<ClubServiceOrder> {
+  private listScope({ actor, canAssign, financeScope }: OrderAccess, scope: ServiceOrderScope = 'dispatch'): QueryFilter<ClubServiceOrder> {
     if (actor.app === 'client') return { customerUserId: actor.id };
-    if (actor.app === 'admin') return {};
+    if (actor.app === 'admin') return financeScope ? financeOrders : {};
     if (scope === 'board') return { status: 'published' };
     if (scope === 'mine') return { executorUserId: actor.id };
     const dispatch = { dispatcherUserId: actor.id };
@@ -274,6 +318,11 @@ export class ClubServiceOrderService implements OnModuleInit {
     if (order.status === 'claimed' && ownCustomer && order.deliveries.some(delivery => !delivery.acceptedAt)) actions.push('accept');
     if (ownCustomer && order.status !== 'completed' && order.status !== 'stopped') actions.push('stop');
 
+    const accounting = ownDispatch || access.financeScope ? this.accountingView(order, 'full') :
+      ownCustomer ? this.accountingView(order, 'customer') : ownExecution ? this.accountingView(order, 'executor') : undefined;
+    if (ownDispatch && accounting?.status === 'refund_pending') actions.push('refund');
+    if (ownDispatch && accounting?.status === 'ready_to_close') actions.push('close');
+
     const showMoney = ownCustomer || ownDispatch || finance;
     const showDetails = ownCustomer || ownDispatch || ownExecution || actor.app === 'admin';
     const { businessType, source, customerUserId, recipientGameAccount, serviceDescription, startDate, units, status } = order;
@@ -287,6 +336,23 @@ export class ClubServiceOrderService implements OnModuleInit {
       ...(showMoney ? { quote: { unitPriceCents: order.quote.unitPriceCents, totalCents: order.quote.totalCents } } : {}),
       ...(showMoney && order.receipt ? { receipt: { amountCents: order.receipt.amountCents, occurredAt: order.receipt.occurredAt.toISOString() } } : {}),
       ...(showDetails && order.stop ? { stop: { reason: order.stop.reason, stoppedAt: order.stop.stoppedAt.toISOString() } } : {}),
+      ...(accounting ? { accounting } : {}),
+    };
+  }
+
+  private accountingView(order: ClubServiceOrder, audience: 'full' | 'customer' | 'executor'): ServiceOrderAccounting {
+    const amounts = serviceOrderAccounting(order);
+    const { status, acceptedUnits, closedAt } = amounts;
+    const summary = { status, acceptedUnits, ...(closedAt ? { closedAt } : {}) };
+    if (audience === 'executor') return { ...summary, rewardCents: amounts.rewardCents };
+    if (audience === 'customer') {
+      const { receivedCents, refundDueCents, refundedCents, refundRemainingCents, netReceivedCents } = amounts;
+      return { ...summary, receivedCents, refundDueCents, refundedCents, refundRemainingCents, netReceivedCents };
+    }
+    return {
+      ...amounts, refunds: (order.refunds ?? []).map(({ amountCents, occurredAt, transferReference }) => ({
+        amountCents, occurredAt: occurredAt.toISOString(), ...(transferReference === undefined ? {} : { transferReference }),
+      })),
     };
   }
 }

@@ -9,10 +9,19 @@
 .service-row small { color: #66758a; }
 .service-detail, .service-create { margin-block: 14px; border: 1px solid #dce4ed; border-radius: 8px; padding: 16px; overflow-wrap: anywhere; background: white; }
 .service-form fieldset { display: grid; gap: 12px; border: 0; padding: 12px 0; margin: 0; min-width: 0; }
+.service-form fieldset[hidden] { display: none; }
+.service-form dd { margin: 0 0 8px; overflow-wrap: anywhere; }
 .service-form label { display: grid; gap: 4px; }
 .service-form input, .service-form textarea { box-sizing: border-box; width: 100%; max-width: 480px; border: 1px solid #b7c5d8; border-radius: 6px; padding: 9px; font: inherit; }
 .service-form textarea { min-height: 75px; resize: vertical; }
 .service-form [role="alert"] { color: #a8071a; }
+.service-accounting { padding: 12px; margin-block: 12px; background: #f5f8fc; border-radius: 6px; }
+.service-accounting dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.service-accounting dt { color: #62738a; }
+.service-accounting dd { margin: 4px 0 0; font-weight: 600; }
 .service-business-switch { display: flex; gap: 8px; padding: 8px 16px; }
 .service-business-switch a, .service-business-switch button { padding: 6px 12px; border: 1px solid #d1dce9; border-radius: 6px; color: #315474; background: #fff; text-decoration: none; font: inherit; cursor: pointer; }
 .service-business-switch [aria-current="page"] { color: #fff; background: #1769b0; border-color: #1769b0; }
+@media (pointer: coarse) {
+  .service-orders button, .service-form input, .service-business-switch :is(a, button) { min-height: 44px; }
+}

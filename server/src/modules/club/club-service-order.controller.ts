@@ -4,7 +4,7 @@ import { AppAccess, AuthUser } from '../../auth/auth.decorator';
 import Resp from '../../common/models/Resp';
 import {
   AssignServiceOrderDto, CreateClientServiceOrderDto, CreateEmployeeServiceOrderDto, DeliverServiceOrderDto,
-  PublishServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StopServiceOrderDto,
+  PublishServiceOrderDto, RefundServiceOrderDto, ServiceOrderQuery, ServiceOrderRequestDto, ServiceOrderUnitDto, StopServiceOrderDto,
 } from './club-service-order.dto';
 import { ClubServiceOrderService } from './club-service-order.service';
 
@@ -19,8 +19,8 @@ class ServiceOrderController {
   }
 
   @Get(':id')
-  async detail(@AuthUser() actor: SessionUser, @Param('id') id: string) {
-    return Resp.success(await this.serviceOrders.detail(actor, id));
+  async detail(@AuthUser() actor: SessionUser, @Param('id') id: string, @Query() query: ServiceOrderQuery) {
+    return Resp.success(await this.serviceOrders.detail(actor, id, query));
   }
 }
 
@@ -75,6 +75,16 @@ export class EmployeeClubServiceOrderController extends ServiceOrderController {
   @Post(':id/deliveries')
   async deliver(@AuthUser() actor: SessionUser, @Param('id') id: string, @Body() input: DeliverServiceOrderDto) {
     return Resp.success(await this.serviceOrders.deliver(actor, id, input));
+  }
+
+  @Post(':id/refund')
+  async refund(@AuthUser() actor: SessionUser, @Param('id') id: string, @Body() input: RefundServiceOrderDto) {
+    return Resp.success(await this.serviceOrders.refund(actor, id, input));
+  }
+
+  @Post(':id/close')
+  async close(@AuthUser() actor: SessionUser, @Param('id') id: string, @Body() input: ServiceOrderRequestDto) {
+    return Resp.success(await this.serviceOrders.close(actor, id, input));
   }
 }
 

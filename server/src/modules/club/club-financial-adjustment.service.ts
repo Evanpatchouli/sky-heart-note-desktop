@@ -11,6 +11,8 @@ import type { DecideClubAdjustmentDto, PublishClubPenaltyDto, RecordCompensation
 import { ClubFinancialAdjustment, type OrderAdjustmentCommand } from './club-financial-adjustment.schema';
 import { financialAdjustmentView, personalPenalty, type PostedOrderPenalties } from './club-gift-settlement-adjustments';
 import { ClubOrder } from './club-order.schema';
+import { serviceBalanceEntries } from './club-service-order-accounting';
+import { ClubServiceOrder } from './club-service-order.schema';
 import { settlementBalanceEntries } from './club-settlement-close';
 import { ClubWithdrawalStore } from './club-withdrawal.store';
 import { CLUB_ID } from './club.schema';
@@ -24,6 +26,7 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
   constructor(
     @InjectModel(ClubFinancialAdjustment.name) private readonly adjustments: Model<ClubFinancialAdjustment>,
     @InjectModel(ClubOrder.name) private readonly orders: Model<ClubOrder>,
+    @InjectModel(ClubServiceOrder.name) private readonly serviceOrders: Model<ClubServiceOrder>,
     private readonly directory: ClubDirectoryService,
     private readonly notifications: AppNotificationService,
     private readonly withdrawals: ClubWithdrawalStore,
@@ -179,8 +182,16 @@ export class ClubFinancialAdjustmentService implements OnModuleInit {
 
   private async balanceSources(userId?: string) {
     const { settlements, posted } = await this.balanceSettlements(userId ?? null);
-    const records = await this.approvedRecords(userId);
-    return { settlements, posted, records };
+    const [records, servicePostings] = await Promise.all([this.approvedRecords(userId), this.serviceBalance(userId ?? null)]);
+    return { settlements, posted: [...posted, ...servicePostings], records };
+  }
+
+  private async serviceBalance(userId: string | null) {
+    const orders = await this.serviceOrders.find({
+      clubId: CLUB_ID, 'close.closedAt': { $type: 'date' },
+      ...(userId ? { 'close.postings.memberUserId': userId } : { 'close.postings.kind': 'service_club_fee' }),
+    }).select({ businessType: 1, close: 1 }).readConcern('majority').lean();
+    return orders.flatMap(order => serviceBalanceEntries(order, userId));
   }
 
   private async balanceSettlements(userId: string | null) {

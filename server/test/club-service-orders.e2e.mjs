@@ -14,8 +14,8 @@ const promisedService = recipientGameAccount => request({
   businessType, recipientGameAccount, serviceDescription: '按每日路线完成约定跑图并提交凭据', startDate, units: 3,
 });
 
-test('代跑走独立订单入口，保留归属、凭据、逐日验收和首款权限', { timeout: 120_000 }, async t => {
-  const { api, administrator, login, register, seedClub, startPeer } = await startClubSystem(t, {
+test('代跑走独立订单入口，保留归属、逐日验收、退款和入账权限', { timeout: 120_000 }, async t => {
+  const { api, administrator, login, register, seedClub, startPeer, restartServer } = await startClubSystem(t, {
     database: 'club_service_orders_e2e', adminUsername: 'run_admin',
   });
   const leader = await login('employee', 'run_admin');
@@ -47,6 +47,53 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
   const publish = (id, input = request(firstPayment), status, server) => action('employee', dispatcher, id, 'publish', input, status, server);
   const deliver = (worker, id, input, status, server) => action('employee', worker, id, 'deliveries', input, status, server);
   const accept = (id, input, status, server) => action('client', boss, id, 'accept', input, status, server);
+  const refund = (id, input, status, server) => action('employee', dispatcher, id, 'refund', input, status, server);
+  const close = (id, input, status, server) => action('employee', dispatcher, id, 'close', input, status, server);
+  const financeDetail = (id, actor = financeOnly, status) => read('admin', actor, `${root('admin')}/${id}?scope=finance`, status);
+  const personalBalance = actor => read('employee', actor, '/employee/club/balance');
+  const clubBalance = () => read('admin', financeOnly, '/admin/club/balance');
+  const balances = worker => Promise.all([personalBalance(dispatcher), personalBalance(worker), clubBalance()]);
+  const orderEntries = (balance, id) => balance.entries.filter(row => row.orderId === id && row.businessType === businessType);
+  const withdrawal = (actor, amountCents, status) => post('employee', actor, '/employee/club/withdrawals', request({ amountCents }), status);
+
+  function cash({ accounting: { status, acceptedUnits, receivedCents, refundDueCents, refundedCents, refundRemainingCents, netReceivedCents } }) {
+    return [status, acceptedUnits, receivedCents, refundDueCents, refundedCents, refundRemainingCents, netReceivedCents];
+  }
+
+  function split({ accounting: { dispatchFeeCents, rewardCents, clubFeeCents, allocatedCents } }) {
+    return [dispatchFeeCents, rewardCents, clubFeeCents, allocatedCents];
+  }
+
+  function assertCustomerAccounting(order, expectedCash) {
+    assert.deepEqual(cash(order), expectedCash);
+    assert.deepEqual(split(order), [undefined, undefined, undefined, undefined]);
+    assert.equal(order.accounting.refunds, undefined);
+  }
+
+  async function closeTwice(id, input) {
+    const [closed, repeated] = await Promise.all([close(id, input), close(id, input, 201, peer)]);
+    assert.deepEqual(repeated, closed);
+    assert.equal(closed.accounting.status, 'closed');
+    assert.ok(Number.isFinite(Date.parse(closed.accounting.closedAt)));
+    await close(id, request(), 409);
+    return closed;
+  }
+
+  async function assertPostings(id, worker, prior, closeInput, closedAt, amounts) {
+    const posted = await balances(worker);
+    const kinds = ['service_dispatch_fee', 'service_reward', 'service_club_fee'];
+    assert.deepEqual(posted.map((account, index) => account.balanceCents - prior[index].balanceCents), amounts);
+    for (const [index, account] of posted.entries()) {
+      const entries = orderEntries(account, id);
+      assert.deepEqual(entries.map(row => [row.kind, row.amountCents, row.closeRequestId, row.occurredAt]),
+        [[kinds[index], amounts[index], closeInput.requestId, closedAt]]);
+      assert.ok(entries[0].eventId);
+    }
+    for (const [actor, account] of [[dispatcher, posted[0]], [worker, posted[1]]]) {
+      const byFinance = await read('admin', financeOnly, `/admin/club/balance/members/${actor.id}`);
+      assert.deepEqual(orderEntries(byFinance, id), orderEntries(account, id));
+    }
+  }
 
   async function publishAndClaim(order, worker = runnerA) {
     const published = await publish(order.id);
@@ -68,6 +115,10 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
     const unassigned = await create('client', boss, promisedService('等待团长分配'));
     assert.equal(unassigned.status, 'pending_assignment');
     assert.equal(unassigned.dispatcherUserId, null);
+    for (const actor of [financeOnly, administrator]) {
+      assert.ok(!orderIds(await list('admin', actor, { scope: 'finance' })).includes(unassigned.id));
+      await financeDetail(unassigned.id, actor, 404);
+    }
     assert.ok(orderIds(await list('employee', leader, { scope: 'dispatch' })).includes(unassigned.id));
     assert.ok(!orderIds(await list('employee', runnerA, { scope: 'dispatch' })).includes(unassigned.id));
     await action('employee', runnerA, unassigned.id, 'assign', request({ dispatcherUserId: runnerA.id }), 403);
@@ -77,6 +128,11 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
     assert.equal(assigned.dispatcherUserId, dispatcher.id);
     assert.equal(assigned.source, 'client_order');
     assert.deepEqual(await action('employee', deputy, unassigned.id, 'assign', assignment, 201, peer), assigned);
+    assert.equal((await detail('admin', administrator, assigned.id)).status, 'pending_dispatch');
+    for (const actor of [financeOnly, administrator]) {
+      assert.ok(!orderIds(await list('admin', actor, { scope: 'finance' })).includes(assigned.id));
+      await financeDetail(assigned.id, actor, 404);
+    }
 
     await publishAndClaim(assigned);
     const evidence = '仅当事人可查的分配后履约凭据';
@@ -95,11 +151,19 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
     await detail('employee', deputy, assigned.id, 404);
 
     const unreceived = await create('client', boss, promisedService('未付款取消'));
+    await financeDetail(unreceived.id, financeOnly, 404);
     const cancelled = await action('client', boss, unreceived.id, 'stop', request({ reason: '行程调整，未转账' }));
     assert.equal(cancelled.status, 'stopped');
     assert.equal(cancelled.receipt, undefined);
     assert.deepEqual(cancelled.deliveries, []);
     assert.equal(cancelled.stop.reason, '行程调整，未转账');
+    for (const actor of [financeOnly, administrator]) {
+      const voidOrder = await financeDetail(unreceived.id, actor);
+      assert.equal(voidOrder.accounting.status, 'void');
+      assert.equal(voidOrder.accounting.acceptedUnits, 0);
+      assert.deepEqual((await list('admin', actor, { scope: 'finance' })).items.find(row => row.id === unreceived.id), voidOrder);
+    }
+    for (const account of await balances(runnerA)) assert.deepEqual(orderEntries(account, unreceived.id), []);
   });
 
   await seedClub('member', dispatcher.id, 'active', 'dispatcher');
@@ -185,10 +249,7 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
     assert.equal(reconciled.status, 'completed');
     assert.deepEqual(reconciled.deliveries.map(row => row.evidence), ['R1-20', 'R1-21', 'R1-22']);
     assert.deepEqual(reconciled.receipt, published.receipt);
-    assert.equal((await read('admin', administrator, '/admin/club/balance')).balanceCents, 0);
-    for (const actor of [dispatcher, winner]) {
-      assert.equal((await read('employee', actor, '/employee/club/balance')).balanceCents, 0);
-    }
+    assert.equal(reconciled.accounting, undefined);
     assert.equal((await detail('employee', winner, order.id)).receipt, undefined);
     const opsOnly = await detail('admin', operations, order.id);
     assert.equal(opsOnly.quote, undefined);
@@ -199,8 +260,39 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
     await detail('admin', financeOnly, order.id, 403);
     await seedClub('revoke', administrator.id, 'CLUB_FINANCE_READ');
     assert.equal((await detail('admin', administrator, order.id)).receipt, undefined);
+    await financeDetail(order.id, administrator, 403);
     await seedClub('grant', administrator.id, 'CLUB_FINANCE_READ');
     assert.deepEqual((await detail('admin', administrator, order.id)).receipt, published.receipt);
+
+    const pending = await financeDetail(order.id);
+    assert.deepEqual(pending.deliveries, reconciled.deliveries);
+    assert.deepEqual(cash(pending), ['ready_to_close', 3, 6000, 0, 0, 0, 6000]);
+    assert.deepEqual(split(pending), [600, 5100, 300, 6000]);
+    const financialOrders = await list('admin', financeOnly, { scope: 'finance' });
+    assert.deepEqual(financialOrders.items.find(row => row.id === order.id), pending);
+    await financeDetail(order.id, operations, 403);
+    await list('admin', operations, { scope: 'finance' }, 403);
+    assertCustomerAccounting(await detail('client', boss, order.id), ['ready_to_close', 3, 6000, 0, 0, 0, 6000]);
+    const executorAccounting = (await detail('employee', winner, order.id)).accounting;
+    assert.deepEqual(executorAccounting, { status: 'ready_to_close', acceptedUnits: 3, rewardCents: 5100 });
+
+    const closeInput = request();
+    await action('employee', winner, order.id, 'close', closeInput, 404);
+    const before = await balances(winner);
+    for (const account of before) assert.deepEqual(orderEntries(account, order.id), []);
+    await withdrawal(winner, before[1].balanceCents + 1, 409);
+    const closed = await closeTwice(order.id, closeInput);
+    assert.deepEqual(cash(closed), ['closed', 3, 6000, 0, 0, 0, 6000]);
+    assert.deepEqual(split(closed), [600, 5100, 300, 6000]);
+    assert.deepEqual((await financeDetail(order.id)).accounting, closed.accounting);
+    assertCustomerAccounting(await detail('client', boss, order.id), ['closed', 3, 6000, 0, 0, 0, 6000]);
+    await assertPostings(order.id, winner, before, closeInput, closed.accounting.closedAt, [600, 5100, 300]);
+    const available = before[1].balanceCents + 5100;
+    await withdrawal(winner, available + 1, 409);
+    const withdrawalRequest = await withdrawal(winner, available);
+    assert.equal(withdrawalRequest.status, 'pending');
+    assert.equal(withdrawalRequest.amountCents, available);
+    assert.equal((await personalBalance(winner)).balanceCents, available);
   });
 
   await t.test('R2 团员代录，老板验收首日后取消，两天后续交付停止', async () => {
@@ -235,6 +327,42 @@ test('代跑走独立订单入口，保留归属、凭据、逐日验收和首�
     assert.deepEqual(await accept(order.id, approval, 201, peer), stopped);
     assert.deepEqual((await detail('admin', administrator, order.id)).receipt,
       { amountCents: 6000, occurredAt: new Date(firstPayment.occurredAt).toISOString() });
+
+    const before = await balances(runnerA);
+    for (const account of before) assert.deepEqual(orderEntries(account, order.id), []);
+    const pending = await financeDetail(order.id);
+    assert.deepEqual(cash(pending), ['refund_pending', 1, 6000, 4000, 0, 4000, 6000]);
+    const closeInput = request();
+    await close(order.id, closeInput, 409);
+    const firstRefund = request({ amountCents: 1500, occurredAt: new Date().toISOString(), transferReference: 'R2-退款-1' });
+    await action('employee', runnerA, order.id, 'refund', firstRefund, 404);
+    await refund(order.id, { ...firstRefund, occurredAt: '2026-11-18T00:00:00.000Z' }, 400);
+    await refund(order.id, { ...firstRefund, amountCents: 4001 }, 409);
+    const [partial, repeatedRefund] = await Promise.all([refund(order.id, firstRefund), refund(order.id, firstRefund, 201, peer)]);
+    assert.deepEqual(repeatedRefund, partial);
+    assert.deepEqual(cash(partial), ['refund_pending', 1, 6000, 4000, 1500, 2500, 4500]);
+    assert.equal(partial.accounting.refunds.length, 1);
+    assertCustomerAccounting(await detail('client', boss, order.id), ['refund_pending', 1, 6000, 4000, 1500, 2500, 4500]);
+    await close(order.id, closeInput, 409);
+    await refund(order.id, { ...firstRefund, requestId: randomUUID() }, 409);
+    const finalRefund = request({ amountCents: 2500, occurredAt: new Date().toISOString(), transferReference: 'R2-退款-2' });
+    const refunded = await refund(order.id, finalRefund);
+    assert.deepEqual(cash(refunded), ['ready_to_close', 1, 6000, 4000, 4000, 0, 2000]);
+    assert.deepEqual(split(refunded), [200, 1700, 100, 2000]);
+    assert.deepEqual(await balances(runnerA), before);
+    const proof = [firstRefund, finalRefund].map(({ amountCents, occurredAt, transferReference }) => ({ amountCents, occurredAt, transferReference }));
+    assert.deepEqual((await financeDetail(order.id)).accounting.refunds, proof);
+
+    const closed = await closeTwice(order.id, closeInput);
+    assert.deepEqual(cash(closed), ['closed', 1, 6000, 4000, 4000, 0, 2000]);
+    await restartServer();
+    assert.deepEqual(await close(order.id, closeInput), closed);
+    assert.deepEqual(await refund(order.id, firstRefund), closed);
+    assert.deepEqual(await refund(order.id, finalRefund), closed);
+    assert.deepEqual((await financeDetail(order.id)).accounting, closed.accounting);
+    assert.deepEqual((await financeDetail(order.id)).accounting.refunds, proof);
+    assertCustomerAccounting(await detail('client', boss, order.id), ['closed', 1, 6000, 4000, 4000, 0, 2000]);
+    await assertPostings(order.id, runnerA, before, closeInput, closed.accounting.closedAt, [200, 1700, 100]);
 
     const gift = await post('client', boss, '/client/orders', request({
       recipientGameAccount: '用于订单隔离核对的送心号', requestedGiftTimes: 3, dispatcherUserId: dispatcher.id,

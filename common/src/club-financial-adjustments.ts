@@ -1,4 +1,5 @@
 import type { GiftSettlementAdjustment, PersonalGiftPenalty } from "./club-gift-settlement";
+import type { ServiceBusinessType } from "./club-service-order";
 
 export type ClubAdjustmentKind = GiftSettlementAdjustment["kind"];
 export type ClubAdjustmentDecision = Exclude<GiftSettlementAdjustment["status"], "pending">;
@@ -66,6 +67,12 @@ export const clubSettlementPostingLabel = {
 
 export type ClubSettlementPostingKind = keyof typeof clubSettlementPostingLabel;
 
+export const servicePostingLabel = {
+  service_dispatch_fee: "服务派抽",
+  service_reward: "服务执行报酬",
+  service_club_fee: "服务团抽",
+} as const;
+
 export type ClubBalanceEntry = {
   eventId: string;
   orderId?: string;
@@ -74,6 +81,7 @@ export type ClubBalanceEntry = {
   reason: string;
 } & (
   { kind: ClubAdjustmentKind; adjustmentId: string } |
+  { kind: keyof typeof servicePostingLabel; businessType: ServiceBusinessType; orderId: string; closeRequestId: string } |
   { kind: ClubSettlementPostingKind; calculationId: string; correctionRequestId?: string; revisedCalculationId?: string } |
   { kind: 'compensation_cash_correction'; calculationId: string; correctionRequestId: string; sourceMovementRequestId: string } |
   { kind: 'withdrawal_payment'; withdrawalId: string }

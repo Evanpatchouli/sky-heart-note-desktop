@@ -14,7 +14,7 @@ export class ServiceOrderQuery extends ClubOrderQuery {
   businessType?: ServiceBusinessType;
 
   @ValidateIf(supplied)
-  @IsIn(['dispatch', 'board', 'mine'])
+  @IsIn(['dispatch', 'board', 'mine', 'finance'])
   scope?: ServiceOrderScope;
 }
 
@@ -75,6 +75,15 @@ export class PublishServiceOrderDto extends ServiceOrderRequestDto {
   @IsISO8601({ strict: true, strictSeparator: true })
   @Matches(/T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/)
   occurredAt: string;
+}
+
+export class RefundServiceOrderDto extends PublishServiceOrderDto {
+  @ValidateIf(supplied)
+  @Transform(trim)
+  @IsString()
+  @Matches(/\S/)
+  @MaxLength(240)
+  transferReference?: string;
 }
 
 export class ServiceOrderUnitDto extends ServiceOrderRequestDto {

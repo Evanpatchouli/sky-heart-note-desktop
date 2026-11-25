@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Spin, Typography } from "antd";
-import { clubPenaltyPostingLabel, clubSettlementPostingLabel, type PersonalClubBalance } from "@sky-club/common";
+import { clubPenaltyPostingLabel, clubSettlementPostingLabel, servicePostingLabel, type PersonalClubBalance } from "@sky-club/common";
+import { Link } from "react-router";
 import { useAuthSession } from "@sky-club/common/web-auth";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
@@ -38,12 +39,13 @@ function BalanceEntries() {
         <Typography.Title level={3} style={{ margin: 0 }}>{money(data.balanceCents)}</Typography.Title>
         {data.entries.length ? data.entries.map(entry => <Card size="small" key={entry.eventId}>
           <Flex vertical>
-            <Typography.Text strong>{entry.kind === "withdrawal_payment" ? "提现实付" : entry.kind === "member_penalty" ? "已生效罚款" : entry.kind === "customer_compensation" ? "额外补偿实退" :
+            <Typography.Text strong>{entry.kind === "withdrawal_payment" ? "提现实付" : "businessType" in entry ? servicePostingLabel[entry.kind] : entry.kind === "member_penalty" ? "已生效罚款" : entry.kind === "customer_compensation" ? "额外补偿实退" :
               entry.kind === "compensation_cash_correction" ? "补偿实退更正" : clubSettlementPostingLabel[entry.kind]}
               {"correctionRequestId" in entry && entry.kind !== "compensation_cash_correction" ? "（日报更正）" : ""} · {money(entry.amountCents)}</Typography.Text>
             <Typography.Text>{entry.reason}</Typography.Text>
             {"withdrawalId" in entry ? <Typography.Text type="secondary" copyable>提现申请 {entry.withdrawalId}</Typography.Text> : null}
             {entry.orderId ? <Typography.Text type="secondary" copyable>{entry.orderId}</Typography.Text> : null}
+            {"businessType" in entry ? <Link to={`${entry.kind === "service_dispatch_fee" ? "/club/dispatch" : "/club/assignments"}?${new URLSearchParams({ business: entry.businessType, serviceOrder: entry.orderId })}`}>查看代跑订单</Link> : null}
             <Typography.Text type="secondary">{showDate(entry.occurredAt)}</Typography.Text>
           </Flex>
         </Card>) : <Empty description="暂无入账流水" image={Empty.PRESENTED_IMAGE_SIMPLE} />}

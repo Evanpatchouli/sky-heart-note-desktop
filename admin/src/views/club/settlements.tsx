@@ -11,6 +11,8 @@ import type { AdminClubContext } from "../home";
 import GiftSettlementDetail from "./gift-settlement-detail";
 import ClubBalanceCard from "./club-balance";
 import WithdrawalPayments from "./withdrawal-payments";
+import { ServiceOrders } from "@sky-club/common/service-orders";
+import { useLoginStore } from "@/auth/store";
 
 const sources = { direct_dispatch: "直接派单", client_order: "客户端下单" };
 const periods = { normal: "普通期", double: "双倍期", unconfirmed: "待确认" };
@@ -33,17 +35,24 @@ function requestError(error: unknown) {
 export default function Settlements() {
   const { club, loadFailed, reload } = useOutletContext<AdminClubContext>();
   const [params, setParams] = useSearchParams();
+  const token = useLoginStore(state => state.token) ?? "";
+  const userId = useLoginStore(state => state.userInfo?.id) ?? "";
   const selected = club?.permissions.includes("CLUB_FINANCE_READ") ? club : null;
   const mayPay = !!club?.permissions.includes("CLUB_WITHDRAWAL_PAY");
   const [balanceRevision, setBalanceRevision] = useState(0);
   const refreshBalance = useCallback(() => setBalanceRevision(value => value + 1), []);
   const orderId = params.get("order") ?? undefined;
   const calculationId = params.get("calculation") ?? undefined;
+  const daily = params.get("business") === "daily_run";
   const { md } = Grid.useBreakpoint();
 
   function showOrder(order?: string, calculation?: string) {
     if (!selected) return;
     setParams({ ...(order ? { order } : {}), ...(calculation ? { calculation } : {}) }, { replace: true });
+  }
+  function showBalanceOrder(id: string, business?: "daily_run") {
+    if (business) setParams({ business, serviceOrder: id });
+    else showOrder(id);
   }
 
   return <Flex vertical gap="middle">
@@ -53,9 +62,15 @@ export default function Settlements() {
       : !selected && !mayPay ? <Empty description="当前账号未获财务查看或提现实付登记权限" /> : <>
         <Typography.Text strong>{club?.name}</Typography.Text>
         {mayPay ? <WithdrawalPayments onSaved={refreshBalance} /> : null}
-        {selected ? <><ClubBalanceCard key={balanceRevision} onOpen={showOrder} />
-        <SettlementList onOpen={showOrder} /></> : null}
-        {selected ? <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
+        {selected ? <>
+          <ClubBalanceCard key={balanceRevision} onOpen={showBalanceOrder} />
+          <nav aria-label="财务业务类型" className="service-business-switch">
+            <Button type={!daily ? "primary" : "default"} onClick={() => setParams({})}>送心</Button>
+            <Button type={daily ? "primary" : "default"} onClick={() => setParams({ business: "daily_run" })}>代跑</Button>
+          </nav>
+          {daily ? <ServiceOrders key={userId} app="admin" userId={userId} token={token} scope="finance" orderId={params.get("serviceOrder")} onOpen={id => setParams({ business: "daily_run", ...(id ? { serviceOrder: id } : {}) })} /> : <SettlementList onOpen={showOrder} />}
+        </> : null}
+        {selected && !daily ? <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
           {orderId ? <SettlementDetail key={`${orderId}/${calculationId ?? ""}`}
             orderId={orderId} calculationId={calculationId} compact={!md}
             onChange={id => showOrder(orderId, id)} /> : null}

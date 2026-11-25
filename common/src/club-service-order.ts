@@ -1,8 +1,24 @@
 export type ServiceBusinessType = "daily_run";
 export const dailyRunUnitPriceCents = 2000;
-export type ServiceOrderScope = "dispatch" | "board" | "mine";
+export type ServiceOrderScope = "dispatch" | "board" | "mine" | "finance";
 export type ServiceOrderStatus = "pending_assignment" | "pending_dispatch" | "published" | "claimed" | "completed" | "stopped";
-export type ServiceOrderAction = "assign" | "publish" | "claim" | "deliveries" | "accept" | "stop";
+export type ServiceOrderAction = "assign" | "publish" | "claim" | "deliveries" | "accept" | "stop" | "refund" | "close";
+
+export interface ServiceOrderAccounting {
+  status: "in_progress" | "refund_pending" | "ready_to_close" | "closed" | "void";
+  acceptedUnits: number;
+  receivedCents?: number;
+  refundDueCents?: number;
+  refundedCents?: number;
+  refundRemainingCents?: number;
+  netReceivedCents?: number;
+  refunds?: { amountCents: number; occurredAt: string; transferReference?: string }[];
+  dispatchFeeCents?: number;
+  rewardCents?: number;
+  clubFeeCents?: number;
+  allocatedCents?: number;
+  closedAt?: string;
+}
 
 export interface ServiceOrderDelivery {
   unit: number;
@@ -29,6 +45,7 @@ export interface ServiceOrderView {
   quote?: { unitPriceCents: number; totalCents: number };
   receipt?: { amountCents: number; occurredAt: string };
   stop?: { reason: string; stoppedAt: string };
+  accounting?: ServiceOrderAccounting;
 }
 
 export interface ServiceOrderPage {
