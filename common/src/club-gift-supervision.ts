@@ -1,14 +1,16 @@
 import type { GiftWindow } from './club-gift-dispatch';
+import type { GiftPerformance } from './club-gift-delivery';
 import type { GiftPriceSegment } from './club-pricing';
 
 type ReportCount = number | string;
 
-export interface GiftSupervisionTotals {
+export interface GiftSupervisionTotals extends GiftPerformance {
   agreedGiftTimes: number;
   deliveredGiftTimes: number;
   remainingGiftTimes: number;
   actualReceivedHearts: ReportCount | null;
   knownReceivedHearts: ReportCount;
+  knownReceivedLines: number;
   unknownReceivedLines: number;
 }
 
@@ -29,6 +31,7 @@ export interface CustomerGiftProgress extends GiftSupervisionTotals {
   fulfillmentStatus: 'not_started' | 'in_progress' | 'completed' | 'stopped';
   closedAt: string | null;
   canRequestContinuation: boolean;
+  periodOnlyDifferenceCents: 0;
 }
 
 export function isGiftOrderProgress(value: object | null | undefined): value is CustomerGiftProgress {
@@ -51,6 +54,7 @@ export interface GiftMemberSupervision extends GiftSupervisionTotals {
   overdueGiftTimes: number;
   shares: (GiftSupervisionTotals & {
     shareId: string;
+    claimObservedReceivedHearts: number | null;
     originalWindow: GiftWindow;
     window: GiftWindow | null;
     transferredGiftTimes: number;

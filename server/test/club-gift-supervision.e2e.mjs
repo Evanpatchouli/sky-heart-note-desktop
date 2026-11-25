@@ -59,21 +59,26 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
   const substitute = await invitation('supervision_substitute');
   const ep = (path, actor, body, method, status) => call('employee', path, actor, body, method, status);
   const cp = (path, actor, body, method, status) => call('client', path, actor, body, method, status);
-  async function publish(source, segment, window, customer = owner) {
-    const requested = { requestId: randomUUID(), requestedGiftTimes: segment.paidGiftTimes,
-      recipientGameAccount: `${source} 的游戏号`, deliveryPeriodPreference: segment.period };
+  async function publish(source, segments, window, customer = owner) {
+    const giftSegments = Array.isArray(segments) ? segments : [segments];
+    const requested = { requestId: randomUUID(),
+      requestedGiftTimes: giftSegments.reduce((total, segment) => total + segment.paidGiftTimes, 0),
+      recipientGameAccount: `${source} 的游戏号`, deliveryPeriodPreference: giftSegments.length > 1 ? 'split' : giftSegments[0].period,
+      ...(giftSegments.length > 1 ? { doubleGiftTimes: giftSegments.filter(segment => segment.period === 'double')
+        .reduce((total, segment) => total + segment.paidGiftTimes, 0) } : {}),
+    };
     const order = source === 'direct_dispatch'
       ? await ep(`${employee}/orders`, operator, { ...requested, existingCustomerUserId: customer.id })
       : await cp(client, customer, { ...requested, dispatcherUserId: operator.id });
     const path = `${employee}/orders/${order.id}`;
     const { quote } = await ep(path + '/pricing', operator, {
-      ruleVersion: 1, expectedRevision: 0, dispatchFeeCents: 5, giftSegments: [segment],
+      ruleVersion: 1, expectedRevision: 0, dispatchFeeCents: 5, giftSegments,
     }, 'PATCH');
     await ep(path + '/receipts', operator, {
       requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: quote.totalAmountCents, receivedAt: '2026-11-18T08:00:00Z',
     });
     await ep(path + '/publish', operator, { requestId: randomUUID(), pricingRevision: 1, ruleVersion: 1,
-      commissionReviewRevision: 0, giftDispatchSegments: [{ segmentIndex: 0, ...window, openToClaim: true, directed: [] }] });
+      commissionReviewRevision: 0, giftDispatchSegments: giftSegments.map((_, segmentIndex) => ({ segmentIndex, ...window, openToClaim: true, directed: [] })) });
     return { id: order.id, path, customerPath: `${client}/${order.id}`, claimPath: `${employee}/gift-claims/${order.id}` };
   }
   const read = order => cp(order.customerPath, owner);
@@ -119,11 +124,17 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
   assert.deepEqual(await giftProgress(order), {
     priceUnit: 'gift_times', agreedGiftTimes: 8, deliveredGiftTimes: 2, remainingGiftTimes: 6, actualReceivedHearts: null,
     estimatedReceivedHearts: 16, claimObservedReceivedHearts: [0], unknownClaimObservations: 1,
-    knownReceivedHearts: 0, unknownReceivedLines: 1, closedAt: null, fulfillmentStatus: 'in_progress', canRequestContinuation: true,
+    knownReceivedHearts: 0, knownReceivedLines: 1, unknownReceivedLines: 1, closedAt: null, fulfillmentStatus: 'in_progress', canRequestContinuation: true,
+    observedGiftTimes: 2, excessGiftTimes: 0, estimatedDeliveredHearts: 4, heartAmountCents: 100, periodOnlyDifferenceCents: 0,
+    periods: [{ period: 'double', observedGiftTimes: 2, deliveredGiftTimes: 2, estimatedDeliveredHearts: 4,
+      actualReceivedHearts: null, knownReceivedHearts: 0, knownReceivedLines: 1, unknownReceivedLines: 1, heartAmountCents: 100 }],
     segments: [{
       segmentIndex: 0, period: 'double', paidGiftTimes: 8, dailyGiftTimes: 2, unitPriceCents: 50, agreedGiftTimes: 8,
       deliveredGiftTimes: 2, remainingGiftTimes: 6, actualReceivedHearts: null, estimatedReceivedHearts: 16,
-      knownReceivedHearts: 0, unknownReceivedLines: 1, claimObservedReceivedHearts: [0], unknownClaimObservations: 1,
+      knownReceivedHearts: 0, knownReceivedLines: 1, unknownReceivedLines: 1, claimObservedReceivedHearts: [0], unknownClaimObservations: 1,
+      observedGiftTimes: 2, excessGiftTimes: 0, estimatedDeliveredHearts: 4, heartAmountCents: 100,
+      periods: [{ period: 'double', observedGiftTimes: 2, deliveredGiftTimes: 2, estimatedDeliveredHearts: 4,
+        actualReceivedHearts: null, knownReceivedHearts: 0, knownReceivedLines: 1, unknownReceivedLines: 1, heartAmountCents: 100 }],
       window: { startDate: date[0], endDate: date[3] },
     }],
   });
@@ -152,6 +163,83 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
   for (const privateValue of [member.id, execution.id, '仅承接人可见的执行号', 'dispatchFeeCents', 'clubFeeCents', 'memberCents'])
     assert.equal(JSON.stringify(publicView).includes(privateValue), false);
   assert.equal((await cp('/client/orders', owner)).items.find(item => item.id === order.id).deliveryProgress.remainingGiftTimes, 4);
+
+  await t.test('按实际游戏时段核对混合报价、单段跨期、转派和日报更正', async () => {
+    const quoteWindow = { startDate: date[0], endDate: date[3] };
+    const mixed = await publish('client_order', [
+      { period: 'double', paidGiftTimes: 60, dailyGiftTimes: 15, unitPriceCents: 50 },
+      { period: 'normal', paidGiftTimes: 40, dailyGiftTimes: 10, unitPriceCents: 50 },
+    ], quoteWindow);
+    const mixInitial = await read(mixed);
+    assert.equal(mixInitial.deliveryProgress.estimatedReceivedHearts, 160);
+    assert.equal(mixInitial.quote.heartsAmountCents, 5000);
+    const shares = await Promise.all([0, 1].map(segmentIndex =>
+      claim(mixed, { segmentIndex, dailyGiftTimes: 2 })));
+    const mixedAccount = await link(mixed, shares[0].shareId);
+    assert.equal((await link(mixed, shares[1].shareId)).id, mixedAccount.id);
+    await report(mixed, shares[0].shareId, mixedAccount.id, date[0], [
+      { shareId: shares[0].shareId, period: 'double', giftTimes: 2, receivedHearts: 4 },
+      { shareId: shares[1].shareId, period: 'normal', giftTimes: 2, receivedHearts: 2 },
+    ]);
+    const mixedProgress = await giftProgress(mixed);
+    assert.deepEqual([mixedProgress.deliveredGiftTimes, mixedProgress.actualReceivedHearts, mixedProgress.remainingGiftTimes], [4, 6, 96]);
+    assert.deepEqual(mixedProgress.periods.map(({ period, deliveredGiftTimes, actualReceivedHearts }) =>
+      [period, deliveredGiftTimes, actualReceivedHearts]), [['normal', 2, 2], ['double', 2, 4]]);
+
+    const crossing = await publish('direct_dispatch', { period: 'normal', paidGiftTimes: 5, dailyGiftTimes: 5, unitPriceCents: 50 },
+      { startDate: date[0], endDate: date[0] });
+    const initial = await read(crossing);
+    const { shareId } = await claim(crossing, { dailyGiftTimes: 5, actualReceivedHearts: 9 });
+    const account = await link(crossing, shareId);
+    const original = await report(crossing, shareId, account.id, date[0], [
+      { period: 'normal', giftTimes: 2, receivedHearts: 2 },
+      { period: 'double', giftTimes: 2, receivedHearts: 4 },
+    ]);
+    const supervisionPath = crossing.path + '/fulfillment';
+    const inspect = () => ep(`${supervisionPath}?through=${date[0]}`, operator);
+    const memberProgress = async () => (await ep(crossing.path + '/daily-reports', member)).giftProgress;
+    const sameDay = await inspect();
+    assert.equal(sameDay.segments[0].period, 'normal');
+    assert.equal(sameDay.segments[0].members[0].shares[0].days[0].reportedGiftTimes, 4);
+    assert.deepEqual(sameDay.periods, (await memberProgress()).segments[0].periods);
+    assert.deepEqual([sameDay.deliveredGiftTimes, sameDay.actualReceivedHearts, sameDay.estimatedDeliveredHearts], [4, 6, 6]);
+    assert.deepEqual(sameDay.claimObservedReceivedHearts, [9]);
+    await ep(crossing.path + '/gift-dispatch/reassign', operator,
+      { requestId: randomUUID(), shareId, userId: substitute.id, giftTimes: 2 }, 'POST', 409);
+    await ep(crossing.path + '/gift-dispatch/reassign', operator,
+      { requestId: randomUUID(), shareId, userId: substitute.id, giftTimes: 1 });
+    const correctionPath = `${crossing.path}/daily-reports/${original.originalId}/corrections`;
+    const correct = (expectedVersion, lines) => ep(correctionPath, member,
+      { requestId: randomUUID(), expectedVersion, reason: '复核实际游戏时段和到账', lines });
+    await correct(1, [{ period: 'double', giftTimes: 4, receivedHearts: 8 }]);
+    const allDouble = await memberProgress();
+    assert.deepEqual(allDouble.pendingCompensation, { giftTimes: 4, grossCents: 200, dispatchFeeCents: 20, clubFeeCents: 20, memberCents: 160 });
+    assert.deepEqual([allDouble.estimatedReceivedHearts, allDouble.estimatedDeliveredHearts, allDouble.actualReceivedHearts, allDouble.remainingGiftTimes], [5, 8, 8, 0]);
+    const unchanged = await read(crossing);
+    assert.deepEqual(unchanged.quote, initial.quote);
+    assert.deepEqual(unchanged.receipt, initial.receipt);
+    assert.equal(unchanged.deliveryProgress.periodOnlyDifferenceCents, 0);
+    assert.equal((await inspect()).remainingGiftTimes, 1);
+
+    await correct(2, [{ period: 'double', giftTimes: 3, receivedHearts: 0 }, { period: 'unconfirmed', giftTimes: 1, receivedHearts: null }]);
+    const uncertain = await giftProgress(crossing);
+    assert.deepEqual([uncertain.estimatedDeliveredHearts, uncertain.actualReceivedHearts, uncertain.unknownReceivedLines], [null, null, 1]);
+    assert.deepEqual(uncertain.periods.map(({ period, actualReceivedHearts, estimatedDeliveredHearts, knownReceivedLines }) =>
+      [period, actualReceivedHearts, estimatedDeliveredHearts, knownReceivedLines]), [['double', 0, 6, 1], ['unconfirmed', null, null, 0]]);
+    await correct(3, [{ period: 'normal', giftTimes: 2, receivedHearts: 2 }, { period: 'double', giftTimes: 3, receivedHearts: 6 }]);
+    const excessive = await inspect();
+    assert.deepEqual([excessive.observedGiftTimes, excessive.deliveredGiftTimes, excessive.excessGiftTimes, excessive.actualReceivedHearts, excessive.heartAmountCents], [5, 4, 1, 8, 200]);
+    assert.deepEqual(excessive.periods.map(row => [row.period, row.deliveredGiftTimes, row.heartAmountCents]),
+      [['normal', null, null], ['double', null, null]]);
+
+    const tail = await publish('direct_dispatch', { period: 'normal', paidGiftTimes: 1, dailyGiftTimes: 1, unitPriceCents: 50 },
+      { startDate: date[0], endDate: date[0] });
+    const tailShare = (await claim(tail, { dailyGiftTimes: 1 })).shareId;
+    const tailAccount = await link(tail, tailShare);
+    await report(tail, tailShare, tailAccount.id, date[0], [{ period: 'double', giftTimes: 1, receivedHearts: 2 }]);
+    const last = await giftProgress(tail);
+    assert.deepEqual([last.deliveredGiftTimes, last.remainingGiftTimes, last.actualReceivedHearts, last.heartAmountCents, last.periodOnlyDifferenceCents], [1, 0, 2, 50, 0]);
+  });
 
   await report(continuationOrder, continuationOriginal, originalAccount.id, date[0], [{ giftTimes: 2, receivedHearts: 2 }]);
   const completed = await giftProgress(continuationOrder);
@@ -197,8 +285,9 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
   await ep(path + '/gift-dispatch', operator, { requestId: randomUUID(), segments: [segment] });
   const second = await claim(continuationOrder, { segmentIndex: 1, dailyGiftTimes: 3 });
   const secondAccount = await link(continuationOrder, second.shareId);
-  await report(continuationOrder, second.shareId, secondAccount.id, date[2], [{ giftTimes: 3, receivedHearts: 5 }]);
+  await report(continuationOrder, second.shareId, secondAccount.id, date[2], [{ period: 'double', giftTimes: 3, receivedHearts: 5 }]);
   assert.equal((await giftProgress(continuationOrder)).remainingGiftTimes, 2);
+  assert.equal((await giftProgress(continuationOrder)).segments[1].periods[0].heartAmountCents, 195);
   assert.equal((await ep(path + '/daily-reports', member)).giftProgress.pendingCompensation.memberCents, 245);
 
   const orders = db.collection('club_orders');

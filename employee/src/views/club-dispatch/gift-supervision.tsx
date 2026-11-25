@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Card, Flex, Input, Spin, Typography } from "antd";
 import { formatCentsAsYuan, type GiftDispatchSupervision, type GiftSupervisionDay } from "@webapp-template/common";
 import { RequestError } from "@webapp-template/common/web-auth";
+import { GiftPeriodFacts, giftHearts as hearts, giftMoney, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
 
 const dayLabels: Record<GiftSupervisionDay["status"], string> = {
@@ -14,8 +15,6 @@ const dayLabels: Record<GiftSupervisionDay["status"], string> = {
   unplanned: "计划外日报",
 };
 const fulfillment = { not_started: "尚未开始", in_progress: "履约中", completed: "约定次数已送完", stopped: "已停送" };
-const periodLabels = { normal: "普通期", double: "双倍期" };
-const hearts = (value: number | string | null) => value === null ? "未知" : `${value} 颗`;
 
 export type HistoricalSupervision = {
   priceUnit: "received_hearts";
@@ -70,25 +69,43 @@ function GiftDays({ days }: { days: GiftSupervisionDay[] }) {
 export function GiftSupervisionFacts({ progress, compact = false }: { progress: GiftDispatchSupervision; compact?: boolean }) {
   return <>
     <p>约定 {progress.agreedGiftTimes} 次 · 已送 {progress.deliveredGiftTimes} 次 · 剩余 {progress.remainingGiftTimes} 次 · 日报到账 {hearts(progress.actualReceivedHearts)}</p>
+    {!compact && <>
+      <p>建单预计到账 {hearts(progress.estimatedReceivedHearts)} · 按实际时段预计到账 {hearts(progress.estimatedDeliveredHearts)}</p>
+      <p>按已送次数核对爱心款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。每次单价沿用原段约定。</p>
+      <GiftPeriodFacts performance={progress} />
+    </>}
     {!compact && <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>}
     {progress.segments.map(segment => <section key={segment.segmentIndex}>
-      <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段 · {periodLabels[segment.period]}</Typography.Title>
+      <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段 · 报价 {periodLabels[segment.period]}</Typography.Title>
       <p>约定 {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次
         {" · "}已领 {segment.claimedGiftTimes} 次 · 未承接 {segment.unclaimedGiftTimes} 次</p>
       <p>{segment.window ? `执行 ${segment.window.startDate} 至 ${segment.window.endDate}` : "执行窗口待配置"}
         {" · "}已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次</p>
+      {!compact && <>
+        <p>原段预计到账 {hearts(segment.estimatedReceivedHearts)} · 日报到账 {hearts(segment.actualReceivedHearts)}
+          {" · "}已送爱心款依据 {giftMoney(segment.heartAmountCents)}</p>
+        <GiftPeriodFacts performance={segment} />
+      </>}
       {segment.overdueUnclaimedGiftTimes > 0 && <p>已过期未承接 {segment.overdueUnclaimedGiftTimes} 次</p>}
       {segment.members.map(member => <details key={member.userId} open={compact || undefined}>
         <summary>{member.nickname ? `${member.nickname}（${member.userId}）` : member.userId}
           {" · "}原领 {member.originallyClaimedGiftTimes} 次 · 已改派 {member.transferredGiftTimes} 次 · 净份额 {member.agreedGiftTimes} 次
           {" · "}已送 {member.deliveredGiftTimes} 次 · 剩余 {member.remainingGiftTimes} 次
           {member.overdueGiftTimes ? ` · 已过期未补 ${member.overdueGiftTimes} 次` : ""}</summary>
-        {!compact && <GiftDays days={member.days} />}
+        {!compact && <>
+          <p>已送爱心款依据 {giftMoney(member.heartAmountCents)}</p>
+          <GiftPeriodFacts performance={member} />
+          <GiftDays days={member.days} />
+        </>}
         {member.shares.map(share => <details key={share.shareId} open={compact || undefined}>
           <summary>份额 {share.shareId} · {share.window ? `${share.window.startDate} 至 ${share.window.endDate}` : "全部改派"}
             {" · "}净份额 {share.agreedGiftTimes} 次 · 已送 {share.deliveredGiftTimes} 次
             {share.overdueGiftTimes ? ` · 已过期未补 ${share.overdueGiftTimes} 次` : ""}</summary>
           {share.transferredGiftTimes > 0 && <p>原窗口 {share.originalWindow.startDate} 至 {share.originalWindow.endDate} · 已改派 {share.transferredGiftTimes} 次</p>}
+          {!compact && <>
+            <p>接单时观察 {hearts(share.claimObservedReceivedHearts)}</p>
+            <GiftPeriodFacts performance={share} />
+          </>}
           <GiftDays days={share.days} />
         </details>)}
       </details>)}

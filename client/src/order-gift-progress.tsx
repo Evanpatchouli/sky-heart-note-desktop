@@ -1,13 +1,21 @@
 import { useRef, useState, type FormEvent } from "react";
-import { formatCentsAsYuan, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type PricingPeriod } from "@webapp-template/common";
+import { formatCentsAsYuan, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type GiftPeriodProgress, type PricingPeriod } from "@webapp-template/common";
 import { RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { clientRequest } from "./order-api";
 
-const periods = { normal: "普通期", double: "双倍期" };
+const periods = { normal: "普通期", double: "双倍期", unconfirmed: "实际时段待核对" };
 const fulfillment = { not_started: "尚未开始", in_progress: "履约中", completed: "约定次数已送完", stopped: "已停送" };
 
 export function giftCount(hearts: number | string | null) {
   return hearts === null ? "未知" : `${hearts} 颗`;
+}
+
+function PeriodProgress({ rows }: { rows: GiftPeriodProgress[] }) {
+  return rows.length ? <ul>{rows.map(row => <li key={row.period}>
+    {periods[row.period]} · 实报 {row.observedGiftTimes} 次 · {row.deliveredGiftTimes === null ? "计入约定的次数待核对" : `计入约定 ${row.deliveredGiftTimes} 次`}
+    <br />按实际时段预计 {giftCount(row.estimatedDeliveredHearts)} · 日报到账 {giftCount(row.actualReceivedHearts)}
+    {row.unknownReceivedLines > 0 && `（${row.knownReceivedLines > 0 ? `已知 ${giftCount(row.knownReceivedHearts)}，` : ""}${row.unknownReceivedLines} 条未知）`}
+  </li>)}</ul> : null;
 }
 
 export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress }) {
@@ -19,21 +27,30 @@ export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress
     <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>
     <dl>
       <dt>建单预计实收爱心</dt><dd>{giftCount(progress.estimatedReceivedHearts)}</dd>
+      <dt>按实报赠送次数和实际时段预计到账</dt><dd>{giftCount(progress.estimatedDeliveredHearts)}</dd>
       <dt>接单时登记的实际实收爱心</dt><dd>
         {observed.length ? observed.join("、") : "未知"}
         {progress.unknownClaimObservations > 0 && observed.length > 0 ? "，另有未记录的接单观察" : ""}
       </dd>
       <dt>日报累计实际到账爱心</dt><dd>
         {giftCount(progress.actualReceivedHearts)}
-        {progress.unknownReceivedLines ? `（已知小计 ${giftCount(progress.knownReceivedHearts)}，另有 ${progress.unknownReceivedLines} 条未知）` : ""}
+        {progress.unknownReceivedLines ? `（${progress.knownReceivedLines ? `已知小计 ${giftCount(progress.knownReceivedHearts)}，` : ""}${progress.unknownReceivedLines} 条未知）` : ""}
       </dd>
     </dl>
+    {progress.periods.length > 0 && <>
+      <p>仅改变到账倍率的价差 ¥{formatCentsAsYuan(progress.periodOnlyDifferenceCents)}。每次单价沿用原段约定。</p>
+      <PeriodProgress rows={progress.periods} />
+    </>}
+    {progress.excessGiftTimes !== 0 && <p>超出约定的实报次数 {progress.excessGiftTimes} 次待业务核对。</p>}
     {progress.segments.length ? <ul>
       {progress.segments.map(segment => <li key={segment.segmentIndex}>
-        第 {segment.segmentIndex + 1} 段 · {periods[segment.period]} · 约定 {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日
+        第 {segment.segmentIndex + 1} 段 · 报价 {periods[segment.period]} · 约定 {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日
         {" · "}¥{formatCentsAsYuan(segment.unitPriceCents)}/次
-        <br />已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次 · 日报到账 {giftCount(segment.actualReceivedHearts)}
+        <br />已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次 · 原段预计到账 {giftCount(segment.estimatedReceivedHearts)}
+        <br />按实际时段预计 {giftCount(segment.estimatedDeliveredHearts)} · 日报到账 {giftCount(segment.actualReceivedHearts)}
+        {segment.claimObservedReceivedHearts.length > 0 ? <><br />接单时观察 {segment.claimObservedReceivedHearts.map(giftCount).join("、")}</> : null}
         {segment.window ? <><br />执行 {segment.window.startDate} 至 {segment.window.endDate}</> : null}
+        <PeriodProgress rows={segment.periods} />
       </li>)}
     </ul> : null}
   </section>;

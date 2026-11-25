@@ -46,23 +46,57 @@ export interface GiftShareProgress {
   knownReceivedHearts: number | string;
   knownReceivedLines: number;
   unknownReceivedLines: number;
+  claimObservedReceivedHearts: number | null;
 }
 
-export interface GiftDeliveryProgress extends Omit<GiftShareProgress, 'shareId' | 'segmentIndex'> {
+type ReportCount = number | string;
+
+export interface GiftPeriodProgress {
+  period: GiftReportPeriod;
+  observedGiftTimes: ReportCount;
+  deliveredGiftTimes: number | null;
+  estimatedDeliveredHearts: ReportCount | null;
+  actualReceivedHearts: ReportCount | null;
+  knownReceivedHearts: ReportCount;
+  knownReceivedLines: number;
+  unknownReceivedLines: number;
+  heartAmountCents: number | null;
+}
+
+export interface GiftPerformance {
+  observedGiftTimes: ReportCount;
+  excessGiftTimes: ReportCount;
+  estimatedDeliveredHearts: ReportCount | null;
+  heartAmountCents: number | null;
+  periods: GiftPeriodProgress[];
+}
+
+export interface GiftCompensation {
+  giftTimes: number;
+  grossCents: number;
+  dispatchFeeCents: number;
+  clubFeeCents: number;
+  memberCents: number;
+}
+
+export interface GiftDeliverySegment extends GiftPerformance {
+  segmentIndex: number;
+  quotePeriod: PricingPeriod;
+  unitPriceCents: number;
+  deliveredGiftTimes: number;
+  remainingGiftTimes: number;
+  pendingCompensation: GiftCompensation | null;
+}
+
+export interface GiftDeliveryProgress extends Omit<GiftShareProgress, 'shareId' | 'segmentIndex' | 'claimObservedReceivedHearts'>, GiftPerformance {
   priceUnit: 'gift_times';
   orderDeliveredGiftTimes: number;
   orderRemainingGiftTimes: number;
   estimatedReceivedHearts: number | null;
-  estimatedDeliveredHearts: number | string;
   canSubmitDaily: boolean;
   canCorrectReports: boolean;
   shares: GiftShareProgress[];
-  pendingCompensation: {
-    giftTimes: number;
-    grossCents: number;
-    dispatchFeeCents: number;
-    clubFeeCents: number;
-    memberCents: number;
-  } | null;
+  segments: GiftDeliverySegment[];
+  pendingCompensation: GiftCompensation | null;
   compensationIssue: 'out_of_range' | 'negative_amount' | null;
 }

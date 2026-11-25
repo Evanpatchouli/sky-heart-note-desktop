@@ -6,32 +6,18 @@ import { ClubDailyReportStore } from './club-daily-report.store';
 import { jsonReportCount } from './club-daily-report-view';
 import { ClubDirectoryService } from './club-directory.service';
 import { activeGiftSegments, giftSchedule, type StoredGiftShare } from './club-gift-allocation';
-import { giftDayFacts, type GiftDayFact } from './club-gift-delivery';
+import {
+  addCounts, addGiftPerformance, emptyCounts, emptyGiftPerformance, factCounts, giftDayFacts,
+  giftFactsByShare, giftPerformanceView, giftSharePerformance, receivedHearts, type GiftDayFact,
+} from './club-gift-delivery';
 import { acceptsGiftExecution } from './club-gift-execution.service';
 import { ClubOrder } from './club-order.schema';
 
-type Report = { times: bigint; hearts: bigint; known: number; unknown: number };
-const emptyReport = (): Report => ({ times: 0n, hearts: 0n, known: 0, unknown: 0 });
-
-function addReport(total: Report, next: Report) {
-  total.times += next.times;
-  total.hearts += next.hearts;
-  total.known += next.known;
-  total.unknown += next.unknown;
-}
-
-function toReport(fact: GiftDayFact): Report {
-  return {
-    times: BigInt(fact.giftTimes.toString()), hearts: BigInt(fact.knownHearts.toString()),
-    known: fact.knownLines, unknown: fact.unknownLines,
-  };
-}
-
-function progress(agreedGiftTimes: number, deliveredGiftTimes: number, report: Report) {
+function progress(agreedGiftTimes: number, performance: ReturnType<typeof emptyGiftPerformance>) {
+  const deliveredGiftTimes = performance.delivered;
   return {
     agreedGiftTimes, deliveredGiftTimes, remainingGiftTimes: agreedGiftTimes - deliveredGiftTimes,
-    actualReceivedHearts: report.known > 0 && report.unknown === 0 ? jsonReportCount(report.hearts) : null,
-    knownReceivedHearts: jsonReportCount(report.hearts), unknownReceivedLines: report.unknown,
+    ...receivedHearts(performance.counts), ...giftPerformanceView(performance),
   };
 }
 
@@ -45,7 +31,7 @@ export function canContinueGiftOrder(order: ClubOrder) {
     acceptsGiftExecution(order);
 }
 
-type MemberDay = { planned: number; report: Report };
+type MemberDay = { planned: number; report: ReturnType<typeof emptyCounts> };
 
 function dayView(businessDate: string, { planned, report }: MemberDay, through?: string): GiftSupervisionDay {
   const hasReport = report.known + report.unknown > 0;
@@ -56,45 +42,23 @@ function dayView(businessDate: string, { planned, report }: MemberDay, through?:
     report.times < BigInt(planned) ? 'short' : 'on_track';
   return {
     businessDate, plannedGiftTimes: planned, reportedGiftTimes: jsonReportCount(report.times),
-    actualReceivedHearts: progress(0, 0, report).actualReceivedHearts, status,
+    actualReceivedHearts: receivedHearts(report).actualReceivedHearts, status,
   };
 }
 
-function groupedFacts(facts: GiftDayFact[]) {
-  const byShare = new Map<string, Map<string, Report>>();
-  for (const row of facts) {
-    const id = row._id.shareId.toHexString();
-    const dates = byShare.get(id) ?? new Map<string, Report>();
-    dates.set(row._id.businessDate, toReport(row));
-    byShare.set(id, dates);
-  }
-  return byShare;
-}
-
-function shareProgress(share: StoredGiftShare, dates: ReadonlyMap<string, Report>) {
-  const report = emptyReport();
-  for (const daily of dates.values()) addReport(report, daily);
-  const transferred = share.transferredGiftTimes ?? 0;
-  const net = share.giftTimes - transferred;
-  const delivered = report.times >= BigInt(net) ? net : Number(report.times);
-  return { report, transferred, net, delivered };
-}
-
 function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<string, string>, through?: string) {
-  const factsByShare = groupedFacts(facts);
+  const factsByShare = giftFactsByShare(facts);
   const dispatchByIndex = new Map(order.giftDispatch?.segments.map(segment => [segment.segmentIndex, segment]));
   const paidWindows = new Map(order.continuationQuotes?.filter(quote => quote.receipt)
     .map(quote => [quote.segmentIndex, quote.window]));
   const active = activeGiftSegments(order);
   const quotes = active.length ? active : order.pricing?.giftSegments ?? order.receipt?.quote.giftSegments ?? [];
   const stopped = isStopped(order);
-  const orderReport = emptyReport();
-  let totalDelivered = 0;
+  const orderPerformance = emptyGiftPerformance();
   const segments = quotes.map((quote, segmentIndex) => {
     const dispatch = dispatchByIndex.get(segmentIndex);
     const window = dispatch ?? paidWindows.get(segmentIndex);
-    const segmentReport = emptyReport();
-    let segmentDelivered = 0;
+    const segmentPerformance = emptyGiftPerformance();
     let netClaimed = 0;
     const observed = new Set<number>();
     let unknownClaimObservations = 0;
@@ -108,63 +72,63 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
       else observed.add(share.actualReceivedHearts);
     }
     for (const [userId, shares] of byMember) {
-      const report = emptyReport();
+      const memberPerformance = emptyGiftPerformance();
       const memberDays = new Map<string, MemberDay>();
       let original = 0;
       let net = 0;
       let transferred = 0;
-      let delivered = 0;
       let overdueGiftTimes = 0;
       function memberDay(date: string) {
-        const current = memberDays.get(date) ?? { planned: 0, report: emptyReport() };
+        const current = memberDays.get(date) ?? { planned: 0, report: emptyCounts() };
         memberDays.set(date, current);
         return current;
       }
       const shareViews = shares.map(share => {
-        const facts = factsByShare.get(share.id) ?? new Map<string, Report>();
-        const current = shareProgress(share, facts);
+        const shareFacts = factsByShare.get(share.id) ?? [];
+        const transferredGiftTimes = share.transferredGiftTimes ?? 0;
+        const netGiftTimes = share.giftTimes - transferredGiftTimes;
+        const current = giftSharePerformance(shareFacts, netGiftTimes, quote.unitPriceCents);
         const originalWindow = { startDate: share.startDate, endDate: share.endDate };
-        addReport(report, current.report);
+        addGiftPerformance(memberPerformance, current);
         original += share.giftTimes;
-        net += current.net;
-        transferred += current.transferred;
-        delivered += current.delivered;
+        net += netGiftTimes;
+        transferred += transferredGiftTimes;
         const schedule = names ? giftSchedule(share.days) : new Map<string, number>();
         const scheduledDates = [...schedule.keys()].sort();
         const startDate = scheduledDates[0];
         const endDate = scheduledDates.at(-1);
         const overdue = through && !stopped && !order.closedAt && endDate && endDate <= through
-          ? current.net - current.delivered : 0;
+          ? netGiftTimes - current.delivered : 0;
         overdueGiftTimes += overdue;
         const days: GiftSupervisionDay[] = [];
         if (names) {
+          const facts = new Map(shareFacts.map(fact => [fact._id.businessDate, factCounts(fact)]));
           for (const [date, amount] of schedule) memberDay(date).planned += amount;
-          for (const [date, day] of facts) addReport(memberDay(date).report, day);
+          for (const [date, day] of facts) addCounts(memberDay(date).report, day);
           for (const date of [...new Set([...scheduledDates, ...facts.keys()])].sort())
-            days.push(dayView(date, { planned: schedule.get(date) ?? 0, report: facts.get(date) ?? emptyReport() }, through));
+            days.push(dayView(date, { planned: schedule.get(date) ?? 0, report: facts.get(date) ?? emptyCounts() }, through));
         }
         return {
-          ...progress(current.net, current.delivered, current.report),
+          ...progress(netGiftTimes, current),
           shareId: share.id, originalWindow, window: startDate && endDate ? { startDate, endDate } : null,
-          transferredGiftTimes: current.transferred, overdueGiftTimes: overdue, days,
+          claimObservedReceivedHearts: share.actualReceivedHearts ?? null,
+          transferredGiftTimes, overdueGiftTimes: overdue, days,
         };
       });
-      addReport(segmentReport, report);
-      segmentDelivered += delivered;
+      addGiftPerformance(segmentPerformance, memberPerformance);
       netClaimed += net;
       if (names) members.push({
-        userId, nickname: names.get(userId) ?? null, ...progress(net, delivered, report),
+        userId, nickname: names.get(userId) ?? null, ...progress(net, memberPerformance),
         originallyClaimedGiftTimes: original, transferredGiftTimes: transferred, overdueGiftTimes, shares: shareViews,
         days: [...memberDays].sort(([a], [b]) => a.localeCompare(b))
           .map(([date, values]) => dayView(date, values, through)),
       });
     }
-    addReport(orderReport, segmentReport);
-    totalDelivered += segmentDelivered;
+    addGiftPerformance(orderPerformance, segmentPerformance);
     const unclaimed = quote.paidGiftTimes - netClaimed;
     return {
       customer: {
-        segmentIndex, ...quote, ...progress(quote.paidGiftTimes, segmentDelivered, segmentReport),
+        segmentIndex, ...quote, ...progress(quote.paidGiftTimes, segmentPerformance),
         window: window ? { startDate: window.startDate, endDate: window.endDate } : null,
         estimatedReceivedHearts: estimateReceivedHearts(quote.paidGiftTimes, quote.period) ?? null,
         claimObservedReceivedHearts: [...observed].sort((a, b) => a - b), unknownClaimObservations,
@@ -178,15 +142,16 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
   });
   const agreed = active.length ? active.reduce((sum, quote) => sum + quote.paidGiftTimes, 0) : order.heartDelivery.requestedGiftTimes!;
   const customer: CustomerGiftProgress = {
-    priceUnit: 'gift_times', ...progress(agreed, totalDelivered, orderReport),
+    priceUnit: 'gift_times', ...progress(agreed, orderPerformance),
     estimatedReceivedHearts: order.heartDelivery.estimatedReceivedHearts ?? null,
     claimObservedReceivedHearts: [...new Set(segments.flatMap(({ customer }) => customer.claimObservedReceivedHearts))].sort((a, b) => a - b),
     unknownClaimObservations: segments.reduce((sum, { customer }) => sum + customer.unknownClaimObservations, 0),
     segments: segments.map(segment => segment.customer),
     closedAt: order.closedAt?.toISOString() ?? null,
-    fulfillmentStatus: stopped ? 'stopped' : totalDelivered === agreed ? 'completed' :
+    fulfillmentStatus: stopped ? 'stopped' : orderPerformance.delivered === agreed ? 'completed' :
       order.dispatchStatus === 'published' ? 'in_progress' : 'not_started',
     canRequestContinuation: canContinueGiftOrder(order),
+    periodOnlyDifferenceCents: 0,
   };
   return { customer, segments };
 }

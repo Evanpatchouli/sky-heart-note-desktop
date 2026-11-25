@@ -181,7 +181,7 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 实际承接人在「按次接单」找到订单，在「我的承接」份额下关联本人送心号，然后打开订单卡片的「我的日报」。选择执行号，填写业务日期、实际赠送次数和实际到账颗数。留空表示未知，填 0 表示确认到账为零。同一号同一天的一份日报可填写该号已关联的多个份额和实际时段。业务日期由团员填写，业务日与活动边界待 Q2 确认。[数量与金额口径](heart-delivery.md#数量与金额的口径)
 
-补报和未入账日报更正提交即生效，需填原因。关闭领取或暂停新执行后，过去的实绩仍可补报和更正。历史保留各版本、前后值、经办人、账面业务日期、双方游戏号快照与服务端提交时间。正式按次进度使用每份日报的最新版本，按实际赠送次数抵扣本人净份额，超额次数单列。双倍期已送 4 次计履约 4 次，按原计划预计到账 8 颗，实际据实填写。普通待结依据用份额内次数乘原段每次单价，减去该单每次派抽和团抽。提交日报只更新业务事实及待结依据。已入账后更正与资金处理待 Q4、Q5 确认。
+补报和未入账日报更正提交即生效，需填原因。关闭领取或暂停新执行后，过去的实绩仍可补报和更正。历史保留各版本、前后值、经办人、账面业务日期、双方游戏号快照与服务端提交时间。正式按次进度使用每份日报的最新版本，按实际赠送次数抵扣本人净份额，超额次数单列。双倍期已送 4 次计履约 4 次，按实际期别预计到账 8 颗，实际据实填写。普通待结依据用份额内次数乘原段每次单价，减去该单每次派抽和团抽。提交日报只更新业务事实及待结依据。已入账后更正与资金处理待 Q4、Q5 确认。
 
 历史按颗订单的日报历史返回 `priceUnit: "received_hearts"`。原日报按实际到账抵扣颗数，旧补报和更正仍显示原有的待核对状态。旧报告的次数、颗数、版本和原因继续可查。
 
@@ -193,7 +193,7 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 两种写入均提交 UUID v4 `requestId` 和 `lines`。按次明细包含非负整数 `giftTimes` 和非负整数或 `null` 的 `receivedHearts`。省略 `receivedHearts` 同样表示未知。可填行级 `shareId` 选择该号已关联的本人份额，省略时使用首报路由的份额。计价段由份额确定，可选填 `quoteSegment` 核对对应的从 1 开始的段号。可填实际 `period`（`normal`、`double` 或 `unconfirmed`），省略则沿用该段约定时段。已知和未知实际到账均直接保留。
 
-按次 `giftProgress` 的 `deliveredGiftTimes`、`remainingGiftTimes`、`observedGiftTimes`、`excessGiftTimes` 及 `shares` 按本人净份额汇总。本人实际到账见 `actualReceivedHearts`，有未知明细时该值为 `null`，已知小计和未知明细数分别见 `knownReceivedHearts`、`unknownReceivedLines`。本人已履约次数按原段预计的颗数见 `estimatedDeliveredHearts`，本人待结依据见 `pendingCompensation`。全单已送和剩余分列为 `orderDeliveredGiftTimes` 和 `orderRemainingGiftTimes`，建单预计到账见 `estimatedReceivedHearts`。派单人从本单按次分工查看各份额已送次数并改派剩余。
+团员填写业务日期，可为同一份额添加普通期、双倍期和实际时段待核对的明细。「我的日报」的实际时段默认选中「待核对」，提交时记为 `unconfirmed`。按次 `giftProgress` 的 `deliveredGiftTimes`、`remainingGiftTimes`、`observedGiftTimes`、`excessGiftTimes` 及 `shares` 按本人净份额汇总。`segments` 返回本人各段的 `quotePeriod`、`unitPriceCents`、进度、分期实绩及待结依据。全单已送和剩余分列为 `orderDeliveredGiftTimes` 和 `orderRemainingGiftTimes`，建单预计到账见 `estimatedReceivedHearts`。份额的 `claimObservedReceivedHearts` 是接单时的单次观察值。派单人从本单按次分工查看各份额已送次数并改派剩余。
 
 同一订单、承接人、执行号与业务日只接受一份首报或补报。原请求可按相同标识和内容重试。另用新标识重复同日、重用标识修改内容或基于过期版本更正时，返回 HTTP 409。待写记录通过订单履约版本与改派互斥，单节点 MongoDB 支持写入及恢复。
 
@@ -208,6 +208,18 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 | `GET /api/client/orders` 与 `GET /api/client/clubs/:clubId/orders/:orderId` | 老板查看归属本人的直接派单和客户端订单。老板视图仅返回客户侧金额及履约汇总。 |
 
 按次的 `deliveryProgress.priceUnit` 为 `gift_times`。老板在「我的订单」和订单详情核对整单及各段的约定、已送和剩余次数。建单预计实收与接单时登记的实际实收、日报实际到账分别展示。接单实收使用匿名、去重的观察值及未知数。日报累计取各有效日报实际到账，所有明细都已知时给出合计，存在未知时另给已知小计及未知明细数。明确零到账显示 0。履约送完和派单人确认结单各有状态，`closedAt` 取已记录的结单事实。结单后保留日报历史，关闭普通补报与更正写入。
+
+### 按实际时段拆分实绩
+
+本人日报、派单监督及老板交付进度的 `periods` 按各有效日报明细的实际 `period` 分组。报价期别和建单预计均保留。同一段、账号和业务日可有多个实际期别。派单监督按全单、报价段、成员和净份额查看。老板按本人订单和报价段查看分期，成员、账号和内部报酬由团员端按权限核对。
+
+| 字段 | 口径 |
+| --- | --- |
+| `observedGiftTimes` / `deliveredGiftTimes` | 实报次数及计入约定的次数。按净份额限制，超出部分见 `excessGiftTimes`。一份额跨实际时段且超出净份额时，如需决定实报次数在哪个时段计入，相关时段的计入次数与金额为 `null`，待业务核对。 |
+| `estimatedDeliveredHearts` | 按已实报赠送次数和实际期别估算，普通期每次 1 颗、双倍期每次 2 颗。包含实际时段待核对的正赠送次数时，相应合计为 `null`，已知期别仍各自显示预计。 |
+| `actualReceivedHearts` | 日报实收汇总。存在未知明细时为 `null`，同时返回 `knownReceivedHearts`、`knownReceivedLines`、`unknownReceivedLines`，明确到账 0 颗计入已知。接单时的观察值单列。 |
+| `heartAmountCents` / `pendingCompensation` | 已计入约定的次数乘所属计价段的原单价。团员可查看本人按首段锁定的每次派抽和团抽计算的待结报酬。超出份额部分待业务处理。 |
+| `periodOnlyDifferenceCents` | 老板和派单人核对仅改变到账倍率的价差，值为 0。赠送次数和各段单价沿用原约定，原报价及已登记实收可分别查阅。日报及分期汇总只更新履约记录，补款、退款和入账有各自的业务入口。 |
 
 ### 未结单时追加计价段
 

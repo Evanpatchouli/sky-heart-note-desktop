@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Empty, Flex, Form, Input, InputNumber, Modal, Select, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Flex, Form, Input, InputNumber, Modal, Radio, Select, Spin, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { formatCentsAsYuan, type GiftClaimOrder, type GiftDailyReport, type GiftDeliveryProgress, type GiftReportPeriod } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { GiftPeriodFacts, giftHearts as actual, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
 
 type EntryLine = { shareId: string; period?: GiftReportPeriod; giftTimes: number; receivedHearts?: number | null };
@@ -15,7 +16,11 @@ type Pending = Pick<Fields, "lines" | "reason"> & { requestId: string } & (
 type History = { items: GiftDailyReport[]; nextCursor: string | null; giftProgress: GiftDeliveryProgress };
 
 const kindLabels = { daily: "日报", supplement: "补报", correction: "更正" };
-const periodLabels = { normal: "普通期", double: "双倍期", unconfirmed: "实际时段待核对" };
+const periodOptions = [
+  { value: "normal", label: periodLabels.normal },
+  { value: "double", label: periodLabels.double },
+  { value: "unconfirmed", label: "待核对" },
+];
 const countRule = { type: "integer", min: 0, max: Number.MAX_SAFE_INTEGER } as const;
 const idPattern = /^[0-9a-f]{24}$/;
 const requestPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -73,10 +78,6 @@ function writePending(key: string, value?: Pending) {
   } catch {
     // The current page retains the original request for retry.
   }
-}
-
-function actual(value: number | string | null) {
-  return value === null ? "未知" : `${value} 颗`;
 }
 
 function errorMessage(error: unknown) {
@@ -169,8 +170,8 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
 
   function save(fields: Fields) {
     if (!draft || pending || !canReport) return;
-    const lines = fields.lines.map(({ shareId, period, giftTimes, receivedHearts }) => ({
-      shareId, period, giftTimes, receivedHearts: receivedHearts ?? null,
+    const lines: EntryLine[] = fields.lines.map(({ shareId, period, giftTimes, receivedHearts }) => ({
+      shareId, period: period ?? "unconfirmed", giftTimes, receivedHearts: receivedHearts ?? null,
     }));
     const input = { requestId: crypto.randomUUID(), lines, reason: fields.reason?.trim() };
     if (draft.kind === "correction") {
@@ -227,19 +228,16 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
 }
 
 function ProgressSummary({ progress }: { progress: GiftDeliveryProgress }) {
-  const { pendingCompensation, shares } = progress;
+  const { pendingCompensation, shares, segments } = progress;
   return <Card size="small" title="本人履约">
     <Flex vertical gap="small">
       <Typography.Text>已送 {progress.deliveredGiftTimes} 次 · 剩余 {progress.remainingGiftTimes} 次</Typography.Text>
-      <Typography.Text>本人已送预计到账 {progress.estimatedDeliveredHearts} 颗 · 实际到账 {actual(progress.actualReceivedHearts)}</Typography.Text>
+      <Typography.Text>按实报日期及时段预计到账 {actual(progress.estimatedDeliveredHearts)} · 日报实际到账 {actual(progress.actualReceivedHearts)}</Typography.Text>
       {progress.unknownReceivedLines > 0 && <Typography.Text type="secondary">
         {progress.knownReceivedLines > 0 ? `已知到账小计 ${progress.knownReceivedHearts} 颗 · ` : ""}
         {progress.unknownReceivedLines} 条明细到账未知
       </Typography.Text>}
-      {progress.excessGiftTimes !== 0 && <Typography.Text type="warning">份额外赠送 {progress.excessGiftTimes} 次待核对</Typography.Text>}
-      {shares.length > 1 && <ul>{shares.map(share =>
-        <li key={share.shareId}>第 {share.segmentIndex + 1} 段 · 已送 {share.deliveredGiftTimes} 次 · 剩余 {share.remainingGiftTimes} 次</li>,
-      )}</ul>}
+      <GiftPeriodFacts performance={progress} />
       {pendingCompensation ? <>
         <Typography.Text strong>待结送心报酬 ¥{formatCentsAsYuan(pendingCompensation.memberCents)}</Typography.Text>
         <Typography.Text type="secondary">
@@ -251,6 +249,16 @@ function ProgressSummary({ progress }: { progress: GiftDeliveryProgress }) {
       <Typography.Text type="secondary">
         全单已送 {progress.orderDeliveredGiftTimes} 次 · 剩余 {progress.orderRemainingGiftTimes} 次 · 建单预计到账 {actual(progress.estimatedReceivedHearts)}
       </Typography.Text>
+      {segments.map(segment => <details key={segment.segmentIndex}>
+        <summary>第 {segment.segmentIndex + 1} 段 · 报价 {periodLabels[segment.quotePeriod]} · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次</summary>
+        <p>已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次
+          {segment.pendingCompensation && ` · 待结报酬 ¥${formatCentsAsYuan(segment.pendingCompensation.memberCents)}`}</p>
+        <GiftPeriodFacts performance={segment} />
+        <ul>{shares.filter(share => share.segmentIndex === segment.segmentIndex).map(share =>
+          <li key={share.shareId}>份额 {share.shareId.slice(-6)} · 已送 {share.deliveredGiftTimes} 次 · 剩余 {share.remainingGiftTimes} 次
+            {" · "}接单时观察 {actual(share.claimObservedReceivedHearts)}</li>,
+        )}</ul>
+      </details>)}
     </Flex>
   </Card>;
 }
@@ -283,19 +291,19 @@ function ReportForm({ draft, accounts, shares, saving, onSave, onCancel }: {
   const firstShare = shareOptions[0]?.value;
   const initialValues = {
     accountId: firstAccount,
-    businessDate: report?.businessDate ?? (draft.kind === "daily" ? dayjs().format("YYYY-MM-DD") : undefined),
+    businessDate: report?.businessDate,
     lines: report?.lines.map(line => ({ ...line, shareId: line.shareId ?? report.shareId }))
-      ?? [{ shareId: firstShare }],
+      ?? [{ shareId: firstShare, period: "unconfirmed" }],
   };
   return <Card title={draft.kind === "correction" ? `更正版本 ${report?.version}` : kindLabels[draft.kind]} size="small">
     <Form form={form} layout="vertical" initialValues={initialValues} onFinish={onSave} disabled={saving}
       onValuesChange={changes => {
         if (!changes.accountId) return;
         const first = shares.find(share => share.executionGameAccounts?.some(account => account.id === changes.accountId));
-        form.setFieldValue("lines", [{ shareId: first?.id }]);
+        form.setFieldValue("lines", [{ shareId: first?.id, period: "unconfirmed" }]);
       }}>
       <Form.Item name="accountId" label="送心号" rules={[{ required: true }]}>
-        <Select disabled={!!report} placeholder="选择已关联的本人送心号" options={accounts.map(account => ({
+        <Select disabled={!!report} style={{ width: "100%" }} placeholder="选择已关联的本人送心号" options={accounts.map(account => ({
           value: account.id, label: `${account.name} · #${account.localAccountId}`,
         }))} />
       </Form.Item>
@@ -307,11 +315,10 @@ function ReportForm({ draft, accounts, shares, saving, onSave, onCancel }: {
           {fields.map((field, index) => <fieldset key={field.key} style={{ border: "1px solid #DBE2EB", borderRadius: 6, margin: 0, minWidth: 0, padding: "0 12px" }}>
             <legend>赠送明细 {index + 1}</legend>
             <Form.Item name={[field.name, "shareId"]} label="承接份额" rules={[{ required: true }]}>
-              <Select options={shareOptions} disabled={!accountId} />
+              <Select options={shareOptions} disabled={!accountId} style={{ width: "100%" }} />
             </Form.Item>
-            <Form.Item name={[field.name, "period"]} label="实际时段（选填）">
-              <Select allowClear placeholder="沿用该段约定时段"
-                options={Object.entries(periodLabels).map(([value, label]) => ({ value, label }))} />
+            <Form.Item name={[field.name, "period"]} label="实际时段">
+              <Radio.Group options={periodOptions} style={{ display: "flex", flexWrap: "wrap" }} />
             </Form.Item>
             <Form.Item name={[field.name, "giftTimes"]} label="实际赠送次数" rules={[{ ...countRule, required: true }]}>
               <InputNumber min={0} max={Number.MAX_SAFE_INTEGER} precision={0} />
@@ -321,7 +328,7 @@ function ReportForm({ draft, accounts, shares, saving, onSave, onCancel }: {
             </Form.Item>
             {fields.length > 1 && <Button type="link" onClick={() => remove(field.name)}>移除此明细</Button>}
           </fieldset>)}
-          <Button onClick={() => add({ shareId: firstShare })} disabled={!accountId}>添加明细</Button>
+          <Button onClick={() => add({ shareId: firstShare, period: "unconfirmed" })} disabled={!accountId}>添加明细</Button>
         </Flex>}
       </Form.List>
       {draft.kind !== "daily" && <Form.Item name="reason" label="原因" rules={[{ required: true, whitespace: true }]}>
