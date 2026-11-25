@@ -141,7 +141,9 @@ for (const { name, port, label } of apps) {
     assert.match(await offline.text(), new RegExp(`Sky Club · ${label}[\\s\\S]*当前无法连接`));
     assert.equal((await worker.request(`/assets/${entry}`, { destination: "script" })).status, 200);
 
-    for (const path of ["/club/dispatch", "/club/operations", "/claim-board/?orderId=example"]) {
+    const employeePages = ["/workspace", "/club/dispatch", "/club/operations", "/claim-board/?orderId=example",
+      "/club/assignments?view=calendar", "/club/balance", "/club/financial-adjustments", "/club/gift-claims", "/club/heart-claims"];
+    for (const path of employeePages) {
       if (name === "employee") {
         const offlineRoute = await worker.request(path, navigation);
         assert.equal(offlineRoute.status, 503);
@@ -152,7 +154,7 @@ for (const { name, port, label } of apps) {
       }
     }
 
-    const clientOrderRoutes = ["/order", "/order-detail/?order=example"];
+    const clientOrderRoutes = ["/order", "/order-detail/?order=example", "/account", "/activate", "/join-club"];
     for (const path of clientOrderRoutes) {
       if (name === "client") {
         const route = await worker.request(path, navigation);
@@ -183,7 +185,7 @@ for (const { name, port, label } of apps) {
     assert.equal(recovered.status, 200);
     assert.equal(await recovered.text(), origin + "/?vtype=list");
     if (name === "employee") {
-      for (const path of ["/club/dispatch", "/club/operations", "/claim-board?orderId=example"]) {
+      for (const path of employeePages) {
         const route = await worker.request(path, navigation);
         assert.equal(route.status, 200);
         assert.equal(await route.text(), origin + path);

@@ -2,6 +2,13 @@ const cachePrefix = `sky-club:pwa:${config.app}:`;
 const cacheName = cachePrefix + config.version;
 const assetUrls = new Set(config.assets.map(path => new URL(path, self.location.origin).href));
 const assetDestinations = new Set(["script", "style", "font", "image", "worker"]);
+const pathsByApp = {
+  admin: [],
+  employee: ["/workspace", "/claim-board", "/club/assignments", "/club/balance", "/club/dispatch",
+    "/club/financial-adjustments", "/club/gift-claims", "/club/heart-claims", "/club/operations"],
+  client: ["/order", "/order-detail", "/account", "/activate", "/join-club"],
+};
+const appPages = new Set(["", "/index.html", ...pathsByApp[config.app]]);
 const notificationCache = `sky-club:notification:${config.app}`;
 const objectId = /^[a-f0-9]{24}$/;
 const validId = value => typeof value === "string" && objectId.test(value);
@@ -102,10 +109,7 @@ self.addEventListener("fetch", event => {
   if (url.origin !== self.location.origin) return;
 
   const path = url.pathname.replace(/\/$/, "");
-  const appNavigation = url.pathname === "/" || url.pathname === "/index.html" ||
-    (config.app === "employee" && ["/club/dispatch", "/club/operations", "/claim-board"].includes(path)) ||
-    (config.app === "client" && ["/order", "/order-detail"].includes(path));
-  if (request.mode === "navigate" && request.destination === "document" && appNavigation) {
+  if (request.mode === "navigate" && request.destination === "document" && appPages.has(path)) {
     event.respondWith(fetch(request, { cache: "no-store" }).catch(() => new Response(config.offlinePage, {
       status: 503,
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
