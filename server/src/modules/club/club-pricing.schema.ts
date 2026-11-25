@@ -151,20 +151,6 @@ class PriceSegment {
 const PriceSegmentSchema = SchemaFactory.createForClass(PriceSegment);
 
 @Schema({ _id: false })
-class UnlockPricing {
-  @Prop({ ...wholeNumber, min: 0 })
-  quantity: number;
-
-  @Prop({ ...wholeNumber, min: 0 })
-  unitPriceCents: number;
-
-  @Prop({ type: Boolean })
-  unitPriceAgreed?: boolean;
-}
-
-const UnlockPricingSchema = SchemaFactory.createForClass(UnlockPricing);
-
-@Schema({ _id: false })
 class OrderPricing {
   @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
   ruleVersion?: number;
@@ -178,9 +164,6 @@ class OrderPricing {
   @Prop({ type: SchemaTypes.Mixed })
   promotions?: GiftQuotePromotions;
 
-  @Prop({ type: Number, enum: [1] })
-  unlockRateVersion?: 1;
-
   @Prop({ type: String, enum: COMMISSION_BASES, required: true })
   basis: CommissionBasis;
 
@@ -189,9 +172,6 @@ class OrderPricing {
 
   @Prop({ type: [PriceSegmentSchema], required: true })
   segments: PriceSegment[];
-
-  @Prop({ type: UnlockPricingSchema })
-  unlock?: UnlockPricing;
 
   @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
   discountedHeartsAmountCents?: number;
@@ -223,23 +203,14 @@ class CustomerQuote {
   @Prop({ type: SchemaTypes.Mixed })
   promotions?: GiftQuotePromotions;
 
-  @Prop({ type: Number, enum: [1] })
-  unlockRateVersion?: 1;
-
   @Prop({ type: [PriceSegmentSchema], required: true })
   segments: PriceSegment[];
-
-  @Prop({ type: UnlockPricingSchema, required: true })
-  unlock: UnlockPricing;
 
   @Prop({ ...wholeNumber, min: 0 })
   heartsAmountCents: number;
 
   @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
   originalHeartsAmountCents?: number;
-
-  @Prop({ ...wholeNumber, min: 0 })
-  unlockAmountCents: number;
 
   @Prop({ ...wholeNumber, min: 0 })
   totalAmountCents: number;

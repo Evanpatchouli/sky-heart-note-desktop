@@ -19,9 +19,8 @@ function SettlementDetail({ data, compact }: { data: Settlement; compact: boolea
       { key: "price", label: "每颗单价", children: money(data.unit) },
       { key: "qty", label: "付费 / 赠送", children: `${data.paidHearts} / ${data.giftHearts} 颗` },
       { key: "done", label: "实际到账", children: summary.delivered + " 颗" },
-      { key: "unlock", label: "实际解锁", children: summary.unlocks + " 次" },
       { key: "fees", label: "派抽 / 团抽", children: `${money(data.dispatchFee)} / ${money(data.clubFee)}（元/颗）`, span: compact ? 1 : 2 },
-      { key: "receipt", label: "收款依据", children: `爱心款 ${money(data.paidHearts * data.unit)} + 解锁款 ${money(summary.unlocks * data.unlockFee)}`, span: compact ? 1 : 2 },
+      { key: "receipt", label: "收款依据", children: `爱心款 ${money(data.paidHearts * data.unit)}`, span: compact ? 1 : 2 },
     ]} />
     <div><Typography.Title level={5}>分账明细</Typography.Title>
       <Table<Entry> rowKey="id" size="small" pagination={false} dataSource={summary.entries}

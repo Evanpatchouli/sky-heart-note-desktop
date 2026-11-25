@@ -28,8 +28,6 @@ export interface GiftOffer extends GiftDirectedAssignment {
   accepted: boolean;
 }
 
-export type GiftAccountRelationship = 'existing_friend' | 'new_unlock';
-
 export interface GiftExecutionAccount {
   id: string;
   personalAccountId: string;
@@ -40,32 +38,6 @@ export interface GiftExecutionAccount {
   recipientGameAccount: string;
   linkedAt: string;
   shareIds: string[];
-  relationship: {
-    kind: GiftAccountRelationship;
-    occurredAt: string;
-    recordedAt: string;
-    amountCents: number | null;
-  } | null;
-}
-
-export interface GiftUnlockTotals {
-  actualCount: number;
-  actualAmountCents: number;
-  unpricedCount: number;
-}
-
-export interface GiftExecutionSummary extends GiftUnlockTotals {
-  agreedUnitPriceCents: number | null;
-}
-
-export interface GiftUnlockReview extends GiftExecutionSummary {
-  recipientGameAccount: string;
-  estimatedCount: number | null;
-  estimatedAmountCents: number | null;
-  receivedAmountCents: number | null;
-  differenceCents: number | null;
-  records: (GiftExecutionAccount & { customerUserId: string | null; customerNickname: string | null })[];
-  members: (GiftUnlockTotals & { userId: string; nickname: string | null })[];
 }
 
 export interface GiftShare extends GiftDirectedAssignment {
@@ -115,7 +87,6 @@ export interface GiftAllocationTotals {
 
 export interface GiftDispatchPreparation {
   quotes: GiftPriceSegment[];
-  unlockReview: GiftUnlockReview;
   segments: (GiftDispatchSegment & {
     memberAllocations: { userId: string; giftTimes: number; schedule: GiftDayAllocation[] }[];
   })[];
@@ -133,7 +104,6 @@ export interface GiftClaimOrder {
   promotionalGiftTimes?: number;
   estimatedReceivedHearts?: number;
   recipientGameAccount?: string;
-  fulfillment?: GiftExecutionSummary;
   acceptingClaims?: boolean;
   segments: GiftDispatchSegment[];
 }

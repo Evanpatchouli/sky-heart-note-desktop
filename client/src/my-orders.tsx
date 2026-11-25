@@ -158,9 +158,7 @@ function OrderFacts({ order, manageContinuation = false }: { order: Order; manag
       </> : null}
       {order.quote.promotions?.couponIssue && <><dt>原选优惠券</dt>
         <dd>{order.quote.promotions.couponIssue === "threshold" ? "折前服务款未达到使用门槛" : "当前不可用"}</dd></>}
-      <dt>爱心款</dt><dd>¥{formatCentsAsYuan(order.quote.heartsAmountCents)}</dd>
-      <dt>预估解锁款</dt><dd>{order.quote.unlock.quantity} 次 × ¥{formatCentsAsYuan(order.quote.unlock.unitPriceCents)}/次 = ¥{formatCentsAsYuan(order.quote.unlockAmountCents)}</dd>
-      <dt>{hasContinuation ? "原报价合计" : "报价合计"}</dt><dd>¥{formatCentsAsYuan(order.quote.totalAmountCents)}</dd>
+      <dt>{hasContinuation ? "原报价应付服务款" : "应付服务款"}</dt><dd>¥{formatCentsAsYuan(order.quote.totalAmountCents)}</dd>
     </dl> : null}
     {order.receipt ? <>
       <p>{hasContinuation ? "原收款" : "已登记实收"} ¥{formatCentsAsYuan(order.receipt.receivedAmountCents)} · {new Date(order.receipt.receivedAt).toLocaleString("zh-CN")}</p>

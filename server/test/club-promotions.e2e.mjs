@@ -15,7 +15,7 @@ const withGift = (paidGiftTimes, promotionalGiftTimes, unitPriceCents, period) =
   ({ ...segment(paidGiftTimes, unitPriceCents, period), promotionalGiftTimes });
 const window = date => ({ startDate: date, endDate: date });
 
-test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', { timeout: 150_000 }, async t => {
+test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', { timeout: 150_000 }, async t => {
   const origins = Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, `https://${app}.promotion.test`]));
   const { base, password, runCommand, startPeer } = await startSystem(t, { database: 'promotion_e2e', adminUsername: 'promo_admin', origins });
   const challenges = new Map();
@@ -81,16 +81,16 @@ test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP �
     const paidDate = '2026-11-21', giftDate = '2026-11-22';
     const target = await order();
     await price(target, { giftSegments: [withGift(100, 11)] }, 400);
-    await price(target, { unlock: { quantity: 10, unitPriceCents: 1 } }, 400);
+    await price(target, { unlock: { quantity: 10, unitPriceCents: 10 } }, 400);
     await price(target, { unlock: { quantity: 10, unitPriceCents: 0 } }, 400);
-    const { quote } = await price(target, { personalDiscountCents: 500, giftSegments: [withGift(100, 5)], unlock: { quantity: 10 } });
+    const { quote } = await price(target, { personalDiscountCents: 500, giftSegments: [withGift(100, 5)] });
     assert.deepEqual([quote.originalHeartsAmountCents, quote.promotions.platform.amountCents, quote.promotions.personal.amountCents,
-      quote.heartsAmountCents, quote.promotions.totalGiftTimes, quote.unlockAmountCents, quote.totalAmountCents],
-      [5000, 500, 500, 4000, 105, 100, 4100]);
+      quote.heartsAmountCents, quote.promotions.totalGiftTimes, quote.totalAmountCents],
+      [5000, 500, 500, 4000, 105, 4000]);
     assert.equal(quote.promotions.platform.version, 1);
     await activity(1, 8000);
     assert.deepEqual((await cp(target.ownerPath)).quote, quote);
-    await receive(target, 4100);
+    await receive(target, 4000);
     const dispatch = { requestId: randomUUID(), pricingRevision: 1, ruleVersion: 1, commissionReviewRevision: 0,
       giftDispatchSegments: [paidDate, giftDate].map((date, segmentIndex) => ({
         segmentIndex, ...window(date), openToClaim: true, directed: [],
@@ -104,15 +104,11 @@ test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP �
     });
     const paidShare = (await claim(0, 100)).shareId;
     const giftShare = (await claim(1, 5)).shareId;
-    for (let i = 0; i < 7; i++) await ep('/employee/songxinhao', { name: `用于履约的账号 ${i}` });
+    for (let i = 0; i < 2; i++) await ep('/employee/songxinhao', { name: `用于履约的账号 ${i}` });
     const accounts = await ep('/employee/songxinhao/linkable');
     const accountPath = share => target.path + '/shares/' + share + '/execution-accounts';
     const first = await ep(accountPath(paidShare), { personalAccountId: accounts[0].id });
     await ep(accountPath(giftShare), { personalAccountId: accounts[0].id });
-    for (let i = 0; i < 7; i++) {
-      const linked = i ? await ep(accountPath(paidShare), { personalAccountId: accounts[i].id }) : first;
-      await ep(accountPath(paidShare) + '/' + linked.id + '/relationship', { relationship: i === 6 ? 'existing_friend' : 'new_unlock' });
-    }
     const report = (share, businessDate, giftTimes, status) => ep(accountPath(share) + '/' + first.id + '/daily-reports',
       { requestId: randomUUID(), kind: 'daily', businessDate, lines: [{ giftTimes, receivedHearts: giftTimes }] }, 'POST', status);
     await report(giftShare, giftDate, 5, 409);
@@ -128,9 +124,6 @@ test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP �
     });
     assert.equal(basis.memberFeeCents + (basis.dispatchFeeCents - basis.personalDiscountCents) +
       (basis.clubFeeCents - basis.platformDiscountCents - basis.promotionalGiftCostCents), 4000);
-    const unlock = (await ep(target.path + '/gift-dispatch')).unlockReview;
-    assert.equal(unlock.members[0].userId, dispatcher.id);
-    assert.deepEqual([unlock.estimatedAmountCents, unlock.actualAmountCents, unlock.differenceCents], [100, 60, -40]);
     const continuationId = randomUUID();
     const continuation = target.path + '/continuation-quotes/' + continuationId;
     await ep(target.path + '/continuation-quotes', {
@@ -160,7 +153,7 @@ test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP �
     assert.equal(after.pendingPromotionalGiftTimes, 5);
   });
 
-  await t.test('客户端预填、活动替代、门槛不含解锁、并发领用只成功一笔', async () => {
+  await t.test('客户端预填、活动替代、折前服务款门槛、并发领用只成功一笔', async () => {
     await activity(2, 9000);
     const terms = { kind: 'threshold_coupon', thresholdCents: 5000, discountCents: 800 };
     const { couponId } = await issue(customer.id, terms);
@@ -182,9 +175,9 @@ test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP �
     await ep(fromClient.path + '/publish', { requestId: randomUUID(), pricingRevision: 2, ruleVersion: 1, commissionReviewRevision: 0 });
     assert.deepEqual(await ep(noticePath), []);
     const threshold = await order(98);
-    const notEligible = (await price(threshold, { giftSegments: [segment(98)], unlock: { quantity: 10 }, platformCouponId: couponId })).quote;
+    const notEligible = (await price(threshold, { giftSegments: [segment(98)], platformCouponId: couponId })).quote;
     assert.deepEqual([notEligible.originalHeartsAmountCents, notEligible.promotions.couponIssue, notEligible.promotions.platform.kind,
-      notEligible.totalAmountCents], [4900, 'threshold', 'activity', 4510]);
+      notEligible.totalAmountCents], [4900, 'threshold', 'activity', 4410]);
     const first = await order(), second = await order();
     await price(first, { platformCouponId: other.couponId }, 400);
     await price(first, { platformDiscountCents: 1 }, 400);
@@ -299,13 +292,15 @@ test('按次优惠、固定解锁费、客户优惠券和促销赠送的 HTTP �
     assert.deepEqual([basis.customerServiceCents, basis.promotionalGiftCostCents, basis.grossServiceCents], [1300, 130, 1430]);
   });
 
-  await t.test('服务全免时仍独立核对新好友解锁款', async () => {
+  await t.test('一笔 ¥0.50 的服务全免时由派单人确认零元单', async () => {
     await activity(4, 9000);
     const target = await order(1);
-    const { quote } = await price(target, { giftSegments: [segment(1)], personalDiscountCents: 45, unlock: { quantity: 1 } });
+    const { quote } = await price(target, { giftSegments: [segment(1)], personalDiscountCents: 45 });
     assert.deepEqual([quote.promotions.platform.amountCents, quote.promotions.personal.amountCents,
-      quote.heartsAmountCents, quote.unlockAmountCents, quote.totalAmountCents], [5, 45, 0, 10, 10]);
-    await ep(target.path + '/receipts', receiptInput(0), 'POST', 400);
-    assert.equal((await receive(target, 10)).paymentStatus, 'paid_in_full');
+      quote.heartsAmountCents, quote.totalAmountCents], [5, 45, 0, 0]);
+    const publish = { requestId: randomUUID(), pricingRevision: 1, ruleVersion: 1, commissionReviewRevision: 0 };
+    await ep(target.path + '/publish', publish, 'POST', 409);
+    assert.equal((await receive(target, 0)).paymentStatus, 'paid_in_full');
+    assert.equal((await ep(target.path + '/publish', publish)).dispatchStatus, 'published');
   });
 });

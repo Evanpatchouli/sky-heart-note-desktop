@@ -3,7 +3,6 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -133,23 +132,6 @@ export class RecordContinuationReceiptDto extends ContinuationActionDto {
   receivedAt: string;
 }
 
-class UnlockPricingDto {
-  @IsInt()
-  @Min(0)
-  @Max(Number.MAX_SAFE_INTEGER)
-  quantity: number;
-
-  @ValidateIf((_, value) => value !== undefined)
-  @IsInt()
-  @Min(0)
-  @Max(Number.MAX_SAFE_INTEGER)
-  unitPriceCents?: number;
-
-  @ValidateIf((_, value) => value !== undefined)
-  @IsBoolean()
-  unitPriceAgreed?: boolean;
-}
-
 export class UpdateOrderPricingDto {
   @IsInt()
   @Min(1)
@@ -175,12 +157,6 @@ export class UpdateOrderPricingDto {
   @ValidateNested({ each: true })
   @Type(() => InitialGiftPriceSegmentDto)
   giftSegments: InitialGiftPriceSegmentDto[];
-
-  @ValidateIf((_, value) => value !== undefined)
-  @IsObject()
-  @ValidateNested()
-  @Type(() => UnlockPricingDto)
-  unlock?: UnlockPricingDto;
 
   @ValidateIf((_, value) => value !== undefined)
   @IsInt()

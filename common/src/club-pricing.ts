@@ -78,7 +78,6 @@ export interface GiftOrderPricing {
   priceUnit?: 'gift_times';
   giftSegments?: GiftPriceSegment[];
   promotions?: GiftQuotePromotions;
-  unlockRateVersion?: 1;
 }
 
 export interface CommissionRule {
@@ -94,25 +93,16 @@ export interface PriceSegment {
   unitPriceCents: number;
 }
 
-export interface UnlockPricing {
-  quantity: number;
-  unitPriceCents: number;
-  unitPriceAgreed?: boolean;
-}
-
 export interface CustomerQuote extends GiftOrderPricing {
   revision: number;
   segments: PriceSegment[];
-  unlock: UnlockPricing;
   originalHeartsAmountCents?: number;
   heartsAmountCents: number;
-  unlockAmountCents: number;
   totalAmountCents: number;
 }
 
 export function calculateQuoteAmounts(
   segments: readonly PriceSegment[],
-  unlock: UnlockPricing,
   discountedHeartsAmountCents?: number,
 ) {
   if (!segments.length) return null;
@@ -127,21 +117,15 @@ export function calculateQuoteAmounts(
     if (!Number.isSafeInteger(originalHeartsAmountCents)) return null;
   }
   if (
-    !Number.isSafeInteger(unlock.quantity) || unlock.quantity < 0 ||
-    !Number.isSafeInteger(unlock.unitPriceCents) || unlock.unitPriceCents < 0 ||
     (discountedHeartsAmountCents !== undefined && (
       !Number.isSafeInteger(discountedHeartsAmountCents) || discountedHeartsAmountCents < 0 ||
       discountedHeartsAmountCents >= originalHeartsAmountCents
     ))
   ) return null;
   const heartsAmountCents = discountedHeartsAmountCents ?? originalHeartsAmountCents;
-  const unlockAmountCents = unlock.quantity * unlock.unitPriceCents;
-  const totalAmountCents = heartsAmountCents + unlockAmountCents;
-  if (!Number.isSafeInteger(totalAmountCents)) return null;
   return {
     heartsAmountCents,
-    unlockAmountCents,
-    totalAmountCents,
+    totalAmountCents: heartsAmountCents,
     ...(discountedHeartsAmountCents === undefined ? {} : { originalHeartsAmountCents }),
   };
 }
@@ -151,7 +135,6 @@ export interface OrderPricing extends GiftOrderPricing {
   basis: CommissionBasis;
   dispatchFeeCents: number;
   segments: PriceSegment[];
-  unlock?: UnlockPricing;
   discountedHeartsAmountCents?: number;
   revision: number;
 }

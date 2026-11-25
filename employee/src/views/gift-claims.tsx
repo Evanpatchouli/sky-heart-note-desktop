@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Select, Spin, Tag, Typography } from "antd";
 import { Link, useSearchParams } from "react-router";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import { formatCentsAsYuan } from "@webapp-template/common";
 import type { GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
 import Header from "#/components/Header";
 import { employeeRequest } from "#/service/request";
@@ -228,8 +227,6 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
         <p>订单 <code>{order.id}</code> · 派单人 {order.dispatcherUserId}</p>
         <p>建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "未记录" : `${order.estimatedReceivedHearts} 颗`}
           {order.recipientGameAccount ? ` · 接收游戏号 ${order.recipientGameAccount}` : ""}</p>
-        {order.fulfillment && <p>本人实际新解锁 {order.fulfillment.actualCount} 次 · ¥{formatCentsAsYuan(order.fulfillment.actualAmountCents)}
-          {order.fulfillment.unpricedCount > 0 && ` · ${order.fulfillment.unpricedCount} 次费用待核对`}</p>}
         {order.segments.some(segment => segment.shares.length > 0) &&
           <Button onClick={() => setDiaryOrder(order)}>我的日报</Button>}
         {order.segments.map(segment => {
@@ -264,8 +261,8 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
               <GiftSchedule schedule={share.schedule} />
               {share.originalSchedule && <details><summary>原领取日程</summary><GiftSchedule schedule={share.originalSchedule} /></details>}
               {order.recipientGameAccount && <GiftExecutionAccounts
-                orderRoute={`clubs/${clubId}/orders/${order.id}`} share={share} recipient={order.recipientGameAccount}
-                unitPrice={order.fulfillment?.agreedUnitPriceCents ?? null} readOnly={order.acceptingClaims === false || !share.netGiftTimes}
+                orderRoute={`clubs/${clubId}/orders/${order.id}`} share={share}
+                readOnly={order.acceptingClaims === false || !share.netGiftTimes}
                 onSaved={refresh} />}
             </div>)}
           </section>;

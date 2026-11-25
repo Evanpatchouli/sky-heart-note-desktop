@@ -25,7 +25,7 @@ import {
   EmployeeClubOrderQuery,
 } from './club-order.dto';
 import { ClubDirectoryService } from './club-directory.service';
-import { LinkGameAccountDto, RecordAccountRelationshipDto } from './club-execution.dto';
+import { LinkGameAccountDto } from './club-execution.dto';
 import { ClubGiftExecutionService } from './club-gift-execution.service';
 import { ClubOrderService } from './club-order.service';
 import {
@@ -199,16 +199,6 @@ export class EmployeeClubOrderController {
     @Param('shareId') shareId: string, @Body() input: LinkGameAccountDto,
   ) {
     return Resp.success(await this.execution.linkAccount(clubId, user.id, orderId, shareId, input.personalAccountId));
-  }
-
-  @Post(':orderId/shares/:shareId/execution-accounts/:accountId/relationship')
-  async recordRelationship(
-    @AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string,
-    @Param('shareId') shareId: string, @Param('accountId') accountId: string, @Body() input: RecordAccountRelationshipDto,
-  ) {
-    return Resp.success(await this.execution.recordRelationship(
-      clubId, user.id, orderId, shareId, accountId, input.relationship, input.occurredAt,
-    ));
   }
 
   @Post(':orderId/receipts')

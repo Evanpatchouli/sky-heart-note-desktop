@@ -10,7 +10,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments, NEW_FRIEND_UNLOCK_CENTS, type CommissionRule, type CustomerGiftProgress, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
+import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments, type CommissionRule, type CustomerGiftProgress, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
@@ -47,7 +47,6 @@ const incompleteCustomerLink = {
   customerLinkStatus: 'pending_verification',
 };
 const PRE_DISPATCH_STATUSES = ['draft', 'pending'];
-const NO_UNLOCK = { quantity: 0, unitPriceCents: 0 };
 
 type Submission =
   | { source: 'direct_dispatch'; input: CreateDirectOrderDto }
@@ -101,28 +100,24 @@ function calculateCustomerQuote(pricing?: OrderPricing): CustomerQuote | null {
   if (!pricing) return null;
   const { revision, priceUnit, giftSegments, segments } = pricing;
   if (priceUnit !== 'gift_times') {
-    const { unlock, discountedHeartsAmountCents } = pricing;
-    if (!unlock) return null;
-    const amounts = calculateQuoteAmounts(segments, unlock, discountedHeartsAmountCents);
-    return amounts && { revision, segments, unlock, ...amounts };
+    const { discountedHeartsAmountCents } = pricing;
+    const amounts = calculateQuoteAmounts(segments, discountedHeartsAmountCents);
+    return amounts && { revision, segments, ...amounts };
   }
   const amounts = giftSegments && calculateGiftQuote(giftSegments);
   if (!amounts) return null;
-  const unlock = pricing.unlock ?? NO_UNLOCK;
-  const { promotions, unlockRateVersion, discountedHeartsAmountCents } = pricing;
+  const { promotions, discountedHeartsAmountCents } = pricing;
   const heartsAmountCents = promotions
     ? amounts.amountCents - (promotions.platform?.amountCents ?? 0) - (promotions.personal?.amountCents ?? 0)
     : discountedHeartsAmountCents ?? amounts.amountCents;
-  const unlockAmountCents = unlock.quantity * unlock.unitPriceCents;
-  const totalAmountCents = heartsAmountCents + unlockAmountCents;
+  const totalAmountCents = heartsAmountCents;
   if (!Number.isSafeInteger(totalAmountCents) || (!promotions && discountedHeartsAmountCents !== undefined &&
       (!Number.isSafeInteger(discountedHeartsAmountCents) || heartsAmountCents < 0 || heartsAmountCents >= amounts.amountCents))) return null;
   return {
-    revision, priceUnit, giftSegments, segments, unlock,
+    revision, priceUnit, giftSegments, segments,
     ...(promotions ? { promotions } : {}),
     ...(promotions || discountedHeartsAmountCents !== undefined ? { originalHeartsAmountCents: amounts.amountCents } : {}),
-    ...(unlockRateVersion ? { unlockRateVersion } : {}),
-    heartsAmountCents, unlockAmountCents, totalAmountCents,
+    heartsAmountCents, totalAmountCents,
   };
 }
 
@@ -587,19 +582,6 @@ export class ClubOrderService implements OnModuleInit {
       throw new BadRequestException('各报价段付费次数合计须等于原订购次数，请核对每日次数和金额');
     }
 
-    const previousUnlock = order.pricing?.unlock;
-    const historicalUnlock = order.pricing && !order.pricing.unlockRateVersion;
-    let unlock = previousUnlock ?? NO_UNLOCK;
-    if (historicalUnlock) {
-      if (input.unlock && (input.unlock.quantity !== unlock.quantity ||
-          input.unlock.unitPriceCents !== undefined && input.unlock.unitPriceCents !== unlock.unitPriceCents))
-        throw new BadRequestException('历史解锁报价继续沿用已记录的数量与单价');
-    } else {
-      if (input.unlock?.unitPriceCents !== undefined && input.unlock.unitPriceCents !== NEW_FRIEND_UNLOCK_CENTS ||
-          input.unlock?.unitPriceAgreed === false)
-        throw new BadRequestException('每个新好友解锁费固定为 0.10 元');
-      unlock = { quantity: input.unlock?.quantity ?? unlock.quantity, unitPriceCents: NEW_FRIEND_UNLOCK_CENTS };
-    }
     const legacyDiscount = order.pricing?.discountedHeartsAmountCents;
     if (legacyDiscount !== undefined && (input.personalDiscountCents || giftTimesBySegment.some(Boolean) || input.platformCouponId))
       throw new ConflictException('历史折扣报价须沿用原有优惠口径');
@@ -615,8 +597,6 @@ export class ClubOrderService implements OnModuleInit {
       priceUnit: 'gift_times' as const,
       dispatchFeeCents: input.dispatchFeeCents,
       segments: [],
-      unlock,
-      ...(historicalUnlock ? {} : { unlockRateVersion: 1 as const }),
       ...(legacyDiscount !== undefined ? { discountedHeartsAmountCents: legacyDiscount } : {}),
       ...(promotions && (promotions.platform || promotions.personal || promotions.gift || promotions.couponIssue ||
         order.requestedPromotionCouponId || input.platformCouponId !== undefined) ? { promotions } : {}),
@@ -743,16 +723,15 @@ export class ClubOrderService implements OnModuleInit {
     if (commission.basis !== rule.basis || commission.ruleVersion !== ruleVersion)
       throw new ConflictException('请重新核对最新的每次抽成规则');
 
-    const { revision, priceUnit, giftSegments, segments, unlock, promotions, unlockRateVersion,
+    const { revision, priceUnit, giftSegments, segments, promotions,
       totalAmountCents, originalHeartsAmountCents, heartsAmountCents } = receipt.quote;
     const giftDispatch = input.giftDispatchSegments
       ? await this.giftDispatch.prepareInitial(clubId, input.giftDispatchSegments, giftFulfillmentSegments(giftSegments ?? [], promotions))
       : undefined;
     const dispatchPricing = {
-      ...rule, revision, priceUnit, giftSegments, segments, unlock,
+      ...rule, revision, priceUnit, giftSegments, segments,
       ...(promotions ? { promotions } : {}),
       ...(!promotions && originalHeartsAmountCents !== undefined ? { discountedHeartsAmountCents: heartsAmountCents } : {}),
-      ...(unlockRateVersion ? { unlockRateVersion } : {}),
       dispatchFeeCents: commission.dispatchFeeCents,
     };
     const committed = await this.orders.findOneAndUpdate(

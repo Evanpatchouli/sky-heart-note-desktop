@@ -38,7 +38,6 @@ type PendingContinuation = Pick<ContinuationQuote, "requestId" | "segment">;
 type PriceFields = {
   dispatchFee: string;
   segments: SegmentFields[];
-  unlockQuantity?: number;
   personalDiscount?: string;
   platformCoupon?: string;
 };
@@ -114,13 +113,16 @@ function QuoteSummary({ quote }: { quote: CustomerQuote }) {
       {promotions.personal && <p>派单人承担 · 个人让利 −{money(promotions.personal.amountCents)}</p>}
       {promotions.gift && <p>团费承担 · 促销赠送 {promotions.gift.segments.reduce((sum, gift) => sum + gift.promotionalGiftTimes, 0)} 次 · 首次报价总履约 {promotions.totalGiftTimes} 次</p>}
     </>}
-    <p>爱心款 {money(quote.heartsAmountCents)} · 预估解锁款 {quote.unlock.quantity} 个 × {money(quote.unlock.unitPriceCents)} = {money(quote.unlockAmountCents)} · 报价合计 {money(quote.totalAmountCents)}</p>
+    <p>应付服务款 {money(quote.totalAmountCents)}</p>
   </div>;
 }
 
 function ReceiptDetails({ receipt }: { receipt: Receipt }) {
   return <Typography.Paragraph>
-    已登记实收 {money(receipt.receivedAmountCents)} · {new Date(receipt.receivedAt).toLocaleString("zh-CN")} · 收款人 {receipt.receivedByUserId} · 经办人 {receipt.recordedByUserId}
+    {receipt.receivedAmountCents === 0
+      ? `已确认零元单 · 确认人 ${receipt.recordedByUserId}`
+      : `已登记实收 ${money(receipt.receivedAmountCents)} · 收款人 ${receipt.receivedByUserId} · 经办人 ${receipt.recordedByUserId}`}
+    {" · "}{new Date(receipt.receivedAt).toLocaleString("zh-CN")}
   </Typography.Paragraph>;
 }
 
@@ -144,6 +146,7 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
   const [dirty, setDirty] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const inFlight = useRef(false);
+  const zeroReceipt = useRef<{ pricingRevision: number; receivedAt: string } | undefined>(undefined);
   const pending = useRef<{ path: string; payload: string; requestId: string } | null>(null);
 
   useEffect(() => {
@@ -163,7 +166,6 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
         segments: data.pricing?.giftSegments?.map((segment, index) => ({ ...segment, unitPrice: formatCentsAsYuan(segment.unitPriceCents),
           promotionalGiftTimes: data.pricing?.promotions?.gift?.segments.find(gift => gift.sourceSegmentIndex === index)?.promotionalGiftTimes }))
           ?? initialSegments(requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes),
-        unlockQuantity: data.pricing?.unlock?.quantity,
         personalDiscount: data.pricing?.promotions?.personal ? formatCentsAsYuan(data.pricing.promotions.personal.amountCents) : "",
         platformCoupon: (data.pricing?.promotions ? data.pricing.promotions.selectedCouponId : data.requestedPromotionCouponId) ?? "",
       });
@@ -203,7 +205,6 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
 
   const { pricing, rule, receipt, quote, commissionReview, dispatchPricing: frozen } = preparation ?? {};
   const ruleReady = rule?.basis === "gift_times";
-  const historicalUnlock = pricing && !pricing.unlockRateVersion;
   const maxGifts = Math.floor(requestedGiftTimes / 10);
   const executionSegments = quote?.giftSegments && giftFulfillmentSegments(quote.giftSegments, quote.promotions);
   const coupons = preparation?.promotionCoupons ?? [];
@@ -214,7 +215,6 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
     const dispatchFeeCents = parseYuanAsCents(fields.dispatchFee);
     const giftSegments = fields.segments.map(decodeSegment);
     const amounts = calculateGiftQuote(giftSegments);
-    const quantity = fields.unlockQuantity ?? 0;
     const personalDiscountCents = parseYuanAsCents(fields.personalDiscount?.trim() || "0");
     const promotionalGiftTimes = giftSegments.reduce((sum, segment) => sum + (segment.promotionalGiftTimes ?? 0), 0);
     if (promotionalGiftTimes > maxGifts) {
@@ -222,17 +222,22 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
       return;
     }
     if (!ruleReady || !rule || dispatchFeeCents === null || personalDiscountCents === null ||
-        !Number.isSafeInteger(quantity) || quantity < 0 ||
         !amounts || amounts.paidGiftTimes !== requestedGiftTimes) {
-      setError("请核对各段付费次数、日量、单价、派抽、个人让利及解锁数量。");
+      setError("请核对各段付费次数、日量、单价、派抽和个人让利。");
       return;
     }
     void write("/pricing", "PATCH", {
       ruleVersion: rule.version, expectedRevision: pricing?.revision ?? 0, dispatchFeeCents, giftSegments,
       personalDiscountCents,
       ...(fields.platformCoupon !== undefined && fields.platformCoupon !== savedCouponId ? { platformCouponId: fields.platformCoupon || null } : {}),
-      ...(historicalUnlock ? {} : { unlock: { quantity } }),
     });
+  }
+
+  function confirmZeroReceipt(pricingRevision: number) {
+    if (zeroReceipt.current?.pricingRevision !== pricingRevision) {
+      zeroReceipt.current = { pricingRevision, receivedAt: new Date().toISOString() };
+    }
+    void write("/receipts", "POST", { ...zeroReceipt.current, receivedAmountCents: 0 }, undefined, true);
   }
 
   function review() {
@@ -325,9 +330,6 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
               ]} />
             </Form.Item>}
             <Form.Item name="personalDiscount" label="派单人个人让利（元）"><Input inputMode="decimal" placeholder="0.00" /></Form.Item>
-            <Form.Item name="unlockQuantity" label={historicalUnlock ? "原解锁预估数量" : "预估新好友数（每个 ¥0.10）"}>
-              <InputNumber disabled={!!historicalUnlock} min={0} max={Number.MAX_SAFE_INTEGER} precision={0} />
-            </Form.Item>
           </Flex>
           <Button type="primary" htmlType="submit" loading={busy} style={{ marginTop: 8 }}>保存报价</Button>
         </Form> : <>
@@ -341,7 +343,8 @@ export default function GiftDispatchPricing({ route, order, onPublished, onFulfi
         {quote ? <QuoteSummary quote={quote} /> : null}
         {quote?.promotions?.couponIssue && <Alert type="warning" showIcon
           title={quote.promotions.couponIssue === "threshold" ? "原选券未达到折前服务款门槛" : "原选券已不可用"} />}
-        {onPublished && quote && !receipt && !dirty ? <Form key={quote.revision} layout="vertical" onFinish={({ amount, receivedAt }: { amount: string; receivedAt: string }) => {
+        {onPublished && quote && !receipt && !dirty ? quote.totalAmountCents === 0 ?
+          <Button loading={busy} onClick={() => confirmZeroReceipt(quote.revision)}>确认零元单</Button> : <Form key={quote.revision} layout="vertical" onFinish={({ amount, receivedAt }: { amount: string; receivedAt: string }) => {
           const receivedAmountCents = parseYuanAsCents(amount);
           const time = new Date(receivedAt);
           if (receivedAmountCents === null || !Number.isFinite(time.getTime())) return setError("请填写实收金额和时间。");

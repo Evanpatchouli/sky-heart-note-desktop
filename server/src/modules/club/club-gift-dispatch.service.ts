@@ -16,7 +16,7 @@ import type { ClaimGiftDispatchDto, ConfigureGiftDispatchDto, ReassignGiftDispat
 import { ClubOrder } from './club-order.schema';
 
 import {
-  acceptsGiftExecution, giftExecutionAccounts, giftExecutionSummary, giftUnlockReview,
+  acceptsGiftExecution, giftExecutionAccounts,
   publishedGiftOrder, saveGiftDispatch, writableGiftDispatch as claimable,
 } from './club-gift-execution.service';
 const concurrentChange = () => new ConflictException('订单分工或履约正在更新，请重新加载后重试');
@@ -94,7 +94,6 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
     id: order._id.toHexString(), source: order.source, dispatcherUserId: order.dispatcherUserId!,
     requestedGiftTimes, ...(promotionalGiftTimes ? { promotionalGiftTimes } : {}),
     ...(estimatedReceivedHearts === undefined ? {} : { estimatedReceivedHearts }),
-    ...(hasOwnShare ? { fulfillment: giftExecutionSummary(order, accounts) } : {}),
     ...(hasOwnShare || order.dispatcherUserId === userId
       ? { recipientGameAccount: order.recipientGameAccount } : {}),
     segments, acceptingClaims,
@@ -184,7 +183,7 @@ export class ClubGiftDispatchService {
       paidGiftTimes: 0, claimedGiftTimes: 0, directedPendingGiftTimes: 0, publicRemainingGiftTimes: 0,
       unconfiguredGiftTimes: 0, unallocatedGiftTimes: 0,
     });
-    return { quotes, segments, candidates, acceptingClaims, totals, segmentTotals, unlockReview: giftUnlockReview(order) };
+    return { quotes, segments, candidates, acceptingClaims, totals, segmentTotals };
   }
 
   async configure(clubId: string, userId: string, orderId: string, input: ConfigureGiftDispatchDto) {

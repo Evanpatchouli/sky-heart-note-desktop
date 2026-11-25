@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { GiftAccountRelationship, GiftExecutionAccount, GiftUnlockReview } from '@webapp-template/common';
+import type { GiftExecutionAccount } from '@webapp-template/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { EmployeeService } from '../employee/employee.service';
 import { ClubDirectoryService } from './club-directory.service';
@@ -39,74 +39,14 @@ export async function saveGiftDispatch(
   return modifiedCount === 1;
 }
 
-function unitPrice(order: ClubOrder) {
-  const terms = order.receipt?.quote.unlock ?? order.dispatchPricing?.unlock;
-  if (!terms || !(terms.unitPriceAgreed ?? (terms.quantity > 0 || terms.unitPriceCents > 0))) return null;
-  return terms.unitPriceCents;
-}
-
 function accountView({
-  customerUserId: _customerUserId, customerNickname: _customerNickname, linkedAt, relationship, ...account
+  customerUserId: _customerUserId, customerNickname: _customerNickname, linkedAt, ...account
 }: StoredGiftExecutionAccount): GiftExecutionAccount {
-  return {
-    ...account, linkedAt: linkedAt.toISOString(),
-    relationship: relationship ? {
-      ...relationship, occurredAt: relationship.occurredAt.toISOString(), recordedAt: relationship.recordedAt.toISOString(),
-    } : null,
-  };
+  return { ...account, linkedAt: linkedAt.toISOString() };
 }
 
 export function giftExecutionAccounts(order: ClubOrder, userId: string) {
   return (order.giftDispatch?.executionAccounts ?? []).filter(account => account.userId === userId).map(accountView);
-}
-
-function unlockTotals(accounts: {
-  relationship: { kind: GiftAccountRelationship; amountCents: number | null } | null;
-}[]) {
-  let actualCount = 0;
-  let actualAmountCents = 0;
-  let unpricedCount = 0;
-  for (const { relationship } of accounts) {
-    if (relationship?.kind !== 'new_unlock') continue;
-    actualCount += 1;
-    if (relationship.amountCents === null) unpricedCount += 1;
-    else actualAmountCents += relationship.amountCents;
-  }
-  return { actualCount, actualAmountCents, unpricedCount };
-}
-
-export function giftExecutionSummary(order: ClubOrder, accounts: GiftExecutionAccount[]) {
-  return {
-    ...unlockTotals(accounts),
-    agreedUnitPriceCents: unitPrice(order),
-  };
-}
-
-export function giftUnlockReview(order: ClubOrder): GiftUnlockReview {
-  const accounts = (order.giftDispatch?.executionAccounts ?? []).map(record => ({
-    ...accountView(record), customerUserId: record.customerUserId, customerNickname: record.customerNickname,
-  }));
-  const byMember = new Map<string, GiftExecutionAccount[]>();
-  for (const account of accounts) {
-    const group = byMember.get(account.userId) ?? [];
-    group.push(account);
-    byMember.set(account.userId, group);
-  }
-  const summary = giftExecutionSummary(order, accounts);
-  const quote = order.receipt?.quote;
-  const estimatedAmountCents = quote?.unlockAmountCents ?? null;
-  return {
-    ...summary,
-    estimatedAmountCents,
-    estimatedCount: quote?.unlock.quantity ?? null,
-    receivedAmountCents: order.receipt?.receivedAmountCents ?? null,
-    differenceCents: estimatedAmountCents === null || summary.unpricedCount ? null : summary.actualAmountCents - estimatedAmountCents,
-    recipientGameAccount: order.recipientGameAccount,
-    records: accounts,
-    members: [...byMember].map(([userId, group]) => ({
-      userId, nickname: group[0].memberNickname, ...unlockTotals(group),
-    })),
-  };
 }
 
 function requireWritableShare(order: ClubOrder, share: StoredGiftShare) {
@@ -158,48 +98,8 @@ export class ClubGiftExecutionService {
         customerUserId,
         customerNickname: (customerUserId && names.get(customerUserId)) || order.newCustomerNickname || order.customerLabel || null,
         recipientGameAccount: order.recipientGameAccount,
-        relationship: null,
       };
       accounts.push(account);
-      if (await saveGiftDispatch(this.orders, order, writableGiftDispatch, state)) return accountView(account);
-    }
-    throw retry();
-  }
-
-  async recordRelationship(
-    clubId: string, userId: string, orderId: string, shareId: string,
-    accountId: string, kind: GiftAccountRelationship, occurredAt?: string,
-  ) {
-    await this.directory.requireMember(clubId, userId);
-    if (!isObjectIdOrHexString(accountId)) throw new BadRequestException('执行账号标识格式无效');
-    const occurred = occurredAt ? new Date(occurredAt) : undefined;
-    if (occurred && (!Number.isFinite(occurred.getTime()) || occurred.getTime() > Date.now())) {
-      throw new BadRequestException('关系发生时间须为有效的已过去时间');
-    }
-    for (let attempt = 0; attempt < 16; attempt++) {
-      const { order, state, share } = await this.getShare(clubId, userId, orderId, shareId);
-      const accounts = state.executionAccounts ?? [];
-      const account = accounts.find(item =>
-        item.id === accountId.toLowerCase() && item.userId === userId && item.shareIds.includes(share.id));
-      if (!account) throw new NotFoundException('该执行账号未关联到你的承接份额');
-      if (account.relationship) {
-        if (account.relationship.kind !== kind ||
-            occurred && occurred.getTime() !== account.relationship.occurredAt.getTime()) {
-          throw new ConflictException('该送心号的关系已登记，原记录已保留');
-        }
-        return accountView(account);
-      }
-      requireWritableShare(order, share);
-
-      const amountCents = kind === 'existing_friend' ? 0 : unitPrice(order);
-      if (amountCents !== null && amountCents > 0) {
-        const { actualAmountCents } = unlockTotals(accounts);
-        if (!Number.isSafeInteger(actualAmountCents + amountCents)) {
-          throw new ConflictException('实际解锁费用超出可核对范围，请核对该单约定');
-        }
-      }
-      const recordedAt = new Date();
-      account.relationship = { kind, amountCents, occurredAt: occurred ?? recordedAt, recordedAt };
       if (await saveGiftDispatch(this.orders, order, writableGiftDispatch, state)) return accountView(account);
     }
     throw retry();

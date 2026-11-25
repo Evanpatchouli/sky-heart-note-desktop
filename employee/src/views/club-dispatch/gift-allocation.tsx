@@ -4,7 +4,6 @@ import { getAppToken, RequestError, useAuthSession } from "@webapp-template/comm
 import { giftSegmentTimes } from "@webapp-template/common";
 import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow } from "@webapp-template/common";
 import { employeeRequest } from "#/service/request";
-import { GiftUnlockReviewCard } from "./gift-execution-accounts";
 
 type Candidate = GiftDispatchPreparation["candidates"][number];
 type InitialFields = { segments: GiftSegmentDispatchInput[] };
@@ -262,7 +261,7 @@ export function PublishedGiftAllocation({ route, revision, onChanged }: { route:
     }}>刷新</Button>} />}
     {!data ? !error && <Spin aria-label="加载按次分工" /> : <>
       <Card size="small" title="整单领取汇总"><AllocationTotals totals={data.totals} />
-      <GiftUnlockReviewCard review={data.unlockReview} /></Card>
+      </Card>
       {!data.acceptingClaims && <p>本单已停止新领取。</p>}
       {data.segmentTotals.map(totals => {
         const segment = data.segments.find(item => item.segmentIndex === totals.segmentIndex);

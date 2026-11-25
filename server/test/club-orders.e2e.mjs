@@ -461,8 +461,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.deepEqual(raced.filter(Boolean), [versionOne]);
     assert.deepEqual(await adminGet(ruleRoute), versionOne);
 
-    await t.test('两种订单来源按次分段报价，预估解锁单列，原实收与报价可核对', async () => {
-      const unlock = { quantity: 10, unitPriceCents: 10 };
+    await t.test('两种订单来源按次分段报价，原实收与报价可核对', async () => {
       const mixedSegments = [
         { period: 'double', paidGiftTimes: 60, dailyGiftTimes: 6, unitPriceCents: 50 },
         { period: 'normal', paidGiftTimes: 40, dailyGiftTimes: 4, unitPriceCents: 65 },
@@ -487,15 +486,16 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
         assert.equal((await orders.findOne({ _id: mongoId(order.id) })).heartDelivery.estimatedReceivedHearts, expected);
         await post(app, createRoute, creator, { ...input, estimatedReceivedHearts: expected }, 409);
 
-        const pricingInput = { ...draftInput, giftSegments: segments, unlock };
+        const pricingInput = { ...draftInput, giftSegments: segments };
+        await savePrice(order, { ...pricingInput, unlock: { quantity: 10, unitPriceCents: 10 } }, 400);
         const prepared = await savePrice(order, pricingInput);
         const customerQuote = await get('client', customerRoute(order.id), owner);
         assert.equal(customerQuote.estimatedReceivedHearts, expected);
         assert.deepEqual(customerQuote.quote, prepared.quote);
-        const totalAmountCents = heartsAmountCents + 100;
+        const totalAmountCents = heartsAmountCents;
         assert.deepEqual(prepared.quote, {
-          revision: 1, priceUnit: 'gift_times', giftSegments: segments, segments: [], unlockRateVersion: 1,
-          unlock, heartsAmountCents, unlockAmountCents: 100, totalAmountCents,
+          revision: 1, priceUnit: 'gift_times', giftSegments: segments, segments: [],
+          heartsAmountCents, totalAmountCents,
         });
 
         const receiptsRoute = route(order) + '/receipts';
@@ -517,7 +517,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
         assert.equal(paid.receipt.recordedByUserId, dispatcher.id);
         assert.ok(Number.isFinite(Date.parse(paid.receipt.recordedAt)));
         assert.deepEqual(paid.receipt.quote, edit?.quote ?? prepared.quote);
-        await savePrice(order, { ...pricingInput, expectedRevision: receiptInput.pricingRevision, unlock: { ...unlock, quantity: 2 } }, 409);
+        await savePrice(order, { ...pricingInput, expectedRevision: receiptInput.pricingRevision }, 409);
         const persisted = await orders.findOne({ _id: mongoId(order.id) });
         assert.deepEqual(persisted.receipt.quote, paid.receipt.quote);
         const customer = await get('client', customerRoute(order.id), owner);
@@ -539,10 +539,9 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
       assert.equal((await post('client', clientOrders, owner, { ...input, requestId: randomUUID(), estimatedReceivedHearts: 163, doubleGiftTimes: 60 })).estimatedReceivedHearts, 163);
       await post('client', clientOrders, owner, { ...input, requestId: randomUUID(), doubleGiftTimes: 100 }, 400);
       await post('client', clientOrders, owner, { ...input, requestId: randomUUID(), requestedGiftTimes: Number.MAX_SAFE_INTEGER, deliveryPeriodPreference: 'double' }, 400);
-      await savePrice(unknown, { ...draftInput, unlock: { quantity: Number.MAX_SAFE_INTEGER, unitPriceCents: 1 } }, 400);
-      await savePrice(unknown, { ...draftInput, unlock });
+      await savePrice(unknown);
       const shortage = await post('employee', route(unknown) + '/receipts', dispatcher, {
-        requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: 5000, receivedAt: '2026-11-24T11:40:00Z',
+        requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: 4999, receivedAt: '2026-11-24T11:40:00Z',
       });
       assert.equal(shortage.paymentStatus, 'underpaid');
       await post('employee', route(unknown) + '/publish', dispatcher, {
@@ -595,8 +594,6 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal(payment.receipt.receivedAt, '2026-11-24T11:40:00.000Z');
     assert.equal(payment.receipt.quote.totalAmountCents, 5000);
     assert.equal(payment.receipt.quote.heartsAmountCents, 5000);
-    assert.equal(payment.receipt.quote.unlockAmountCents, 0);
-    assert.deepEqual(payment.receipt.quote.unlock, { quantity: 0, unitPriceCents: 10 });
     assert.deepEqual(payment.receipt.quote.segments, []);
     assert.deepEqual(payment.receipt.quote.giftSegments, giftSegments);
     await receipt(draft, 5001, initialRequest, 409);
@@ -679,7 +676,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     for (const [index, basis] of ['received_hearts', 'gift_times'].entries()) {
       const historicalInput = { ...legacyInput, requestId: randomUUID() };
       const price = { basis, version: index + 2, revision: 1, dispatchFeeCents: 2, clubFeeCents: 4,
-        segments: [{ period: 'double', hearts: 175, unitPriceCents: 21 }], unlock: { quantity: 2, unitPriceCents: 10 } };
+        segments: [{ period: 'double', hearts: 175, unitPriceCents: 21 }] };
       const now = new Date();
       const inserted = await orders.insertOne({
         requestId: historicalInput.requestId, source: 'client_order', clubId: 'main', businessType: 'heart_delivery',
@@ -700,7 +697,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
       assert.equal(quote.priceUnit, undefined);
       assert.deepEqual(quote.segments, price.segments);
       assert.equal(quote.heartsAmountCents, 3675);
-      assert.equal(quote.totalAmountCents, 3695);
+      assert.equal(quote.totalAmountCents, 3675);
       await extend(legacy, continuation, 409);
     }
 

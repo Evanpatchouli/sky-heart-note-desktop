@@ -1,6 +1,5 @@
 import { formatCentsAsYuan, type GiftPriceSegment } from './club-pricing';
 
-export const NEW_FRIEND_UNLOCK_CENTS = 10;
 export const MAX_PROMOTIONAL_GIFT_DIVISOR = 10;
 
 export const platformPromotionKinds = ['activity', 'rate_coupon', 'threshold_coupon'] as const;

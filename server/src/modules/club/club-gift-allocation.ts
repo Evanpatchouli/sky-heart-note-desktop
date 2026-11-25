@@ -19,14 +19,10 @@ export type StoredGiftSegment = GiftWindow & {
   offers: StoredGiftOffer[];
   shares: StoredGiftShare[];
 };
-export type StoredGiftExecutionAccount = Omit<GiftExecutionAccount, 'linkedAt' | 'relationship'> & {
+export type StoredGiftExecutionAccount = Omit<GiftExecutionAccount, 'linkedAt'> & {
   customerUserId: string | null;
   customerNickname: string | null;
   linkedAt: Date;
-  relationship: (Omit<NonNullable<GiftExecutionAccount['relationship']>, 'occurredAt' | 'recordedAt'> & {
-    occurredAt: Date;
-    recordedAt: Date;
-  }) | null;
 };
 
 export type GiftDispatchState = {
