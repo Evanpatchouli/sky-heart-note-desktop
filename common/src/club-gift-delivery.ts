@@ -66,6 +66,7 @@ export interface GiftPeriodProgress {
 export interface GiftPerformance {
   observedGiftTimes: ReportCount;
   excessGiftTimes: ReportCount;
+  pendingPromotionalGiftTimes?: ReportCount;
   estimatedDeliveredHearts: ReportCount | null;
   heartAmountCents: number | null;
   periods: GiftPeriodProgress[];
@@ -81,6 +82,7 @@ export interface GiftCompensation {
 
 export interface GiftDeliverySegment extends GiftPerformance {
   segmentIndex: number;
+  promotionalGiftTimes?: number;
   quotePeriod: PricingPeriod;
   unitPriceCents: number;
   deliveredGiftTimes: number;

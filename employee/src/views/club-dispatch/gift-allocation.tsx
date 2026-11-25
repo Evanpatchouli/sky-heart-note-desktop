@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
+import { giftSegmentTimes } from "@webapp-template/common";
 import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow } from "@webapp-template/common";
 import { employeeRequest } from "#/service/request";
 import { GiftUnlockReviewCard } from "./gift-execution-accounts";
@@ -29,15 +30,55 @@ function getError(error: unknown) {
   return error instanceof RequestError ? error.message : "未收到处理结果，请重试";
 }
 
-function dateString(date: Date) {
+function addDays(value: string, days: number) {
+  const date = new Date(value + "T00:00:00Z");
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
-function defaults(quote: GiftPriceSegment, index: number): GiftSegmentDispatchInput {
-  const date = new Date(new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date()) + "T00:00:00Z");
-  const startDate = dateString(date);
-  date.setUTCDate(date.getUTCDate() + Math.min(3659, Math.ceil(quote.paidGiftTimes / quote.dailyGiftTimes) - 1));
-  return { segmentIndex: index, startDate, endDate: dateString(date), openToClaim: true, directed: [] };
+function requiredDays(quote: GiftPriceSegment) {
+  return Math.ceil(giftSegmentTimes(quote) / quote.dailyGiftTimes);
+}
+
+function initialWindows(quotes: GiftPriceSegment[], indices: number[], windows?: ReadonlyMap<number, GiftWindow>): InitialFields {
+  const today = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const latestPaidEnd = quotes.reduce((latest, quote, index) => {
+    if (quote.promotionalGiftTimes) return latest;
+    const end = windows?.get(index)?.endDate
+      ?? (indices.includes(index) ? addDays(today, Math.min(3659, requiredDays(quote) - 1)) : "");
+    return end > latest ? end : latest;
+  }, "");
+  return { segments: indices.map(segmentIndex => {
+    const quote = quotes[segmentIndex];
+    const startDate = quote.promotionalGiftTimes && latestPaidEnd ? addDays(latestPaidEnd, 1) : today;
+    const endDate = addDays(startDate, Math.min(3659, requiredDays(quote) - 1));
+    return { segmentIndex, startDate, endDate, openToClaim: true, directed: [], ...windows?.get(segmentIndex) };
+  }) };
+}
+
+function earliestPaidCompletion(quotes: GiftPriceSegment[], indices: number[], segments: GiftSegmentDispatchInput[]) {
+  let latest = "";
+  for (const [position, index] of indices.entries()) {
+    const quote = quotes[index];
+    if (quote.promotionalGiftTimes) continue;
+    const { startDate, endDate, directed } = segments[position] ?? {};
+    const days = requiredDays(quote);
+    if (!startDate || days > 3660) return "";
+    const finish = addDays(startDate, days - 1);
+    if (!endDate || endDate < finish) return "";
+    if (finish > latest) latest = finish;
+    for (const offer of directed ?? []) {
+      const reservedEnd = offer.endDate || endDate;
+      if (reservedEnd <= endDate && reservedEnd > latest) latest = reservedEnd;
+    }
+  }
+  return latest;
+}
+
+function giftWindowTooEarly(quote: GiftPriceSegment, window: GiftWindow | undefined, paidFinish: string) {
+  if (!quote.promotionalGiftTimes || !window?.startDate || !window.endDate || !paidFinish || requiredDays(quote) > 3660) return false;
+  const startDate = window.startDate > paidFinish ? window.startDate : paidFinish;
+  return addDays(startDate, requiredDays(quote) - 1) > window.endDate;
 }
 
 function candidateOptions(candidates: Candidate[], omit?: string) {
@@ -53,7 +94,8 @@ export function GiftSchedule({ schedule }: { schedule: GiftDayAllocation[] }) {
 }
 
 function AllocationTotals({ totals }: { totals: GiftAllocationTotals }) {
-  return <p>已领 {totals.claimedGiftTimes} / {totals.paidGiftTimes} 次 · 公开待领 {totals.publicRemainingGiftTimes} 次
+  return <p>已领 {totals.claimedGiftTimes} / {totals.paidGiftTimes + (totals.promotionalGiftTimes ?? 0)} 次
+    {totals.promotionalGiftTimes ? ` · 促销赠送 ${totals.promotionalGiftTimes} 次` : ""} · 公开待领 {totals.publicRemainingGiftTimes} 次
     {" · 定向待确认 "}{totals.directedPendingGiftTimes} 次
     {totals.unconfiguredGiftTimes > 0 ? ` · 未配置 ${totals.unconfiguredGiftTimes} 次` : ""}
     {totals.unallocatedGiftTimes > 0 ? ` · 当前不可领 ${totals.unallocatedGiftTimes} 次` : ""}</p>;
@@ -68,6 +110,12 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
   onSubmit: (segments: GiftSegmentDispatchInput[]) => void;
   windows?: ReadonlyMap<number, GiftWindow>;
 }) {
+  const [form] = Form.useForm<InitialFields>();
+  const [initial] = useState(() => initialWindows(quotes, indices, windows));
+  const segments = Form.useWatch("segments", form) ?? initial.segments;
+  const checkGiftOrder = windows === undefined && indices.some(index => quotes[index].promotionalGiftTimes);
+  const paidFinish = checkGiftOrder ? earliestPaidCompletion(quotes, indices, segments) : "";
+  const earlyGiftWindows = indices.map((index, position) => giftWindowTooEarly(quotes[index], segments[position], paidFinish));
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateError, setCandidateError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -82,19 +130,25 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
     return () => controller.abort();
   }, [clubRoute, attempt]);
 
-  return <Form<InitialFields> layout="vertical" initialValues={{ segments: indices.map(index => ({
-    ...defaults(quotes[index], index), ...windows?.get(index),
-  })) }}
-    onFinish={({ segments }) => onSubmit(segments.map((part, position) => ({
-      ...part, segmentIndex: indices[position], directed: (part.directed ?? []).map(item => ({
-        userId: item.userId, dailyGiftTimes: item.dailyGiftTimes,
-        startDate: item.startDate || part.startDate, endDate: item.endDate || part.endDate,
-      })),
-    })))}>
+  return <Form<InitialFields> form={form} layout="vertical" initialValues={initial}
+    onFinish={({ segments }) => {
+      const finish = checkGiftOrder ? earliestPaidCompletion(quotes, indices, segments) : "";
+      if (indices.some((index, position) => giftWindowTooEarly(quotes[index], segments[position], finish))) return;
+      onSubmit(segments.map((part, position) => ({
+        ...part, segmentIndex: indices[position], directed: (part.directed ?? []).map(item => ({
+          userId: item.userId, dailyGiftTimes: item.dailyGiftTimes,
+          startDate: item.startDate || part.startDate, endDate: item.endDate || part.endDate,
+        })),
+      })));
+    }}>
     {candidateError && <Alert type="error" showIcon title={candidateError}
       action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />}
     {indices.map((index, position) => <Card key={index} size="small" style={{ marginBlock: 8 }}
-      title={`第 ${index + 1} 段 · ${quotes[index].paidGiftTimes} 次 · ${quotes[index].dailyGiftTimes} 次/日`}>
+      title={`第 ${index + 1} 段 · ${quotes[index].promotionalGiftTimes
+        ? `促销赠送 ${quotes[index].promotionalGiftTimes}` : `付费 ${quotes[index].paidGiftTimes}`} 次 · ${quotes[index].dailyGiftTimes} 次/日`}>
+      {quotes[index].promotionalGiftTimes ? <p>全单付费次数完成后执行此段。当天先送完付费次数时，可以当天执行赠送。</p> : null}
+      {earlyGiftWindows[position] && <Alert type="error" showIcon
+        title={`全单付费最早于 ${paidFinish} 完成，赠送窗口余量不足。请延后截止日期，或重新安排付费与赠送窗口。`} />}
       <Flex wrap gap="small">
         <Form.Item name={["segments", position, "startDate"]} label="段起始日期" rules={[{ required: true }]}>
           <Input type="date" readOnly={windows?.has(index)} />
@@ -123,7 +177,7 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
         <Button disabled={!candidates.length} onClick={() => add()}>增加指定团员</Button>
       </>}</Form.List>
     </Card>)}
-    <Button type="primary" htmlType="submit" loading={busy}>{submitLabel}</Button>
+    <Button type="primary" htmlType="submit" loading={busy} disabled={earlyGiftWindows.some(Boolean)}>{submitLabel}</Button>
   </Form>;
 }
 
@@ -246,7 +300,10 @@ export function PublishedGiftAllocation({ route, revision, onChanged }: { route:
       })}
     </>}
     {!!remaining?.length && data?.acceptingClaims && <GiftDispatchForm key={remaining.join(",")} quotes={data.quotes} indices={remaining}
-      windows={new Map(data.segmentTotals.flatMap(segment => segment.window ? [[segment.segmentIndex, segment.window] as const] : []))}
+      windows={new Map([
+        ...data.segments.map(segment => [segment.segmentIndex, segment] as const),
+        ...data.segmentTotals.flatMap(segment => segment.window ? [[segment.segmentIndex, segment.window] as const] : []),
+      ])}
       clubRoute={route.split("/orders/")[0]} busy={busy} submitLabel="派发以上计价段"
       onSubmit={segments => void save("", { segments })} />}
     <Modal open={!!transfer} destroyOnHidden title="改派未送次数" footer={null} onCancel={() => !busy && setTransfer(undefined)}>

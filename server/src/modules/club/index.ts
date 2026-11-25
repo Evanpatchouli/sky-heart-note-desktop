@@ -28,6 +28,8 @@ import {
 } from './club-order.controller';
 import { ClubOrder, ClubOrderSchema } from './club-order.schema';
 import { ClubOrderService } from './club-order.service';
+import { ClubPromotionCoupon, ClubPromotionCouponSchema } from './club-promotion.schema';
+import { ClubPromotionService } from './club-promotion.service';
 import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
 
 @Module({
@@ -40,6 +42,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
       { name: Club.name, schema: ClubSchema },
       { name: ClubMember.name, schema: ClubMemberSchema },
       { name: ClubOrder.name, schema: ClubOrderSchema },
+      { name: ClubPromotionCoupon.name, schema: ClubPromotionCouponSchema },
       { name: DailyReport.name, schema: DailyReportSchema },
       { name: ClubMemberInvitation.name, schema: ClubMemberInvitationSchema },
     ]),
@@ -58,7 +61,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubOrderController,
     ClientOwnOrdersController,
   ],
-  providers: [ClubContinuationService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
+  providers: [ClubPromotionService, ClubContinuationService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
   exports: [ClubDirectoryService, ClubOrderService],
 })
 export class ClubModule {}

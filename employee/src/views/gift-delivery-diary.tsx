@@ -250,7 +250,8 @@ function ProgressSummary({ progress }: { progress: GiftDeliveryProgress }) {
         全单已送 {progress.orderDeliveredGiftTimes} 次 · 剩余 {progress.orderRemainingGiftTimes} 次 · 建单预计到账 {actual(progress.estimatedReceivedHearts)}
       </Typography.Text>
       {segments.map(segment => <details key={segment.segmentIndex}>
-        <summary>第 {segment.segmentIndex + 1} 段 · 报价 {periodLabels[segment.quotePeriod]} · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次</summary>
+        <summary>第 {segment.segmentIndex + 1} 段 · {segment.promotionalGiftTimes ? "促销赠送" : "报价"} {periodLabels[segment.quotePeriod]} · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次</summary>
+        {segment.pendingPromotionalGiftTimes ? <p>促销赠送有 {segment.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p> : null}
         <p>已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次
           {segment.pendingCompensation && ` · 待结报酬 ¥${formatCentsAsYuan(segment.pendingCompensation.memberCents)}`}</p>
         <GiftPeriodFacts performance={segment} />

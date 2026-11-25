@@ -24,6 +24,10 @@ export interface CustomerGiftSegment extends GiftSupervisionTotals, GiftPriceSeg
 
 export interface CustomerGiftProgress extends GiftSupervisionTotals {
   priceUnit: 'gift_times';
+  paidGiftTimes?: number;
+  promotionalGiftTimes?: number;
+  deliveredPaidGiftTimes?: number;
+  deliveredPromotionalGiftTimes?: number;
   estimatedReceivedHearts: number | null;
   claimObservedReceivedHearts: number[];
   unknownClaimObservations: number;
@@ -67,6 +71,17 @@ export interface GiftMemberSupervision extends GiftSupervisionTotals {
 export interface GiftDispatchSupervision extends Omit<CustomerGiftProgress, 'segments'> {
   through: string | null;
   hasExceptions: boolean;
+  promotionBasis?: {
+    grossServiceCents: number;
+    customerServiceCents: number;
+    personalDiscountCents: number;
+    platformDiscountCents: number;
+    promotionalGiftCostCents: number;
+    unfulfilledServiceCents: number;
+    dispatchFeeCents: number | null;
+    clubFeeCents: number | null;
+    memberFeeCents: number | null;
+  };
   segments: (CustomerGiftSegment & {
     claimedGiftTimes: number;
     unclaimedGiftTimes: number;

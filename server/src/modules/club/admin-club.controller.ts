@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UsePipes,
   ValidationPipe,
@@ -16,6 +17,8 @@ import { ClubDirectoryService } from './club-directory.service';
 import { ClubOrderQuery } from './club-order.dto';
 import { ClubOrderService } from './club-order.service';
 import { UpdateCommissionRuleDto } from './club-pricing.dto';
+import { IssueClubCouponDto, UpdateClubPromotionDto } from './club-promotion.dto';
+import { ClubPromotionService } from './club-promotion.service';
 
 class UpdateDispatcherDto {
   @IsBoolean()
@@ -35,6 +38,7 @@ export class AdminClubController {
   constructor(
     private readonly directory: ClubDirectoryService,
     private readonly orders: ClubOrderService,
+    private readonly promotions: ClubPromotionService,
   ) {}
 
   @Get()
@@ -50,6 +54,21 @@ export class AdminClubController {
     return Resp.success(
       await this.directory.getAdminCommissionRule(clubId, actor),
     );
+  }
+
+  @Get(':clubId/promotions')
+  async getPromotions(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string) {
+    return Resp.success(await this.promotions.readAdminPolicy(clubId, actor));
+  }
+
+  @Patch(':clubId/promotions')
+  async updatePromotions(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string, @Body() input: UpdateClubPromotionDto) {
+    return Resp.success(await this.promotions.updatePolicy(clubId, actor, input));
+  }
+
+  @Post(':clubId/promotions/coupons')
+  async issueCoupon(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string, @Body() input: IssueClubCouponDto) {
+    return Resp.success(await this.promotions.issueCoupon(clubId, actor, input));
   }
 
   @Patch(':clubId/commission-rule')

@@ -80,7 +80,7 @@ test('按次承接关联本人 SQLite 送心号并核对实际解锁', { timeout
     }, status, 'employee', server);
   const readReview = async order => (await call(dispatcher, order.route + '/gift-dispatch')).unlockReview;
   const directedDays = { userId: first.id, dailyGiftTimes: 5, startDate, endDate };
-  async function publish({ unlock, directed = [], fromClient = false, split = false } = {}) {
+  async function publish({ unlock, legacyUnlock = false, directed = [], fromClient = false, split = false } = {}) {
     const input = { requestId: randomUUID(), recipientGameAccount: '接收账号 · 云海', requestedGiftTimes: 100 };
     const order = fromClient
       ? await call(customer, '/client/clubs/execution/orders', 'POST', { ...input, dispatcherUserId: dispatcher.id }, 201, 'client')
@@ -88,9 +88,16 @@ test('按次承接关联本人 SQLite 送心号并核对实际解锁', { timeout
     const route = club + '/orders/' + order.id;
     const quote = (paidGiftTimes, dailyGiftTimes, period = 'normal') => ({ period, paidGiftTimes, dailyGiftTimes, unitPriceCents: 50 });
     const giftSegments = split ? [quote(60, 6), quote(40, 4, 'double')] : [quote(100, 10)];
-    const { quote: saved } = await call(dispatcher, route + '/pricing', 'PATCH', {
-      expectedRevision: 0, ruleVersion: 1, dispatchFeeCents: 5, giftSegments, ...(unlock ? { unlock } : {}),
-    });
+    if (legacyUnlock) {
+      await db.collection('club_orders').updateOne({ _id: new mongoose.Types.ObjectId(order.id) }, { $set: { pricing: {
+        ruleVersion: 1, revision: 1, basis: 'gift_times', dispatchFeeCents: 5, segments: [], priceUnit: 'gift_times',
+        giftSegments, ...(unlock ? { unlock } : {}),
+      } } });
+    }
+    const { quote: saved } = legacyUnlock ? await call(dispatcher, route + '/pricing') :
+      await call(dispatcher, route + '/pricing', 'PATCH', {
+        expectedRevision: 0, ruleVersion: 1, dispatchFeeCents: 5, giftSegments, ...(unlock ? { unlock } : {}),
+      });
     await call(dispatcher, route + '/receipts', 'POST', {
       requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: saved.totalAmountCents,
       receivedAt: '2026-11-24T19:40:00+08:00',
@@ -287,7 +294,7 @@ test('按次承接关联本人 SQLite 送心号并核对实际解锁', { timeout
       [{ quantity: 0, unitPriceCents: 0, unitPriceAgreed: true }, 0],
       [{ quantity: 1, unitPriceCents: 0 }, 0],
     ]) {
-      const order = await publish({ unlock, fromClient: true });
+      const order = await publish({ unlock, legacyUnlock: true, fromClient: true });
       const share = await claim(order, first, 0, 10);
       const linked = await link(order, share, first, personal.id);
       await record(order, share, first, linked, 'new_unlock', 400, 'not-a-date');

@@ -24,6 +24,9 @@ export class DailyReportLine {
   @Prop({ ...nonnegative, required: false, min: 1 })
   quoteSegment?: number;
 
+  @Prop({ type: [Number], default: undefined })
+  promotionPaidSegmentIndices?: number[];
+
   @Prop(nonnegative)
   giftTimes: number;
 

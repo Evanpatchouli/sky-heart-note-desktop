@@ -91,6 +91,11 @@ export class CreateClientOrderDto extends CreateOrderDto {
   @ValidateIf((_, value) => value !== undefined)
   @Matches(USER_ID_PATTERN)
   dispatcherUserId?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
+  @IsUUID('4')
+  platformCouponId?: string;
 }
 
 export class ClubOrderQuery {

@@ -23,6 +23,7 @@ export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress
   return <section className="client-orders__progress" aria-label="赠送履约进度">
     <h3>赠送履约进度</h3>
     <p>约定 {progress.agreedGiftTimes} 次 · 已送 {progress.deliveredGiftTimes} 次 · 剩余 {progress.remainingGiftTimes} 次</p>
+    {progress.promotionalGiftTimes ? <p>付费 {progress.deliveredPaidGiftTimes}/{progress.paidGiftTimes} 次 · 促销赠送 {progress.deliveredPromotionalGiftTimes}/{progress.promotionalGiftTimes} 次</p> : null}
     <progress aria-label="约定赠送完成进度" value={progress.deliveredGiftTimes} max={progress.agreedGiftTimes} />
     <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>
     <dl>
@@ -41,11 +42,12 @@ export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress
       <p>仅改变到账倍率的价差 ¥{formatCentsAsYuan(progress.periodOnlyDifferenceCents)}。每次单价沿用原段约定。</p>
       <PeriodProgress rows={progress.periods} />
     </>}
-    {progress.excessGiftTimes !== 0 && <p>超出约定的实报次数 {progress.excessGiftTimes} 次待业务核对。</p>}
+    {progress.pendingPromotionalGiftTimes ? <p>促销赠送有 {progress.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p>
+      : progress.excessGiftTimes !== 0 ? <p>超出约定的实报次数 {progress.excessGiftTimes} 次待业务核对。</p> : null}
     {progress.segments.length ? <ul>
       {progress.segments.map(segment => <li key={segment.segmentIndex}>
-        第 {segment.segmentIndex + 1} 段 · 报价 {periods[segment.period]} · 约定 {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日
-        {" · "}¥{formatCentsAsYuan(segment.unitPriceCents)}/次
+        第 {segment.segmentIndex + 1} 段 · {periods[segment.period]} · {segment.promotionalGiftTimes ? "促销赠送" : "约定"} {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日
+        {!segment.promotionalGiftTimes && ` · ¥${formatCentsAsYuan(segment.unitPriceCents)}/次`}
         <br />已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次 · 原段预计到账 {giftCount(segment.estimatedReceivedHearts)}
         <br />按实际时段预计 {giftCount(segment.estimatedDeliveredHearts)} · 日报到账 {giftCount(segment.actualReceivedHearts)}
         {segment.claimObservedReceivedHearts.length > 0 ? <><br />接单时观察 {segment.claimObservedReceivedHearts.map(giftCount).join("、")}</> : null}

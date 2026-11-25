@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, type DeliveryPeriodPreference } from "@webapp-template/common";
+import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, platformPromotionDescription, type DeliveryPeriodPreference, type PlatformPromotionSource } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
 import {
   clientRequest, clubOrderPath, detailHref, dispatcherName, dispatchLabel, orderDispatcher,
@@ -7,7 +7,7 @@ import {
 } from "./order-api";
 import { readClientContext, rememberClientContext } from "./navigation";
 
-type OrderOptions = { clubName: string; dispatchers: { userId: string; nickname: string | null }[] };
+type OrderOptions = { clubName: string; dispatchers: { userId: string; nickname: string | null }[]; coupons?: PlatformPromotionSource[] };
 type OrderInput = {
   requestId: string;
   recipientGameAccount: string;
@@ -17,11 +17,12 @@ type OrderInput = {
   deliveryPeriodPreference?: DeliveryPeriodPreference;
   doubleGiftTimes?: number;
   dispatcherUserId?: string;
+  platformCouponId?: string;
 };
-type Draft = { recipient: string; giftTimes: string; estimate: string; period: DeliveryPeriodPreference | ""; doubleTimes: string; dispatcher: string };
+type Draft = { recipient: string; giftTimes: string; estimate: string; period: DeliveryPeriodPreference | ""; doubleTimes: string; dispatcher: string; coupon: string };
 
 function readDraft(userId: string, draftKey: string): Draft {
-  const empty: Draft = { recipient: "", giftTimes: "", estimate: "", period: "", doubleTimes: "", dispatcher: "" };
+  const empty: Draft = { recipient: "", giftTimes: "", estimate: "", period: "", doubleTimes: "", dispatcher: "", coupon: "" };
   try {
     const value = JSON.parse(readClientContext(userId, draftKey) ?? "null") as Partial<Draft> | null;
     if (!value) return empty;
@@ -32,6 +33,7 @@ function readDraft(userId: string, draftKey: string): Draft {
       period: value.period && DELIVERY_PERIOD_PREFERENCES.includes(value.period) ? value.period : "",
       doubleTimes: typeof value.doubleTimes === "string" ? value.doubleTimes : "",
       dispatcher: value.dispatcher && USER_ID_PATTERN.test(value.dispatcher) ? value.dispatcher : "",
+      coupon: typeof value.coupon === "string" ? value.coupon : "",
     };
   } catch { return empty; }
 }
@@ -81,19 +83,22 @@ export function NewOrder({ clubId }: { clubId: string }) {
   const [period, setPeriod] = useState<DeliveryPeriodPreference | "">(pending ? pending.deliveryPeriodPreference ?? "" : draft.period);
   const [doubleTimes, setDoubleTimes] = useState(pending ? String(pending.doubleGiftTimes ?? "") : draft.doubleTimes);
   const [dispatcher, setDispatcher] = useState(pending ? pending.dispatcherUserId ?? "" : draft.dispatcher);
+  const [coupon, setCoupon] = useState(pending ? pending.platformCouponId ?? "" : draft.coupon);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<OrderSummary>();
   const inFlight = useRef(false);
   const candidates = options.data?.dispatchers ?? [];
+  const coupons = options.data?.coupons ?? [];
   const unavailableChoice = !!dispatcher && !candidates.some(person => person.userId === dispatcher);
-  const canSubmit = !busy && !loggingOut && (!!pending || (!options.loading && !options.error && !unavailableChoice));
+  const unavailableCoupon = !!coupon && !coupons.some(item => item.couponId === coupon);
+  const canSubmit = !busy && !loggingOut && (!!pending || (!options.loading && !options.error && !unavailableChoice && !unavailableCoupon));
   const doubleGiftTimes = period === "split" && doubleTimes ? Number(doubleTimes) : undefined;
   const suggestedEstimate = estimateReceivedHearts(Number(giftTimes), period || undefined, doubleGiftTimes);
 
   useEffect(() => {
-    if (!created) rememberClientContext(id, draftKey, JSON.stringify({ recipient, giftTimes, estimate, period, doubleTimes, dispatcher }));
-  }, [id, draftKey, recipient, giftTimes, estimate, period, doubleTimes, dispatcher, created]);
+    if (!created) rememberClientContext(id, draftKey, JSON.stringify({ recipient, giftTimes, estimate, period, doubleTimes, dispatcher, coupon }));
+  }, [id, draftKey, recipient, giftTimes, estimate, period, doubleTimes, dispatcher, coupon, created]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,6 +125,7 @@ export function NewOrder({ clubId }: { clubId: string }) {
       ...(period ? { deliveryPeriodPreference: period } : {}),
       ...(doubleGiftTimes === undefined ? {} : { doubleGiftTimes }),
       ...(dispatcher ? { dispatcherUserId: dispatcher } : {}),
+      ...(coupon ? { platformCouponId: coupon } : {}),
     };
     inFlight.current = true;
     setBusy(true);
@@ -224,6 +230,15 @@ export function NewOrder({ clubId }: { clubId: string }) {
           </select>
           <p id="dispatcher-description" className="client-orders__muted">系统从本俱乐部当前可选的派单人中随机分配。没有候选时，由俱乐部手动分配。</p>
         </div>
+        {(coupons.length > 0 || coupon) && <div className="client-orders__field">
+          <label htmlFor="platform-coupon">优惠券</label>
+          <select id="platform-coupon" value={coupon} onChange={event => setCoupon(event.target.value)} disabled={options.loading || !!options.error}>
+            <option value="">不使用优惠券</option>
+            {unavailableCoupon && <option value={coupon}>原选优惠券已不可用</option>}
+            {coupons.map(item => <option key={item.couponId} value={item.couponId}>{platformPromotionDescription(item)}</option>)}
+          </select>
+          <p className="client-orders__muted">派单人会在报价时核对适用条件，有效用券将替代全场折扣。</p>
+        </div>}
       </fieldset>
       <section className="client-orders__panel client-orders__submit">
         <h2>报价与派发</h2>

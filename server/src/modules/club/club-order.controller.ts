@@ -63,6 +63,11 @@ export class EmployeeClubController {
     private readonly orders: ClubOrderService,
   ) {}
 
+  @Get('client-order-notices')
+  async clientOrderNotices(@AuthUser() user: SessionUser) {
+    return Resp.success(await this.orders.listClientOrderNotices(user.id));
+  }
+
   @Get()
   async list(@AuthUser() user: SessionUser) {
     const clubs = await this.directory.listEmployeeClubs(user.id);
@@ -302,11 +307,14 @@ export class ClientClubOrderController {
 @AppAccess('client')
 @Controller('client/clubs')
 export class ClientClubController {
-  constructor(private readonly directory: ClubDirectoryService) {}
+  constructor(private readonly directory: ClubDirectoryService, private readonly orders: ClubOrderService) {}
 
   @Get(':clubId/order-options')
-  async orderOptions(@Param('clubId') clubId: string) {
-    return Resp.success(await this.directory.getClientOrderOptions(clubId));
+  async orderOptions(@Param('clubId') clubId: string, @AuthUser() user: SessionUser) {
+    const [options, coupons] = await Promise.all([
+      this.directory.getClientOrderOptions(clubId), this.orders.getCustomerCoupons(clubId, user.id),
+    ]);
+    return Resp.success({ ...options, ...(coupons.length ? { coupons } : {}) });
   }
 }
 

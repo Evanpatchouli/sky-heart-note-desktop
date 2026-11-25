@@ -494,7 +494,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
         assert.deepEqual(customerQuote.quote, prepared.quote);
         const totalAmountCents = heartsAmountCents + 100;
         assert.deepEqual(prepared.quote, {
-          revision: 1, priceUnit: 'gift_times', giftSegments: segments, segments: [],
+          revision: 1, priceUnit: 'gift_times', giftSegments: segments, segments: [], unlockRateVersion: 1,
           unlock, heartsAmountCents, unlockAmountCents: 100, totalAmountCents,
         });
 
@@ -596,7 +596,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal(payment.receipt.quote.totalAmountCents, 5000);
     assert.equal(payment.receipt.quote.heartsAmountCents, 5000);
     assert.equal(payment.receipt.quote.unlockAmountCents, 0);
-    assert.deepEqual(payment.receipt.quote.unlock, { quantity: 0, unitPriceCents: 0 });
+    assert.deepEqual(payment.receipt.quote.unlock, { quantity: 0, unitPriceCents: 10 });
     assert.deepEqual(payment.receipt.quote.segments, []);
     assert.deepEqual(payment.receipt.quote.giftSegments, giftSegments);
     await receipt(draft, 5001, initialRequest, 409);

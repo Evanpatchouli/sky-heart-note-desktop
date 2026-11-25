@@ -8,6 +8,7 @@ import {
 } from "@webapp-template/common";
 import { getCommissionRule, getDispatchHistory, saveCommissionRule, type AdminClub, type DispatchPricingRow } from "@/api/club.api";
 import type { AdminClubContext } from "../home";
+import ClubPromotions from "./promotions";
 
 type RuleFields = { amount: string | null };
 
@@ -33,6 +34,7 @@ export default function Rules() {
         <label>俱乐部 <Select aria-label="俱乐部" value={selected.id} onChange={setSelectedId}
           options={eligible.map(club => ({ value: club.id, label: club.name }))} style={{ minWidth: 150 }} /></label>
         <ClubRules key={selected.id} club={selected} />
+        <ClubPromotions key={selected.id + "-promotions"} clubId={selected.id} />
       </> : <Empty description="暂无获授权配置抽成的俱乐部" />}
   </Flex>;
 }

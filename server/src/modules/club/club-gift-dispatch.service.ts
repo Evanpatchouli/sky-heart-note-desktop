@@ -1,12 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { giftSegmentTimes } from '@webapp-template/common';
 import type {
   GiftAllocationTotals, GiftClaimOrder, GiftClaimResult, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput,
 } from '@webapp-template/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
 import { ClubDailyReportStore } from './club-daily-report.store';
-import { giftDayFacts } from './club-gift-delivery';
+import { eligiblePromotionalFacts, giftDayFacts } from './club-gift-delivery';
 import {
   activeGiftSegments, awardGiftShare, buildGiftSegments, directedGiftDays, emptyGiftDispatch, giftClaimFields, giftDispatchFingerprint, giftOfferView,
   giftMemberAllocations, giftSegmentView, giftShareView, publicGiftDays, transferGiftDays, type GiftDispatchState, type StoredGiftClaim,
@@ -88,9 +89,11 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
   const hasOwnShare = segments.some(segment => segment.shares.length);
   const { estimatedReceivedHearts } = order.heartDelivery;
   const requestedGiftTimes = quotes.reduce((sum, quote) => sum + quote.paidGiftTimes, 0);
+  const promotionalGiftTimes = quotes.reduce((sum, quote) => sum + (quote.promotionalGiftTimes ?? 0), 0);
   return {
     id: order._id.toHexString(), source: order.source, dispatcherUserId: order.dispatcherUserId!,
-    requestedGiftTimes: requestedGiftTimes!, ...(estimatedReceivedHearts === undefined ? {} : { estimatedReceivedHearts }),
+    requestedGiftTimes, ...(promotionalGiftTimes ? { promotionalGiftTimes } : {}),
+    ...(estimatedReceivedHearts === undefined ? {} : { estimatedReceivedHearts }),
     ...(hasOwnShare ? { fulfillment: giftExecutionSummary(order, accounts) } : {}),
     ...(hasOwnShare || order.dispatcherUserId === userId
       ? { recipientGameAccount: order.recipientGameAccount } : {}),
@@ -103,6 +106,8 @@ function totalAllocation(
 ): GiftAllocationTotals {
   return {
     paidGiftTimes: total.paidGiftTimes + segment.paidGiftTimes,
+    ...((total.promotionalGiftTimes || segment.promotionalGiftTimes)
+      ? { promotionalGiftTimes: (total.promotionalGiftTimes ?? 0) + (segment.promotionalGiftTimes ?? 0) } : {}),
     claimedGiftTimes: total.claimedGiftTimes + segment.claimedGiftTimes,
     directedPendingGiftTimes: total.directedPendingGiftTimes + segment.directedPendingGiftTimes,
     publicRemainingGiftTimes: total.publicRemainingGiftTimes + segment.publicRemainingGiftTimes,
@@ -143,9 +148,9 @@ export class ClubGiftDispatchService {
       giftDayFacts(this.orders.db.collection('club_daily_reports'), order),
     ]);
     const sentByShare = new Map<string, bigint>();
-    for (const row of facts) {
+    for (const row of eligiblePromotionalFacts(order, facts)) {
       const id = row._id.shareId.toHexString();
-      sentByShare.set(id, (sentByShare.get(id) ?? 0n) + BigInt(row.giftTimes.toString()));
+      sentByShare.set(id, (sentByShare.get(id) ?? 0n) + (row.eligibleGiftTimes ?? BigInt(row.giftTimes.toString())));
     }
     const segments = (order.giftDispatch?.segments ?? []).map(segment => {
       const view = giftSegmentView(segment, quotes[segment.segmentIndex], undefined, acceptingClaims);
@@ -159,7 +164,9 @@ export class ClubGiftDispatchService {
       };
     });
     const segmentsByIndex = new Map(segments.map(segment => [segment.segmentIndex, segment]));
-    const segmentTotals = quotes.map(({ paidGiftTimes }, segmentIndex) => {
+    const segmentTotals = quotes.map((quote, segmentIndex) => {
+      const { paidGiftTimes, promotionalGiftTimes } = quote;
+      const capacity = giftSegmentTimes(quote);
       const segment = segmentsByIndex.get(segmentIndex);
       const window = order.continuationQuotes?.find(quote => quote.receipt && quote.segmentIndex === segmentIndex)?.window;
       const claimedGiftTimes = segment?.shares.reduce((sum, share) => sum + share.netGiftTimes, 0) ?? 0;
@@ -167,9 +174,10 @@ export class ClubGiftDispatchService {
       const publicRemainingGiftTimes = segment?.publicRemainingGiftTimes ?? 0;
       return {
         segmentIndex, configured: !!segment, paidGiftTimes, claimedGiftTimes, directedPendingGiftTimes, publicRemainingGiftTimes,
+        ...(promotionalGiftTimes ? { promotionalGiftTimes } : {}),
         ...(window ? { window } : {}),
-        unconfiguredGiftTimes: segment ? 0 : paidGiftTimes,
-        unallocatedGiftTimes: segment ? paidGiftTimes - claimedGiftTimes - directedPendingGiftTimes - publicRemainingGiftTimes : 0,
+        unconfiguredGiftTimes: segment ? 0 : capacity,
+        unallocatedGiftTimes: segment ? capacity - claimedGiftTimes - directedPendingGiftTimes - publicRemainingGiftTimes : 0,
       };
     });
     const totals = segmentTotals.reduce(totalAllocation, {

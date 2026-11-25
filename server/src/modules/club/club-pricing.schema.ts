@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { COMMISSION_BASES, PRICING_PERIODS, USER_ID_PATTERN } from '@webapp-template/common';
-import type { CommissionBasis, PricingPeriod } from '@webapp-template/common';
+import type { CommissionBasis, GiftQuotePromotions, PricingPeriod } from '@webapp-template/common';
+import { SchemaTypes } from 'mongoose';
 
 const wholeNumber = {
   type: Number,
@@ -174,6 +175,12 @@ class OrderPricing {
   @Prop(giftPriceSegments)
   giftSegments?: GiftPriceSegment[];
 
+  @Prop({ type: SchemaTypes.Mixed })
+  promotions?: GiftQuotePromotions;
+
+  @Prop({ type: Number, enum: [1] })
+  unlockRateVersion?: 1;
+
   @Prop({ type: String, enum: COMMISSION_BASES, required: true })
   basis: CommissionBasis;
 
@@ -213,6 +220,12 @@ class CustomerQuote {
   @Prop(giftPriceSegments)
   giftSegments?: GiftPriceSegment[];
 
+  @Prop({ type: SchemaTypes.Mixed })
+  promotions?: GiftQuotePromotions;
+
+  @Prop({ type: Number, enum: [1] })
+  unlockRateVersion?: 1;
+
   @Prop({ type: [PriceSegmentSchema], required: true })
   segments: PriceSegment[];
 
@@ -228,7 +241,7 @@ class CustomerQuote {
   @Prop({ ...wholeNumber, min: 0 })
   unlockAmountCents: number;
 
-  @Prop({ ...wholeNumber, min: 1 })
+  @Prop({ ...wholeNumber, min: 0 })
   totalAmountCents: number;
 }
 
@@ -249,7 +262,7 @@ export class StoredOrderReceipt {
   @Prop({ type: Date, required: true })
   recordedAt: Date;
 
-  @Prop({ ...wholeNumber, min: 1 })
+  @Prop({ ...wholeNumber, min: 0 })
   receivedAmountCents: number;
 
   @Prop({ type: SchemaFactory.createForClass(CustomerQuote), required: true })

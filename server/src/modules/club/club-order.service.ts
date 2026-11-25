@@ -10,7 +10,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, type CommissionRule, type CustomerGiftProgress, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
+import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, giftFulfillmentSegments, NEW_FRIEND_UNLOCK_CENTS, type CommissionRule, type CustomerGiftProgress, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
@@ -35,6 +35,7 @@ import type {
 } from './club-pricing.dto';
 import type { StoredOrderReceipt } from './club-pricing.schema';
 import { ClubOrder, type PendingAssignmentDecision } from './club-order.schema';
+import { ClubPromotionService } from './club-promotion.service';
 
 const clientOrderScope = {
   source: 'client_order',
@@ -108,12 +109,20 @@ function calculateCustomerQuote(pricing?: OrderPricing): CustomerQuote | null {
   const amounts = giftSegments && calculateGiftQuote(giftSegments);
   if (!amounts) return null;
   const unlock = pricing.unlock ?? NO_UNLOCK;
+  const { promotions, unlockRateVersion, discountedHeartsAmountCents } = pricing;
+  const heartsAmountCents = promotions
+    ? amounts.amountCents - (promotions.platform?.amountCents ?? 0) - (promotions.personal?.amountCents ?? 0)
+    : discountedHeartsAmountCents ?? amounts.amountCents;
   const unlockAmountCents = unlock.quantity * unlock.unitPriceCents;
-  const totalAmountCents = amounts.amountCents + unlockAmountCents;
-  if (!Number.isSafeInteger(totalAmountCents)) return null;
+  const totalAmountCents = heartsAmountCents + unlockAmountCents;
+  if (!Number.isSafeInteger(totalAmountCents) || (!promotions && discountedHeartsAmountCents !== undefined &&
+      (!Number.isSafeInteger(discountedHeartsAmountCents) || heartsAmountCents < 0 || heartsAmountCents >= amounts.amountCents))) return null;
   return {
     revision, priceUnit, giftSegments, segments, unlock,
-    heartsAmountCents: amounts.amountCents, unlockAmountCents, totalAmountCents,
+    ...(promotions ? { promotions } : {}),
+    ...(promotions || discountedHeartsAmountCents !== undefined ? { originalHeartsAmountCents: amounts.amountCents } : {}),
+    ...(unlockRateVersion ? { unlockRateVersion } : {}),
+    heartsAmountCents, unlockAmountCents, totalAmountCents,
   };
 }
 
@@ -134,6 +143,7 @@ function dispatchPreparation(order: ClubOrder, rule: CommissionRule | null) {
     canManageContinuation: canContinueGiftOrder(order),
     dispatchStatus: order.dispatchStatus,
     quote,
+    ...(order.requestedPromotionCouponId ? { requestedPromotionCouponId: order.requestedPromotionCouponId } : {}),
     receipt: order.receipt ?? null,
     commissionReview: order.commissionReview ?? null,
     paymentStatus: paymentStatus(order.receipt),
@@ -224,6 +234,7 @@ export class ClubOrderService implements OnModuleInit {
     private readonly activation: UserDispatchActivationService,
     private readonly giftDispatch: ClubGiftDispatchService,
     private readonly giftSupervision: ClubGiftSupervision,
+    private readonly promotions: ClubPromotionService,
   ) {}
 
   async onModuleInit() {
@@ -521,8 +532,34 @@ export class ClubOrderService implements OnModuleInit {
   ) {
     await this.directory.requireMember(clubId, userId);
     const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
-    const rule = order.dispatchStatus === 'published' ? null : await this.directory.readCommissionRule(clubId);
-    return dispatchPreparation(order, rule);
+    if (order.dispatchStatus === 'published') return dispatchPreparation(order, null);
+    const [rule, promotionPolicy, promotionCoupons] = await Promise.all([
+      this.directory.readCommissionRule(clubId),
+      this.promotions.readPolicy(clubId),
+      order.customerUserId && order.customerLinkStatus === 'verified' ? this.promotions.availableCoupons(clubId, order.customerUserId) : [],
+    ]);
+    return {
+      ...dispatchPreparation(order, rule),
+      promotionPolicy, promotionCoupons,
+    };
+  }
+
+  getCustomerCoupons(clubId: string, userId: string) {
+    return this.promotions.availableCoupons(clubId, userId);
+  }
+
+  async listClientOrderNotices(userId: string) {
+    const clubs = await this.directory.listEmployeeClubs(userId);
+    if (!clubs.length) return [];
+    const orders = await this.orders.find({
+      clubId: { $in: clubs.map(club => club.id) },
+      dispatcherUserId: userId, source: 'client_order', dispatchStatus: 'pending', customerLinkStatus: 'verified',
+    }).sort({ _id: -1 }).limit(20).select({ clubId: 1, recipientGameAccount: 1, createdAt: 1 }).lean();
+    const names = new Map(clubs.map(club => [club.id, club.name]));
+    return orders.map(order => ({
+      orderId: order._id.toHexString(), clubId: order.clubId, clubName: names.get(order.clubId),
+      recipientGameAccount: order.recipientGameAccount, createdAt: order.createdAt,
+    }));
   }
 
   async updateDispatchPricing(
@@ -539,7 +576,9 @@ export class ClubOrderService implements OnModuleInit {
     if (order.receipt) throw new ConflictException('已登记实收，原报价已保留');
 
     const rule = await this.requireCurrentRule(clubId, input.ruleVersion);
-    const amounts = calculateGiftQuote(input.giftSegments);
+    const giftSegments = input.giftSegments.map(({ promotionalGiftTimes: _gift, ...segment }) => segment);
+    const giftTimesBySegment = input.giftSegments.map(segment => segment.promotionalGiftTimes ?? 0);
+    const amounts = calculateGiftQuote(giftSegments);
     const requested = order.heartDelivery.requestedGiftTimes;
     if (requested === undefined) {
       throw new ConflictException('历史订单按原订购颗数保留，无法写入按次报价');
@@ -548,9 +587,28 @@ export class ClubOrderService implements OnModuleInit {
       throw new BadRequestException('各报价段付费次数合计须等于原订购次数，请核对每日次数和金额');
     }
 
-    if (input.unlock?.unitPriceAgreed === false && input.unlock.unitPriceCents !== 0)
-      throw new BadRequestException('未约定单次解锁费时，单价须留空');
-    const unlock = input.unlock ?? order.pricing?.unlock ?? NO_UNLOCK;
+    const previousUnlock = order.pricing?.unlock;
+    const historicalUnlock = order.pricing && !order.pricing.unlockRateVersion;
+    let unlock = previousUnlock ?? NO_UNLOCK;
+    if (historicalUnlock) {
+      if (input.unlock && (input.unlock.quantity !== unlock.quantity ||
+          input.unlock.unitPriceCents !== undefined && input.unlock.unitPriceCents !== unlock.unitPriceCents))
+        throw new BadRequestException('历史解锁报价继续沿用已记录的数量与单价');
+    } else {
+      if (input.unlock?.unitPriceCents !== undefined && input.unlock.unitPriceCents !== NEW_FRIEND_UNLOCK_CENTS ||
+          input.unlock?.unitPriceAgreed === false)
+        throw new BadRequestException('每个新好友解锁费固定为 0.10 元');
+      unlock = { quantity: input.unlock?.quantity ?? unlock.quantity, unitPriceCents: NEW_FRIEND_UNLOCK_CENTS };
+    }
+    const legacyDiscount = order.pricing?.discountedHeartsAmountCents;
+    if (legacyDiscount !== undefined && (input.personalDiscountCents || giftTimesBySegment.some(Boolean) || input.platformCouponId))
+      throw new ConflictException('历史折扣报价须沿用原有优惠口径');
+    const personalCents = input.personalDiscountCents ?? order.pricing?.promotions?.personal?.amountCents ?? 0;
+    const savedSelection = order.pricing?.promotions?.selectedCouponId;
+    const selectedCouponId = input.platformCouponId !== undefined ? input.platformCouponId :
+      savedSelection !== undefined ? savedSelection : order.requestedPromotionCouponId ?? null;
+    const promotions = legacyDiscount === undefined ? await this.promotions.quote(order, giftSegments, amounts.amountCents, requested,
+      personalCents, selectedCouponId, input.platformCouponId !== undefined, giftTimesBySegment) : undefined;
     const pricing = {
       basis: 'gift_times' as const,
       ruleVersion: rule.version,
@@ -558,7 +616,11 @@ export class ClubOrderService implements OnModuleInit {
       dispatchFeeCents: input.dispatchFeeCents,
       segments: [],
       unlock,
-      giftSegments: input.giftSegments,
+      ...(historicalUnlock ? {} : { unlockRateVersion: 1 as const }),
+      ...(legacyDiscount !== undefined ? { discountedHeartsAmountCents: legacyDiscount } : {}),
+      ...(promotions && (promotions.platform || promotions.personal || promotions.gift || promotions.couponIssue ||
+        order.requestedPromotionCouponId || input.platformCouponId !== undefined) ? { promotions } : {}),
+      giftSegments,
       revision: input.expectedRevision + 1,
     };
     if (!calculateCustomerQuote(pricing))
@@ -576,7 +638,7 @@ export class ClubOrderService implements OnModuleInit {
     );
     if (!matchedCount)
       throw new ConflictException('订单报价或派发状态已更新，请重新加载');
-    return dispatchPreparation({ ...order, pricing }, rule);
+    return this.getDispatchPreparation(clubId, userId, orderId);
   }
 
   async recordOrderReceipt(clubId: string, userId: string, orderId: string, input: RecordOrderReceiptDto) {
@@ -591,6 +653,9 @@ export class ClubOrderService implements OnModuleInit {
     const quote = calculateCustomerQuote(order.pricing);
     if (order.dispatchStatus === 'published' || quote?.priceUnit !== 'gift_times' || quote.revision !== input.pricingRevision)
       throw new ConflictException('请重新加载并核对最新报价后登记实收');
+    const couponId = quote.promotions?.platform?.couponId;
+    if (!input.receivedAmountCents && quote.totalAmountCents)
+      throw new BadRequestException('请填写本单实际收款金额');
     const receipt: StoredOrderReceipt = {
       requestId: input.requestId,
       receivedAmountCents: input.receivedAmountCents,
@@ -600,17 +665,20 @@ export class ClubOrderService implements OnModuleInit {
       recordedAt: new Date(),
       quote,
     };
-    const { matchedCount } = await this.orders.updateOne(
-      {
+    try {
+      const { matchedCount } = await this.orders.updateOne({
         ...scope, _id: order._id,
         dispatchStatus: { $in: PRE_DISPATCH_STATUSES },
         'pricing.revision': quote.revision,
         receipt: { $exists: false },
-      },
-      { $set: { receipt } },
-      { runValidators: true },
-    );
-    if (matchedCount) return { receipt, paymentStatus: paymentStatus(receipt) };
+      }, {
+        $set: { receipt, ...(couponId ? { activePromotionCouponId: couponId } : {}) },
+      }, { runValidators: true, writeConcern: { w: 'majority', j: true } });
+      if (matchedCount) return { receipt, paymentStatus: paymentStatus(receipt) };
+    } catch (error) {
+      if (isDuplicateKey(error, 'activePromotionCouponId')) throw new ConflictException('此券已用于另一笔订单，请重新核对报价');
+      throw error;
+    }
     const latest = await this.get(orderId, scope);
     if (latest.receipt) return this.replayOrderReceipt(latest.receipt, input, receivedAt);
     throw new ConflictException('报价或派发状态已更新，请重新加载后核对实收');
@@ -651,7 +719,7 @@ export class ClubOrderService implements OnModuleInit {
       { runValidators: true },
     );
     if (!matchedCount) throw new ConflictException('派抽复核或派发状态已更新，请重新加载');
-    return dispatchPreparation({ ...order, commissionReview }, rule);
+    return this.getDispatchPreparation(clubId, userId, orderId);
   }
 
   async commitDispatchAfterPayment(clubId: string, userId: string, orderId: string, input: PublishOrderDto) {
@@ -675,12 +743,16 @@ export class ClubOrderService implements OnModuleInit {
     if (commission.basis !== rule.basis || commission.ruleVersion !== ruleVersion)
       throw new ConflictException('请重新核对最新的每次抽成规则');
 
-    const { revision, priceUnit, giftSegments, segments, unlock, totalAmountCents } = receipt.quote;
+    const { revision, priceUnit, giftSegments, segments, unlock, promotions, unlockRateVersion,
+      totalAmountCents, originalHeartsAmountCents, heartsAmountCents } = receipt.quote;
     const giftDispatch = input.giftDispatchSegments
-      ? await this.giftDispatch.prepareInitial(clubId, input.giftDispatchSegments, giftSegments ?? [])
+      ? await this.giftDispatch.prepareInitial(clubId, input.giftDispatchSegments, giftFulfillmentSegments(giftSegments ?? [], promotions))
       : undefined;
     const dispatchPricing = {
       ...rule, revision, priceUnit, giftSegments, segments, unlock,
+      ...(promotions ? { promotions } : {}),
+      ...(!promotions && originalHeartsAmountCents !== undefined ? { discountedHeartsAmountCents: heartsAmountCents } : {}),
+      ...(unlockRateVersion ? { unlockRateVersion } : {}),
       dispatchFeeCents: commission.dispatchFeeCents,
     };
     const committed = await this.orders.findOneAndUpdate(
@@ -878,6 +950,8 @@ export class ClubOrderService implements OnModuleInit {
     let dispatcherUserId: string | undefined = userId;
     if (submission.source === 'client_order') {
       try {
+        if (submission.input.platformCouponId)
+          await this.promotions.requireAvailableCoupon(clubId, userId, submission.input.platformCouponId);
         dispatcherUserId = await this.resolveDispatcher(clubId, submission.input.dispatcherUserId);
       } catch (error) {
         if (error instanceof BadRequestException) {
@@ -902,6 +976,7 @@ export class ClubOrderService implements OnModuleInit {
           }
         : {
             requestedDispatcherUserId: submission.input.dispatcherUserId,
+            requestedPromotionCouponId: submission.input.platformCouponId,
             ...(dispatcherUserId ? {
               dispatcherAssignment: submission.input.dispatcherUserId ? 'customer_selected' : 'random',
               dispatchStatus: 'pending',
@@ -957,7 +1032,8 @@ export class ClubOrderService implements OnModuleInit {
         ? order.customerLabel === submission.input.customerLabel &&
           order.selectedCustomerUserId === submission.input.existingCustomerUserId &&
           order.newCustomerNickname === submission.input.newCustomerNickname
-        : (order.requestedDispatcherUserId ??
+        : order.requestedPromotionCouponId === submission.input.platformCouponId &&
+          (order.requestedDispatcherUserId ??
             (order.dispatcherAssignment === 'customer_selected' ? order.dispatcherUserId : undefined)) ===
           submission.input.dispatcherUserId;
     if (

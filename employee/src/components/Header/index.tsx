@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
-import { Alert, Avatar, Button, Dropdown, Segmented } from "antd";
+import { Alert, Avatar, Badge, Button, Dropdown, Modal, Segmented } from "antd";
 import {
-  AppstoreOutlined, BarsOutlined, CalendarOutlined, DownOutlined,
+  AppstoreOutlined, BarsOutlined, BellOutlined, CalendarOutlined, DownOutlined,
   LogoutOutlined, OrderedListOutlined, TableOutlined, UserOutlined,
 } from "@ant-design/icons";
 import { useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
 import MemberBrand from "#/components/MemberBrand";
 import Timenow from "./timenow";
+import { ClientOrderNoticeList, useClientOrderNotices } from "./ClientOrderNotices";
 
 const views = [
   { label: "时间轴", value: "timeline", icon: <OrderedListOutlined /> },
@@ -22,6 +23,8 @@ export default function Header() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [noticesOpen, setNoticesOpen] = useState(false);
+  const clientOrders = useClientOrderNotices(noticesOpen);
   const user = useAuthSession();
   const { logout, loggingOut, logoutError } = useSessionActions();
   const name = user.nickname || user.username || "我的账号";
@@ -54,6 +57,11 @@ export default function Header() {
           {pathname === "/" ? <Link className="member-appbar__dispatch-link" to="/club/dispatch">派单准备</Link> : null}
           {pathname !== "/club/gift-claims" && <Link className="member-appbar__dispatch-link" to="/club/gift-claims">按次接单</Link>}
           <Timenow />
+          <Button type="text" aria-label="客户端下单通知" icon={<Badge dot={clientOrders.items.length > 0}><BellOutlined /></Badge>}
+            onClick={() => setNoticesOpen(true)} />
+          <Modal title="客户端下单通知" open={noticesOpen} onCancel={() => setNoticesOpen(false)} footer={null}>
+            <ClientOrderNoticeList {...clientOrders} onSelect={() => setNoticesOpen(false)} />
+          </Modal>
           <Dropdown
             trigger={["click"]}
             placement="bottomRight"

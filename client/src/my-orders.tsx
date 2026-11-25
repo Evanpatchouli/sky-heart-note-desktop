@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { deliveryPeriodPreferenceLabel, formatCentsAsYuan, isGiftOrderProgress, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type CustomerQuote, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
+import { deliveryPeriodPreferenceLabel, formatCentsAsYuan, isGiftOrderProgress, platformPromotionLabels, type ContinuationQuote, type ContinuationRequest, type CustomerGiftProgress, type CustomerQuote, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
 import { authRequest, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 
 import { ContinuationFacts, CustomerContinuation, giftCount, GiftOrderProgress, totalGiftPayments } from "./order-gift-progress";
@@ -146,6 +146,18 @@ function OrderFacts({ order, manageContinuation = false }: { order: Order; manag
       {order.quote.originalHeartsAmountCents === undefined ? null : <>
         <dt>折前爱心款</dt><dd>¥{formatCentsAsYuan(order.quote.originalHeartsAmountCents)}</dd>
       </>}
+      {order.quote.promotions?.platform ? <>
+        <dt>{platformPromotionLabels[order.quote.promotions.platform.kind]} · 团费承担</dt>
+        <dd>{order.quote.promotions.platform.name} −¥{formatCentsAsYuan(order.quote.promotions.platform.amountCents)}</dd>
+      </> : null}
+      {order.quote.promotions?.personal ? <>
+        <dt>派单人个人让利</dt><dd>−¥{formatCentsAsYuan(order.quote.promotions.personal.amountCents)}</dd>
+      </> : null}
+      {order.quote.promotions?.gift ? <>
+        <dt>平台赠送</dt><dd>{order.quote.promotions.gift.segments.reduce((sum, gift) => sum + gift.promotionalGiftTimes, 0)} 次 · 首次报价总履约 {order.quote.promotions.totalGiftTimes} 次</dd>
+      </> : null}
+      {order.quote.promotions?.couponIssue && <><dt>原选优惠券</dt>
+        <dd>{order.quote.promotions.couponIssue === "threshold" ? "折前服务款未达到使用门槛" : "当前不可用"}</dd></>}
       <dt>爱心款</dt><dd>¥{formatCentsAsYuan(order.quote.heartsAmountCents)}</dd>
       <dt>预估解锁款</dt><dd>{order.quote.unlock.quantity} 次 × ¥{formatCentsAsYuan(order.quote.unlock.unitPriceCents)}/次 = ¥{formatCentsAsYuan(order.quote.unlockAmountCents)}</dd>
       <dt>{hasContinuation ? "原报价合计" : "报价合计"}</dt><dd>¥{formatCentsAsYuan(order.quote.totalAmountCents)}</dd>

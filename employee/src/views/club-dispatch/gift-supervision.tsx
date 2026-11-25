@@ -69,6 +69,8 @@ function GiftDays({ days }: { days: GiftSupervisionDay[] }) {
 export function GiftSupervisionFacts({ progress, compact = false }: { progress: GiftDispatchSupervision; compact?: boolean }) {
   return <>
     <p>约定 {progress.agreedGiftTimes} 次 · 已送 {progress.deliveredGiftTimes} 次 · 剩余 {progress.remainingGiftTimes} 次 · 日报到账 {hearts(progress.actualReceivedHearts)}</p>
+    {progress.promotionalGiftTimes ? <p>付费 {progress.deliveredPaidGiftTimes}/{progress.paidGiftTimes} 次 · 促销赠送 {progress.deliveredPromotionalGiftTimes}/{progress.promotionalGiftTimes} 次</p> : null}
+    {progress.pendingPromotionalGiftTimes ? <p>促销赠送有 {progress.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p> : null}
     {!compact && <>
       <p>建单预计到账 {hearts(progress.estimatedReceivedHearts)} · 按实际时段预计到账 {hearts(progress.estimatedDeliveredHearts)}</p>
       <p>按已送次数核对爱心款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。每次单价沿用原段约定。</p>
@@ -76,7 +78,7 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
     </>}
     {!compact && <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>}
     {progress.segments.map(segment => <section key={segment.segmentIndex}>
-      <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段 · 报价 {periodLabels[segment.period]}</Typography.Title>
+      <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段 · {segment.promotionalGiftTimes ? "促销赠送" : "付费"} · {periodLabels[segment.period]}</Typography.Title>
       <p>约定 {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次
         {" · "}已领 {segment.claimedGiftTimes} 次 · 未承接 {segment.unclaimedGiftTimes} 次</p>
       <p>{segment.window ? `执行 ${segment.window.startDate} 至 ${segment.window.endDate}` : "执行窗口待配置"}

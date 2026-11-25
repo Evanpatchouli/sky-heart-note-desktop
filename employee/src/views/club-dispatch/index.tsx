@@ -81,18 +81,19 @@ export default function ClubDispatch() {
               <Typography.Link href={selected.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
             </Typography.Text>
             <MemberInvitation key={selected.id} clubId={selected.id} />
-            <ClubOrders key={selected.id} clubId={selected.id} canAssign={selected.canAssignPendingOrders} />
+            <ClubOrders key={selected.id + (params.get("orderId") ?? "")} clubId={selected.id}
+              linkedId={params.get("orderId") ?? undefined} canAssign={selected.canAssignPendingOrders} />
           </> : <Empty description="暂无可访问的俱乐部" />}
       </Flex>
     </main>
   </>;
 }
 
-function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean }) {
+function ClubOrders({ clubId, canAssign, linkedId }: { clubId: string; canAssign?: boolean; linkedId?: string }) {
   const route = `clubs/${clubId}/orders`;
   const [page, setPage] = useState<Page>();
   const [after, setAfter] = useState<string>();
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedId, setSelectedId] = useState(linkedId);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -100,7 +101,21 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
   const [fulfillmentRevision, setFulfillmentRevision] = useState(0);
   const [exceptionOrder, setExceptionOrder] = useState<Order>();
   const fulfillmentPanel = useRef<HTMLDivElement>(null);
-  const order = page?.items.find(value => value.id === selectedId) ?? exceptionOrder ?? page?.items[0];
+  const [linkedOrder, setLinkedOrder] = useState<Order>();
+  const [linkError, setLinkError] = useState("");
+  const order = page?.items.find(value => value.id === selectedId) ?? exceptionOrder
+    ?? (linkedId && selectedId === linkedId ? linkedOrder : page?.items[0]);
+
+  useEffect(() => {
+    if (!linkedId) return;
+    const controller = new AbortController();
+    employeeRequest<Order>(`${route}/${encodeURIComponent(linkedId)}`, "GET", undefined, controller.signal).then(value => {
+      if (!controller.signal.aborted) setLinkedOrder(value);
+    }).catch(err => {
+      if (!controller.signal.aborted) setLinkError(requestError(err));
+    });
+    return () => controller.abort();
+  }, [linkedId, route, attempt]);
 
   function refreshFulfillment() {
     setFulfillmentRevision(value => value + 1);
@@ -143,6 +158,8 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
     <GiftExceptionQueue<Order> route={route} through={through} revision={fulfillmentRevision} onOpen={openException}
       onCheck={date => { setThrough(date); refreshFulfillment(); }} />
     <Card size="small" title="我负责派发的订单" extra={<Button onClick={() => setCreating(true)}>新建直接派单草稿</Button>}>
+      {linkError && selectedId === linkedId && <Alert type="error" showIcon title={linkError}
+        action={<Button onClick={() => { setLinkError(""); setAttempt(value => value + 1); }}>重试</Button>} />}
       {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
         : page ? page.items.length ? <Select aria-label="我负责派发的订单" style={{ width: "100%" }} value={page.items.some(item => item.id === order?.id) ? order?.id : undefined}
           onChange={id => { setExceptionOrder(undefined); setSelectedId(id); }}
@@ -167,9 +184,9 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
           revision={fulfillmentRevision} onRefresh={refreshFulfillment} onShowCurrent={() => setThrough(undefined)} />
       </div>}
       {order.requestedGiftTimes !== undefined ? <GiftDispatchPricing onFulfillmentChanged={refreshFulfillment} key={order.id} route={`${route}/${order.id}`} order={order}
-        onPublished={() => setPage(previous => previous && {
+        onPublished={() => { setLinkedOrder(previous => previous?.id === order.id ? { ...previous, dispatchStatus: "published" } : previous); setPage(previous => previous && {
           ...previous, items: previous.items.map(item => item.id === order.id ? { ...item, dispatchStatus: "published" } : item),
-        })} />
+        }); }} />
         : <OrderPricingForm key={order.id} route={`${route}/${order.id}/pricing`} order={order} />}
     </> : null}
     {creating ? <NewDirectDraft clubId={clubId} onClose={() => setCreating(false)} onCreated={id => {

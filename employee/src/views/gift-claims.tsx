@@ -224,7 +224,7 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
     {error ? <Alert type="error" showIcon title={error} action={<Button onClick={refresh}>重试</Button>} />
       : !page ? <Spin aria-label="加载接单列表" />
       : !page.items.length ? <Empty description="暂无已派发的按次订单可接" />
-      : page.items.map(order => <Card key={order.id} title={`${sources[order.source]} · ${order.requestedGiftTimes} 次`} size="small">
+      : page.items.map(order => <Card key={order.id} title={`${sources[order.source]} · ${order.requestedGiftTimes} 次${order.promotionalGiftTimes ? ` + 赠 ${order.promotionalGiftTimes} 次` : ""}`} size="small">
         <p>订单 <code>{order.id}</code> · 派单人 {order.dispatcherUserId}</p>
         <p>建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "未记录" : `${order.estimatedReceivedHearts} 颗`}
           {order.recipientGameAccount ? ` · 接收游戏号 ${order.recipientGameAccount}` : ""}</p>
@@ -237,7 +237,8 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
           const myGiftTimes = segment.shares.reduce((sum, share) => sum + share.netGiftTimes, 0);
           const publicTarget = { orderId: order.id, segmentIndex: segment.segmentIndex, previousDaily, myGiftTimes };
           return <section key={segment.segmentIndex} style={{ borderTop: "1px solid #DBE2EB", paddingBlock: 10 }}>
-            <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段</Typography.Title>
+            <Typography.Title level={5}>第 {segment.segmentIndex + 1} 段{segment.promotionalGiftTimes ? " · 促销赠送" : ""}</Typography.Title>
+            {segment.promotionalGiftTimes ? <p>整单付费次数完成后执行。</p> : null}
             <p>{segment.startDate} 至 {segment.endDate}</p>
             {previousDaily > 0 && <p>我已申报 {previousDaily} 次/日 · 当前承接 {myGiftTimes} 次</p>}
             {segment.openToClaim && <p>公开待领 {segment.publicRemainingGiftTimes} 次

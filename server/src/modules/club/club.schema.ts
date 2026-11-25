@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { USER_ID_PATTERN } from '@webapp-template/common';
-import type { CommissionRule } from '@webapp-template/common';
+import type { ClubPromotionPolicy, CommissionRule } from '@webapp-template/common';
+import { SchemaTypes } from 'mongoose';
 import { CLUB_PERMISSIONS, type ClubPermission } from './club-permissions';
 import { CommissionRuleSchema } from './club-pricing.schema';
 
@@ -19,6 +20,9 @@ export class Club {
 
   @Prop({ type: CommissionRuleSchema })
   commissionRule?: CommissionRule;
+
+  @Prop({ type: SchemaTypes.Mixed })
+  promotionPolicy?: ClubPromotionPolicy;
 }
 
 export const ClubSchema = SchemaFactory.createForClass(Club);

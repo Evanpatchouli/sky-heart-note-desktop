@@ -1,4 +1,5 @@
-import type { GiftDeliveryProgress, GiftDeliverySegment, GiftPerformance, GiftPeriodProgress, GiftReportPeriod, GiftShareProgress } from '@webapp-template/common';
+import type { GiftDeliveryProgress, GiftDeliverySegment, GiftPerformance, GiftPeriodProgress, GiftPriceSegment, GiftReportPeriod, GiftShareProgress } from '@webapp-template/common';
+import { giftSegmentTimes } from '@webapp-template/common';
 import { Types, type Collection, type PipelineStage } from 'mongoose';
 import { jsonReportCount } from './club-daily-report-view';
 import type { ClubOrder } from './club-order.schema';
@@ -12,9 +13,12 @@ export type GiftDayFact = {
   unknownLines: number;
   knownLines: number;
   periods: GiftPeriodFact[];
+  eligibleGiftTimes?: bigint;
 };
 
-type GiftPeriodFact = Omit<GiftDayFact, '_id' | 'periods'> & { period: GiftReportPeriod };
+type GiftPeriodFact = Omit<GiftDayFact, '_id' | 'periods'> & {
+  period: GiftReportPeriod; promotionPaidSegmentIndices?: number[] | null;
+};
 
 export function giftDayFacts(
   collection: Collection,
@@ -47,6 +51,7 @@ export function giftDayFacts(
       _id: {
         shareId: '$shareId', businessDate: '$businessDate',
         period: { $cond: [{ $in: ['$lines.period', ['normal', 'double']] }, '$lines.period', 'unconfirmed'] },
+        promotionPaidSegmentIndices: '$lines.promotionPaidSegmentIndices',
       },
       giftTimes: { $sum: decimal('$lines.giftTimes') },
       knownHearts: { $sum: decimal('$lines.receivedHearts') },
@@ -59,11 +64,65 @@ export function giftDayFacts(
       unknownLines: { $sum: '$unknownLines' }, knownLines: { $sum: '$knownLines' },
       periods: { $push: {
         period: '$_id.period', giftTimes: '$giftTimes', knownHearts: '$knownHearts',
+        promotionPaidSegmentIndices: '$_id.promotionPaidSegmentIndices',
         unknownLines: '$unknownLines', knownLines: '$knownLines',
       } },
     } },
   ];
   return collection.aggregate<GiftDayFact>(pipeline).toArray();
+}
+
+export function allPaidGiftsDelivered(
+  order: ClubOrder, quotes: GiftPriceSegment[], paidSegmentIndices: readonly number[],
+  timesByShare: Map<string, bigint>,
+) {
+  const dispatchByIndex = new Map(order.giftDispatch?.segments.map(segment => [segment.segmentIndex, segment]));
+  return paidSegmentIndices.every(index => {
+    const quote = quotes[index];
+    if (!quote?.paidGiftTimes) return false;
+    const covered = (dispatchByIndex.get(index)?.shares ?? []).reduce((sum, share) => {
+      const observed = timesByShare.get(share.id) ?? 0n;
+      const assigned = BigInt(share.giftTimes - (share.transferredGiftTimes ?? 0));
+      return sum + (observed > assigned ? assigned : observed);
+    }, 0n);
+    return covered >= BigInt(quote.paidGiftTimes);
+  });
+}
+
+export function addGiftTimesByShare(totals: Map<string, bigint>, shareId: string, times: bigint) {
+  totals.set(shareId, (totals.get(shareId) ?? 0n) + times);
+}
+
+export function eligiblePromotionalFacts(order: ClubOrder, facts: GiftDayFact[]) {
+  const quotes = activeGiftSegments(order);
+  const promotionalShares = new Set(order.giftDispatch?.segments.flatMap(segment =>
+    quotes[segment.segmentIndex]?.promotionalGiftTimes ? segment.shares.map(share => share.id) : [],
+  ));
+  if (!promotionalShares.size) return facts;
+  const sorted = [...facts].sort((a, b) => a._id.businessDate.localeCompare(b._id.businessDate));
+  const paidByShare = new Map<string, bigint>();
+  const coverage = new Map<string, boolean>();
+  let cursor = 0;
+  return sorted.map(fact => {
+    if (!promotionalShares.has(fact._id.shareId.toHexString())) return fact;
+    const date = fact._id.businessDate;
+    while (cursor < sorted.length && sorted[cursor]._id.businessDate <= date) {
+      const row = sorted[cursor++];
+      addGiftTimesByShare(paidByShare, row._id.shareId.toHexString(), BigInt(row.giftTimes.toString()));
+    }
+    const periods = fact.periods.map(period => {
+      const scope = period.promotionPaidSegmentIndices;
+      if (!scope?.length) return { ...period, eligibleGiftTimes: 0n };
+      const key = date + ':' + scope;
+      let valid = coverage.get(key);
+      if (valid === undefined) {
+        valid = allPaidGiftsDelivered(order, quotes, scope, paidByShare);
+        coverage.set(key, valid);
+      }
+      return { ...period, eligibleGiftTimes: valid ? BigInt(period.giftTimes.toString()) : 0n };
+    });
+    return { ...fact, periods, eligibleGiftTimes: periods.reduce((sum, period) => sum + period.eligibleGiftTimes, 0n) };
+  });
 }
 
 type Counts = { times: bigint; hearts: bigint; known: number; unknown: number };
@@ -98,7 +157,7 @@ export function receivedHearts(counts: Counts) {
 type PeriodCounts = Counts & { delivered: bigint | null; gross: bigint | null };
 
 export function emptyGiftPerformance() {
-  return { counts: emptyCounts(), delivered: 0, gross: 0n, periods: new Map<GiftReportPeriod, PeriodCounts>() };
+  return { counts: emptyCounts(), delivered: 0, gross: 0n, pendingPromotional: 0n, periods: new Map<GiftReportPeriod, PeriodCounts>() };
 }
 
 type Performance = ReturnType<typeof emptyGiftPerformance>;
@@ -111,6 +170,7 @@ export function addGiftPerformance(total: Performance, next: Performance) {
   addCounts(total.counts, next.counts);
   total.delivered += next.delivered;
   total.gross += next.gross;
+  total.pendingPromotional += next.pendingPromotional;
   for (const [period, value] of next.periods) {
     const current = total.periods.get(period) ?? { ...emptyCounts(), delivered: 0n, gross: 0n };
     addCounts(current, value);
@@ -123,22 +183,28 @@ export function addGiftPerformance(total: Performance, next: Performance) {
 export function giftSharePerformance(facts: GiftDayFact[], capacity: number, unitPriceCents: number) {
   const performance = emptyGiftPerformance();
   const unitPrice = BigInt(unitPriceCents);
+  const credits = new Map<GiftReportPeriod, bigint>();
+  let eligible = 0n;
   for (const fact of facts) {
     addCounts(performance.counts, factCounts(fact));
+    eligible += fact.eligibleGiftTimes ?? BigInt(fact.giftTimes.toString());
     for (const row of fact.periods) {
       const period = performance.periods.get(row.period) ?? { ...emptyCounts(), delivered: 0n, gross: 0n };
       addCounts(period, factCounts(row));
       performance.periods.set(row.period, period);
+      const eligibleGiftTimes = row.eligibleGiftTimes ?? BigInt(row.giftTimes.toString());
+      credits.set(row.period, (credits.get(row.period) ?? 0n) + eligibleGiftTimes);
     }
   }
-  const { times } = performance.counts;
-  const exceedsShare = times > BigInt(capacity);
-  performance.delivered = exceedsShare ? capacity : Number(times);
+  const exceedsShare = eligible > BigInt(capacity);
+  performance.pendingPromotional = performance.counts.times - eligible;
+  performance.delivered = exceedsShare ? capacity : Number(eligible);
   performance.gross = BigInt(performance.delivered) * unitPrice;
-  const mixedExcess = exceedsShare && capacity > 0 && [...performance.periods.values()].filter(period => period.times > 0n).length > 1;
-  for (const period of performance.periods.values()) {
+  const mixedExcess = exceedsShare && capacity > 0 && [...credits.values()].filter(amount => amount > 0n).length > 1;
+  for (const [key, period] of performance.periods) {
     // Several actual periods contributed to an overfilled share. Their individual credited amounts require a business decision.
-    period.delivered = mixedExcess && period.times > 0n ? null : period.times > BigInt(capacity) ? BigInt(capacity) : period.times;
+    const amount = credits.get(key)!;
+    period.delivered = mixedExcess && amount > 0n ? null : amount > BigInt(capacity) ? BigInt(capacity) : amount;
     period.gross = period.delivered === null ? null : period.delivered * unitPrice;
   }
   return performance;
@@ -179,6 +245,7 @@ export function giftPerformanceView(performance: Performance): GiftPerformance {
   return {
     observedGiftTimes: jsonReportCount(performance.counts.times),
     excessGiftTimes: jsonReportCount(performance.counts.times - BigInt(performance.delivered)),
+    ...(performance.pendingPromotional ? { pendingPromotionalGiftTimes: jsonReportCount(performance.pendingPromotional) } : {}),
     estimatedDeliveredHearts: estimatedTotal === null ? null : jsonReportCount(estimatedTotal),
     heartAmountCents: money(performance.gross), periods,
   };
@@ -233,11 +300,12 @@ export function giftProgress(order: ClubOrder, userId: string, facts: GiftDayFac
     remainingGiftTimes += segmentRemaining;
     segments.push({
       segmentIndex, quotePeriod: quote.period, unitPriceCents: quote.unitPriceCents,
+      ...(quote.promotionalGiftTimes ? { promotionalGiftTimes: quote.promotionalGiftTimes } : {}),
       deliveredGiftTimes: segment.delivered, remainingGiftTimes: segmentRemaining,
       ...giftPerformanceView(segment), pendingCompensation: giftCompensation(segment, pricing).pendingCompensation,
     });
   }
-  const orderGiftTimes = quotes.reduce((sum, quote) => sum + quote.paidGiftTimes, 0);
+  const orderGiftTimes = quotes.reduce((sum, quote) => sum + giftSegmentTimes(quote), 0);
   return {
     priceUnit: 'gift_times',
     ...receivedHearts(mine.counts), ...giftPerformanceView(mine),

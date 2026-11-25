@@ -55,6 +55,14 @@ export class GiftPriceSegmentDto {
   unitPriceCents: number;
 }
 
+class InitialGiftPriceSegmentDto extends GiftPriceSegmentDto {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  promotionalGiftTimes?: number;
+}
+
 export class ContinuationActionDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.toLowerCase() : value,
@@ -131,10 +139,11 @@ class UnlockPricingDto {
   @Max(Number.MAX_SAFE_INTEGER)
   quantity: number;
 
+  @ValidateIf((_, value) => value !== undefined)
   @IsInt()
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
-  unitPriceCents: number;
+  unitPriceCents?: number;
 
   @ValidateIf((_, value) => value !== undefined)
   @IsBoolean()
@@ -164,14 +173,25 @@ export class UpdateOrderPricingDto {
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => GiftPriceSegmentDto)
-  giftSegments: GiftPriceSegmentDto[];
+  @Type(() => InitialGiftPriceSegmentDto)
+  giftSegments: InitialGiftPriceSegmentDto[];
 
   @ValidateIf((_, value) => value !== undefined)
   @IsObject()
   @ValidateNested()
   @Type(() => UnlockPricingDto)
   unlock?: UnlockPricingDto;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  personalDiscountCents?: number;
+
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
+  @IsUUID('4')
+  platformCouponId?: string | null;
 }
 
 export class RecordOrderReceiptDto {
@@ -185,7 +205,7 @@ export class RecordOrderReceiptDto {
   pricingRevision: number;
 
   @IsInt()
-  @Min(1)
+  @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   receivedAmountCents: number;
 

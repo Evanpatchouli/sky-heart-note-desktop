@@ -93,6 +93,7 @@ export interface GiftClaimResult {
 
 export interface GiftDispatchSegment extends GiftWindow {
   segmentIndex: number;
+  promotionalGiftTimes?: number;
   openToClaim: boolean;
   publicDailyGiftTimes: number;
   publicRemainingGiftTimes: number;
@@ -104,6 +105,7 @@ export interface GiftDispatchSegment extends GiftWindow {
 
 export interface GiftAllocationTotals {
   paidGiftTimes: number;
+  promotionalGiftTimes?: number;
   claimedGiftTimes: number;
   directedPendingGiftTimes: number;
   publicRemainingGiftTimes: number;
@@ -128,6 +130,7 @@ export interface GiftClaimOrder {
   source: 'direct_dispatch' | 'client_order';
   dispatcherUserId: string;
   requestedGiftTimes: number;
+  promotionalGiftTimes?: number;
   estimatedReceivedHearts?: number;
   recipientGameAccount?: string;
   fulfillment?: GiftExecutionSummary;

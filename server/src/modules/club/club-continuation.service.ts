@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, type ContinuationQuote, type ContinuationRequest, type GiftWindow } from '@webapp-template/common';
+import { calculateGiftQuote, giftSegmentTimes, type ContinuationQuote, type ContinuationRequest, type GiftWindow } from '@webapp-template/common';
 import { isObjectIdOrHexString, Model, type QueryFilter } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
 import { activeGiftSegments, requireGiftWindowCapacity } from './club-gift-allocation';
@@ -166,7 +166,8 @@ export class ClubContinuationService {
       const paid = (order.continuationQuotes ?? []).reduce(
         (sum, item) => sum + (item.receipt?.receivedAmountCents ?? 0), order.receipt?.receivedAmountCents ?? 0,
       );
-      if (!calculateGiftQuote([...active, quote.segment]) || !Number.isSafeInteger(paid + input.receivedAmountCents))
+      const capacity = active.map(segment => ({ ...segment, paidGiftTimes: giftSegmentTimes(segment) }));
+      if (!calculateGiftQuote([...capacity, quote.segment]) || !Number.isSafeInteger(paid + input.receivedAmountCents))
         throw new BadRequestException('续段后的整单赠送次数或收款金额超出范围');
       const receipt = {
         requestId: input.requestId, receivedAmountCents: input.receivedAmountCents, receivedAt,

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { estimateReceivedHearts, type CustomerGiftProgress, type GiftDispatchSupervision, type GiftMemberSupervision, type GiftSupervisionDay } from '@webapp-template/common';
+import { estimateReceivedHearts, giftFulfillmentSegments, giftSegmentTimes, giftServiceAmounts, type CustomerGiftProgress, type GiftDispatchSupervision, type GiftMemberSupervision, type GiftSupervisionDay } from '@webapp-template/common';
 import { Model } from 'mongoose';
 import { ClubDailyReportStore } from './club-daily-report.store';
 import { jsonReportCount } from './club-daily-report-view';
 import { ClubDirectoryService } from './club-directory.service';
 import { activeGiftSegments, giftSchedule, type StoredGiftShare } from './club-gift-allocation';
 import {
-  addCounts, addGiftPerformance, emptyCounts, emptyGiftPerformance, factCounts, giftDayFacts,
+  addCounts, addGiftPerformance, eligiblePromotionalFacts, emptyCounts, emptyGiftPerformance, factCounts, giftDayFacts,
   giftFactsByShare, giftPerformanceView, giftSharePerformance, receivedHearts, type GiftDayFact,
 } from './club-gift-delivery';
 import { acceptsGiftExecution } from './club-gift-execution.service';
@@ -47,12 +47,13 @@ function dayView(businessDate: string, { planned, report }: MemberDay, through?:
 }
 
 function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<string, string>, through?: string) {
-  const factsByShare = giftFactsByShare(facts);
+  const factsByShare = giftFactsByShare(eligiblePromotionalFacts(order, facts));
   const dispatchByIndex = new Map(order.giftDispatch?.segments.map(segment => [segment.segmentIndex, segment]));
   const paidWindows = new Map(order.continuationQuotes?.filter(quote => quote.receipt)
     .map(quote => [quote.segmentIndex, quote.window]));
   const active = activeGiftSegments(order);
-  const quotes = active.length ? active : order.pricing?.giftSegments ?? order.receipt?.quote.giftSegments ?? [];
+  const price = order.receipt?.quote ?? order.pricing;
+  const quotes = active.length ? active : giftFulfillmentSegments(price?.giftSegments ?? [], price?.promotions);
   const stopped = isStopped(order);
   const orderPerformance = emptyGiftPerformance();
   const segments = quotes.map((quote, segmentIndex) => {
@@ -125,12 +126,13 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
       });
     }
     addGiftPerformance(orderPerformance, segmentPerformance);
-    const unclaimed = quote.paidGiftTimes - netClaimed;
+    const capacity = giftSegmentTimes(quote);
+    const unclaimed = capacity - netClaimed;
     return {
       customer: {
-        segmentIndex, ...quote, ...progress(quote.paidGiftTimes, segmentPerformance),
+        segmentIndex, ...quote, ...progress(capacity, segmentPerformance),
         window: window ? { startDate: window.startDate, endDate: window.endDate } : null,
-        estimatedReceivedHearts: estimateReceivedHearts(quote.paidGiftTimes, quote.period) ?? null,
+        estimatedReceivedHearts: estimateReceivedHearts(capacity, quote.period) ?? null,
         claimObservedReceivedHearts: [...observed].sort((a, b) => a - b), unknownClaimObservations,
       },
       dispatch: {
@@ -140,9 +142,16 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
       },
     };
   });
-  const agreed = active.length ? active.reduce((sum, quote) => sum + quote.paidGiftTimes, 0) : order.heartDelivery.requestedGiftTimes!;
+  const agreed = quotes.length ? quotes.reduce((sum, quote) => sum + giftSegmentTimes(quote), 0) : order.heartDelivery.requestedGiftTimes!;
+  const promotional = segments.filter(segment => segment.customer.promotionalGiftTimes);
+  const promotionalGiftTimes = promotional.reduce((sum, segment) => sum + segment.customer.promotionalGiftTimes!, 0);
+  const deliveredPromotionalGiftTimes = promotional.reduce((sum, segment) => sum + segment.customer.deliveredGiftTimes, 0);
   const customer: CustomerGiftProgress = {
     priceUnit: 'gift_times', ...progress(agreed, orderPerformance),
+    ...(promotionalGiftTimes ? {
+      paidGiftTimes: agreed - promotionalGiftTimes, promotionalGiftTimes, deliveredPromotionalGiftTimes,
+      deliveredPaidGiftTimes: orderPerformance.delivered - deliveredPromotionalGiftTimes,
+    } : {}),
     estimatedReceivedHearts: order.heartDelivery.estimatedReceivedHearts ?? null,
     claimObservedReceivedHearts: [...new Set(segments.flatMap(({ customer }) => customer.claimObservedReceivedHearts))].sort((a, b) => a - b),
     unknownClaimObservations: segments.reduce((sum, { customer }) => sum + customer.unknownClaimObservations, 0),
@@ -154,6 +163,44 @@ function giftSupervision(order: ClubOrder, facts: GiftDayFact[], names?: Map<str
     periodOnlyDifferenceCents: 0,
   };
   return { customer, segments };
+}
+
+function promotionBasis(order: ClubOrder, segments: CustomerGiftProgress['segments']): GiftDispatchSupervision['promotionBasis'] {
+  const quote = order.receipt?.quote;
+  const pricing = order.dispatchPricing;
+  if (!quote?.promotions || !pricing) return undefined;
+  const total = {
+    grossServiceCents: 0, customerServiceCents: 0, personalDiscountCents: 0,
+    platformDiscountCents: 0, promotionalGiftCostCents: 0, unfulfilledServiceCents: 0,
+  };
+  let delivered = 0;
+  for (const segment of segments) {
+    const gross = segment.deliveredGiftTimes * segment.unitPriceCents;
+    delivered += segment.deliveredGiftTimes;
+    total.grossServiceCents += gross;
+    if (segment.promotionalGiftTimes) {
+      total.promotionalGiftCostCents += gross;
+      continue;
+    }
+    const share = quote.promotions.segmentDiscounts[segment.segmentIndex] ?? {
+      paidGiftTimes: segment.paidGiftTimes, unitPriceCents: segment.unitPriceCents,
+      personalDiscountCents: 0, platformDiscountCents: 0,
+    };
+    const fulfilled = giftServiceAmounts(share, 0, segment.deliveredGiftTimes);
+    total.customerServiceCents += fulfilled.serviceCents;
+    total.personalDiscountCents += fulfilled.personalDiscountCents;
+    total.platformDiscountCents += fulfilled.platformDiscountCents;
+    total.unfulfilledServiceCents += giftServiceAmounts(share, segment.deliveredGiftTimes, share.paidGiftTimes).serviceCents;
+  }
+  const dispatchFeeCents = delivered * pricing.dispatchFeeCents;
+  const clubFeeCents = delivered * pricing.clubFeeCents;
+  const memberFeeCents = total.grossServiceCents - dispatchFeeCents - clubFeeCents;
+  return {
+    ...total,
+    dispatchFeeCents: Number.isSafeInteger(dispatchFeeCents) ? dispatchFeeCents : null,
+    clubFeeCents: Number.isSafeInteger(clubFeeCents) ? clubFeeCents : null,
+    memberFeeCents: Number.isSafeInteger(memberFeeCents) ? memberFeeCents : null,
+  };
 }
 
 export function isGiftExceptionDay(day: GiftSupervisionDay) {
@@ -199,7 +246,8 @@ export class ClubGiftSupervision {
       segment.overdueUnclaimedGiftTimes ||
       segment.members.some(member => member.shares.some(share => share.overdueGiftTimes || share.days.some(isGiftExceptionDay))),
     );
-    return { ...result.customer, through: through ?? null, hasExceptions, segments };
+    const basis = promotionBasis(order, result.customer.segments);
+    return { ...result.customer, through: through ?? null, hasExceptions, segments, ...(basis ? { promotionBasis: basis } : {}) };
   }
 
   async exceptions(order: ClubOrder, through: string) {

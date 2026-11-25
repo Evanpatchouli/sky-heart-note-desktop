@@ -7,7 +7,7 @@ import { ClubDailyReportStore, reportObjectId } from './club-daily-report.store'
 import type { CreateDailyReportDto, CreateReportCorrectionDto } from './club-delivery.dto';
 import { DailyReport, type DailyReportLine } from './club-delivery.schema';
 import { ClubDirectoryService } from './club-directory.service';
-import { giftDayFacts, giftProgress } from './club-gift-delivery';
+import { addGiftTimesByShare, allPaidGiftsDelivered, eligiblePromotionalFacts, giftDayFacts, giftProgress } from './club-gift-delivery';
 import { acceptsGiftExecution, publishedGiftOrder, writableGiftDispatch } from './club-gift-execution.service';
 import { activeGiftSegments } from './club-gift-allocation';
 import { ClubOrder } from './club-order.schema';
@@ -40,7 +40,7 @@ export class ClubGiftDeliveryService {
     const history = await this.store.history(order, userId, after);
     if (order.dispatchPricing?.priceUnit !== 'gift_times') return { ...history, priceUnit: 'received_hearts' };
     const facts = await giftDayFacts(this.reports.collection, order);
-    return { ...history, priceUnit: 'gift_times', giftProgress: giftProgress(order, userId, facts) };
+    return { ...history, priceUnit: 'gift_times', giftProgress: giftProgress(order, userId, eligiblePromotionalFacts(order, facts)) };
   }
 
   async submit(clubId: string, userId: string, orderId: string, input: Submission) {
@@ -114,6 +114,41 @@ export class ClubGiftDeliveryService {
       if (!Number.isSafeInteger(hearts))
         throw new BadRequestException('单份日报的实际到账合计超出整数范围');
       const id = new Types.ObjectId();
+      const businessDate = correction ? previous!.businessDate : input.businessDate;
+      const previousByShare = new Map<string, { times: bigint; scope?: number[] }>();
+      for (const line of previous?.lines ?? []) {
+        const id = (line.shareId ?? shareId).toHexString();
+        const existing = previousByShare.get(id);
+        previousByShare.set(id, { times: (existing?.times ?? 0n) + BigInt(line.giftTimes),
+          scope: existing?.scope ?? line.promotionPaidSegmentIndices });
+      }
+      const promotionalLines = lines.filter(line => quotes[line.quoteSegment! - 1].promotionalGiftTimes);
+      if (promotionalLines.some(line => line.giftTimes)) {
+        const facts = await giftDayFacts(this.reports.collection, order, undefined, undefined, businessDate);
+        const after = new Map<string, bigint>();
+        const submitted = new Map<string, bigint>();
+        for (const fact of facts) addGiftTimesByShare(after, fact._id.shareId.toHexString(), BigInt(fact.giftTimes.toString()));
+        for (const [id, prior] of previousByShare) addGiftTimesByShare(after, id, -prior.times);
+        for (const line of lines) {
+          const id = line.shareId!.toHexString();
+          addGiftTimesByShare(after, id, BigInt(line.giftTimes));
+          addGiftTimesByShare(submitted, id, BigInt(line.giftTimes));
+        }
+        const laterContinuations = new Set(order.continuationQuotes?.flatMap(item =>
+          item.receipt && item.window && item.window.startDate > businessDate ? [item.segmentIndex] : [],
+        ));
+        const applicable = quotes.flatMap((quote, index) =>
+          quote.paidGiftTimes && (input.kind === 'daily' || !laterContinuations.has(index)) ? [index] : [],
+        );
+        for (const line of promotionalLines) {
+          const id = line.shareId!.toHexString();
+          const prior = previousByShare.get(id);
+          const scope = prior?.scope ?? applicable;
+          if ((submitted.get(id) ?? 0n) > (prior?.times ?? 0n) && !allPaidGiftsDelivered(order, quotes, scope, after))
+            throw new ConflictException('须完成整单已核款的全部付费次数，再登记促销赠送');
+          line.promotionPaidSegmentIndices = scope;
+        }
+      }
       const report: DailyReport = {
         ...scope, _id: id, priceUnit: 'gift_times', clubId,
         shareId, accountId,
@@ -122,7 +157,7 @@ export class ClubGiftDeliveryService {
         personalAccountId: previous?.personalAccountId ?? account.personalAccountId,
         memberNickname: previous ? previous.memberNickname : account.memberNickname,
         recipientGameAccount: previous?.recipientGameAccount ?? account.recipientGameAccount,
-        businessDate: correction ? previous!.businessDate : input.businessDate,
+        businessDate,
         submittedAt: new Date(), kind: input.kind, version: (previous?.version ?? 0) + 1,
         originalId: previous?.originalId ?? id, requestHash, reason: input.reason,
         lines, receivedHearts: lines.some(line => line.receivedHearts === null) ? null : hearts,
@@ -130,6 +165,7 @@ export class ClubGiftDeliveryService {
       if (!await this.store.stage(order, {
         ...(input.kind === 'daily' ? writableGiftDispatch : publishedGiftOrder),
         closedAt: null, clubId, 'giftDispatch.segments.shares.userId': userId,
+        ...(promotionalLines.length ? { continuationRevision: order.continuationRevision ?? { $in: [null, 0] } } : {}),
       }, report)) {
         await wait(5 + Math.random() * 20);
         continue;

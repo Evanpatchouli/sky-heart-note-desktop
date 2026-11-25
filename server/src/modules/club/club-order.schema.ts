@@ -160,6 +160,9 @@ export class ClubOrder {
   @Prop({ type: String, match: USER_ID_PATTERN, immutable: true })
   requestedDispatcherUserId?: string;
 
+  @Prop({ type: String, immutable: true })
+  requestedPromotionCouponId?: string;
+
   @Prop({
     type: String,
     enum: ['creator', 'customer_selected', 'random', 'manual'],
@@ -187,6 +190,11 @@ export class ClubOrder {
 
   @Prop({ type: OrderReceiptSchema })
   receipt?: StoredOrderReceipt;
+
+  // The active use is changed in the same atomic write as the receipt. The
+  // original coupon identity remains in the receipt if a later refund returns it.
+  @Prop({ type: String })
+  activePromotionCouponId?: string;
 
   @Prop({ type: CommissionReviewSchema })
   commissionReview?: CommissionReview;
@@ -226,6 +234,11 @@ export class ClubOrder {
 }
 
 export const ClubOrderSchema = SchemaFactory.createForClass(ClubOrder);
+
+ClubOrderSchema.index({ activePromotionCouponId: 1 }, {
+  unique: true, partialFilterExpression: { activePromotionCouponId: { $type: 'string' } },
+});
+ClubOrderSchema.index({ dispatcherUserId: 1, source: 1, dispatchStatus: 1, _id: -1 });
 
 ClubOrderSchema.index(
   { clubId: 1, source: 1, createdByUserId: 1, requestId: 1 },

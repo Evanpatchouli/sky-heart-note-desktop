@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { giftFulfillmentSegments, giftSegmentTimes } from '@webapp-template/common';
 import type {
   GiftClaimResult, GiftDayAllocation, GiftExecutionAccount, GiftDispatchSegment, GiftOffer, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow,
 } from '@webapp-template/common';
@@ -71,11 +72,11 @@ function dayRange({ startDate, endDate }: GiftWindow) {
 export function requireGiftWindowCapacity(window: GiftWindow, times: number, daily: number) {
   const { start, end } = dayRange(window);
   if (Math.ceil(times / daily) > end - start + 1)
-    throw new BadRequestException('执行窗口不足以完成此段付费赠送次数');
+    throw new BadRequestException('执行窗口不足以完成此段赠送次数');
 }
 
 export function activeGiftSegments(order: ClubOrder): GiftPriceSegment[] {
-  const initial = order.dispatchPricing?.giftSegments ?? [];
+  const initial = giftFulfillmentSegments(order.dispatchPricing?.giftSegments ?? [], order.dispatchPricing?.promotions);
   const active = (order.continuationQuotes ?? [])
     .filter(quote => quote.receipt && quote.segmentIndex !== undefined)
     .sort((a, b) => a.segmentIndex! - b.segmentIndex!);
@@ -124,7 +125,7 @@ function inventory(segment: StoredGiftSegment, quote: GiftPriceSegment) {
     const available = quote.dailyGiftTimes - (reserved.get(day) ?? 0);
     if (available > 0) free.set(day, available);
   }
-  return { free, remaining: quote.paidGiftTimes - total(reserved) };
+  return { free, remaining: giftSegmentTimes(quote) - total(reserved) };
 }
 
 function take(free: DayAmounts, perDay: number, limit: number) {
@@ -157,10 +158,10 @@ export function buildGiftSegments(
     throw new BadRequestException('请为至少一个已付计价段配置一次派发');
   return input.map(({ segmentIndex, openToClaim, startDate, endDate, directed }) => {
     const quote = quotes[segmentIndex];
-    if (!quote) throw new BadRequestException('请选择已付计价段');
+    if (!quote) throw new BadRequestException('请选择已核款的履约段');
     const segment: StoredGiftSegment = { segmentIndex, openToClaim, startDate, endDate, offers: [], shares: [] };
     const window = dayRange(segment);
-    requireGiftWindowCapacity(segment, quote.paidGiftTimes, quote.dailyGiftTimes);
+    requireGiftWindowCapacity(segment, giftSegmentTimes(quote), quote.dailyGiftTimes);
     if (!openToClaim && !directed.length)
       throw new BadRequestException('请选择开放抢单或填写至少一名指定团员');
     if (new Set(directed.map(item => item.userId)).size !== directed.length)
@@ -219,6 +220,7 @@ export function giftSegmentView(
   const ownShares = segment.shares.filter(share => share.userId === userId);
   return {
     segmentIndex: segment.segmentIndex, startDate: segment.startDate, endDate: segment.endDate,
+    ...(quote.promotionalGiftTimes ? { promotionalGiftTimes: quote.promotionalGiftTimes } : {}),
     openToClaim: segment.openToClaim,
     publicDailyGiftTimes: publicDays.size ? Math.max(...publicDays.values()) : 0,
     publicRemainingGiftTimes: total(publicDays),
