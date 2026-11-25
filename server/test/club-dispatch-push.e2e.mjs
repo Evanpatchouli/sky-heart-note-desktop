@@ -79,8 +79,8 @@ async function startGateway(t) {
     for await (const chunk of req) chunks.push(chunk);
     const publication = req.headers.topic;
     const key = `${publication}:${req.url}`;
-    calls.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks), at: Date.now(), key });
     const { status = 201, retryAfter } = (responses.get(key) ?? responses.get(req.url))?.shift() ?? {};
+    calls.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks), at: Date.now(), key, status });
     if (retryAfter) res.setHeader('Retry-After', retryAfter);
     res.writeHead(status).end();
   }).listen(0, '127.0.0.1');
@@ -301,6 +301,17 @@ test('正式派发通过 Web Push 加密投递，重启继续重试并隔离设�
   await employee(pushRoute, returned, 'DELETE');
   await employee(pushRoute, returned, 'DELETE');
   assert.equal((await employee(pushRoute, returned)).fingerprint, null);
+
+  const missing = await employee(baseOrderRoute, dispatcher, 'POST', input(), 201);
+  await prepare(missing);
+  responses.set(lateDevice.path, [{ status: 404 }]);
+  const lastPublication = await publish(missing, publishInput());
+  await eventually('404 停用设备后仍可从本人站内通知进单', async () =>
+    (await jobs(lastPublication.publicationId)).some(job => job.state === 'cancelled') &&
+    !(await subscriptions.findOne({ endpoint: lateDevice.body.endpoint })) &&
+    (await employee('/employee/dispatch-notices', late)).items.some(item => item.orderId === missing.id));
+  assert.equal(browserCalls(lastPublication, lateDevice).length, 1);
+  assert.equal((await employee(pushRoute, late)).fingerprint, null);
 });
 
 test('三端通知分级、接待和生效罚款使用同一套可靠投递', { timeout: 180_000 }, async t => {
@@ -434,23 +445,35 @@ test('三端通知分级、接待和生效罚款使用同一套可靠投递', { 
     { ...terms, refunds: [invalidRefund] },
     { ...terms, clubId: 'other' },
   ]);
-  responses.set(devices.member.path, [{ status: 503, retryAfter: '12' }]);
-  const { insertedIds } = await adjustments.insertMany([
-    terms,
-    { ...terms, memberUserId: administrator.id, decidedByUserId: administrator.id, revision: 1 },
-    { ...terms, status: 'pending' },
-    { ...terms, status: 'rejected' },
-    { ...terms, kind: 'customer_compensation' },
-  ]);
   const findPenalty = id => eventRecords.findOne({ eventKey: 'club.penalty.approved:' + id });
-  const [two, one] = await eventually('罚款按两种角色生成重要通知', async () => {
-    const events = await Promise.all([findPenalty(insertedIds[0]), findPenalty(insertedIds[1])]);
-    return events.every(Boolean) && events;
-  });
+  // Wait for the notification IDs before enabling their inbox writes. This
+  // makes the synthetic 503 apply only to the intended penalty and device.
+  await db.command({ collMod: notices.collectionName, validator: { eventKey: { $not: /^club\.penalty\.approved:/ } } });
+  let insertedIds;
+  let two;
+  let one;
+  try {
+    ({ insertedIds } = await adjustments.insertMany([
+      terms,
+      { ...terms, memberUserId: administrator.id, decidedByUserId: administrator.id, revision: 1 },
+      { ...terms, status: 'pending' },
+      { ...terms, status: 'rejected' },
+      { ...terms, kind: 'customer_compensation' },
+    ]));
+    [two, one] = await eventually('罚款按两种角色生成重要通知', async () => {
+      const events = await Promise.all([findPenalty(insertedIds[0]), findPenalty(insertedIds[1])]);
+      return events.every(Boolean) && events;
+    });
+    responses.set(`${two._id}:${devices.member.path}`, [{ status: 503, retryAfter: '12' }]);
+  } finally {
+    await db.command({ collMod: notices.collectionName, validator: {} });
+  }
+  const firstAttempt = await eventually('应向该罚款的团员设备发送一次推送', () =>
+    calls.find(call => call.headers.topic === String(two._id) && call.path === devices.member.path));
+  assert.equal(firstAttempt.status, 503);
   await eventually('重启前须确认罚款设备的重试调度已保存', async () => {
-    const pending = await jobs.findOne({ publicationId: two._id, userId: member.id, state: 'pending', lease: { $exists: false } });
-    const firstAttempt = calls.find(call => call.headers.topic === String(two._id) && call.path === devices.member.path);
-    return pending && firstAttempt && pending.nextAttemptAt.getTime() >= firstAttempt.at + 12000 &&
+    const pending = await jobs.findOne({ publicationId: two._id, userId: member.id, state: 'pending', attempts: 1, lease: { $exists: false } });
+    return pending && pending.nextAttemptAt.getTime() >= firstAttempt.at + 12000 &&
       await jobs.countDocuments({ publicationId: two._id, state: 'accepted' }) === 1 &&
       await jobs.countDocuments({ publicationId: one._id, state: 'accepted' }) === 1;
   });
