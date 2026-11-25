@@ -33,6 +33,8 @@ export interface GiftShare extends GiftDirectedAssignment {
   id: string;
   kind: 'public' | 'directed';
   giftTimes: number;
+  netGiftTimes: number;
+  originalSchedule?: GiftDayAllocation[];
   actualReceivedHearts?: number;
   transferredGiftTimes?: number;
   deliveredGiftTimes?: number;
@@ -40,8 +42,11 @@ export interface GiftShare extends GiftDirectedAssignment {
 
 export interface GiftClaimResult {
   shareId?: string;
+  requestedDailyGiftTimes: number;
+  additionalRequestedDailyGiftTimes?: number;
   dailyGiftTimes: number;
   giftTimes: number;
+  schedule: GiftDayAllocation[];
   actualReceivedHearts?: number;
 }
 
@@ -51,13 +56,28 @@ export interface GiftDispatchSegment extends GiftWindow {
   publicDailyGiftTimes: number;
   publicRemainingGiftTimes: number;
   publicSchedule: GiftDayAllocation[];
+  myPublicRequestedDailyGiftTimes?: number;
   offers: GiftOffer[];
   shares: GiftShare[];
 }
 
+export interface GiftAllocationTotals {
+  paidGiftTimes: number;
+  claimedGiftTimes: number;
+  directedPendingGiftTimes: number;
+  publicRemainingGiftTimes: number;
+  unconfiguredGiftTimes: number;
+  unallocatedGiftTimes: number;
+}
+
 export interface GiftDispatchPreparation {
   quotes: GiftPriceSegment[];
-  segments: GiftDispatchSegment[];
+  segments: (GiftDispatchSegment & {
+    memberAllocations: { userId: string; giftTimes: number; schedule: GiftDayAllocation[] }[];
+  })[];
+  acceptingClaims: boolean;
+  totals: GiftAllocationTotals;
+  segmentTotals: (GiftAllocationTotals & { segmentIndex: number; configured: boolean })[];
   candidates: { userId: string; nickname: string | null }[];
 }
 

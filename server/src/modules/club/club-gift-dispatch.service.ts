@@ -1,24 +1,30 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { GiftClaimOrder, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput } from '@webapp-template/common';
+import type {
+  GiftAllocationTotals, GiftClaimOrder, GiftClaimResult, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput,
+} from '@webapp-template/common';
 import { isObjectIdOrHexString, Model, QueryFilter, Types } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
 import {
-  awardGiftShare, buildGiftSegments, directedGiftDays, emptyGiftDispatch, giftDispatchFingerprint, giftOfferView,
-  giftSegmentView, publicGiftDays, transferGiftDays, type GiftDispatchState,
+  awardGiftShare, buildGiftSegments, directedGiftDays, emptyGiftDispatch, giftClaimFields, giftDispatchFingerprint, giftOfferView,
+  giftMemberAllocations, giftSegmentView, giftShareView, publicGiftDays, transferGiftDays, type GiftDispatchState, type StoredGiftClaim,
 } from './club-gift-allocation';
 import type { ClaimGiftDispatchDto, ConfigureGiftDispatchDto, ReassignGiftDispatchDto } from './club-gift-dispatch.dto';
 import { ClubOrder } from './club-order.schema';
 
-const claimable = {
+const publishedGiftOrder = {
   dispatchStatus: 'published' as const,
   'dispatchPricing.priceUnit': 'gift_times',
+};
+const claimable = {
+  ...publishedGiftOrder,
   dispatchWithdrawnAt: null,
   termination: null,
   'priceAdjustment.state': { $in: [null, 'continuing'] },
 };
 const durable = { writeConcern: { w: 'majority', j: true } } as const;
 const concurrentChange = () => new ConflictException('订单分工或履约正在更新，请重新加载后重试');
+const retryClaim = () => new ServiceUnavailableException('订单分工或履约正在更新，请重试本次领取');
 
 function eligibleOrder(order: ClubOrder) {
   if (order.dispatchPricing?.priceUnit !== 'gift_times' || order.receipt?.quote.priceUnit !== 'gift_times' ||
@@ -27,8 +33,45 @@ function eligibleOrder(order: ClubOrder) {
   return order.dispatchPricing.giftSegments ?? [];
 }
 
+function acceptsClaims(order: ClubOrder & {
+  dispatchWithdrawnAt?: Date;
+  termination?: unknown;
+  priceAdjustment?: { state: string };
+}) {
+  return order.dispatchWithdrawnAt == null && order.termination == null &&
+    (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing');
+}
+
 function matchReplay(saved: { fingerprint: string }, fingerprint: string) {
   if (saved.fingerprint !== fingerprint) throw new ConflictException('相同提交标识已用于不同的操作内容');
+}
+
+function publicRequestBySegment(claims: StoredGiftClaim[], userId: string) {
+  const requested = new Map<number, number>();
+  for (const claim of claims) {
+    if (claim.userId !== userId) continue;
+    const [segmentIndex, kind, , dailyGiftTimes] = giftClaimFields(claim);
+    if (kind === 'public' && dailyGiftTimes !== null) {
+      requested.set(segmentIndex, Math.max(requested.get(segmentIndex) ?? 0, dailyGiftTimes));
+    }
+  }
+  return requested;
+}
+
+function claimReceipt(state: GiftDispatchState, saved: StoredGiftClaim): GiftClaimResult {
+  const { requestedDailyGiftTimes, schedule } = saved.result;
+  if (requestedDailyGiftTimes !== undefined && schedule !== undefined)
+    return { ...saved.result, requestedDailyGiftTimes, schedule };
+  const [segmentIndex, , offerId, dailyGiftTimes] = giftClaimFields(saved);
+  const segment = state.segments.find(segment => segment.segmentIndex === segmentIndex);
+  const offer = segment?.offers.find(offer => offer.id === offerId);
+  const share = segment?.shares.find(share => share.id === saved.result.shareId);
+  const historical = share && giftShareView(share, segment?.offers);
+  return {
+    ...saved.result,
+    requestedDailyGiftTimes: dailyGiftTimes ?? offer?.dailyGiftTimes ?? saved.result.dailyGiftTimes,
+    schedule: historical?.originalSchedule ?? historical?.schedule ?? [],
+  };
 }
 
 function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
@@ -37,7 +80,11 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
     segment.shares.some(share => share.userId === userId),
   );
   const quotes = order.dispatchPricing!.giftSegments ?? [];
-  const segments = authorizedSegments.map(segment => giftSegmentView(segment, quotes[segment.segmentIndex], userId));
+  const requested = publicRequestBySegment(order.giftDispatch?.claims ?? [], userId);
+  const segments = authorizedSegments.map(segment => ({
+    ...giftSegmentView(segment, quotes[segment.segmentIndex], userId),
+    myPublicRequestedDailyGiftTimes: requested.get(segment.segmentIndex) ?? 0,
+  }));
   const { requestedGiftTimes, estimatedReceivedHearts } = order.heartDelivery;
   return {
     id: order._id.toHexString(), source: order.source, dispatcherUserId: order.dispatcherUserId!,
@@ -45,6 +92,19 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
     ...(segments.some(segment => segment.shares.length) || order.dispatcherUserId === userId
       ? { recipientGameAccount: order.recipientGameAccount } : {}),
     segments,
+  };
+}
+
+function totalAllocation(
+  total: GiftAllocationTotals, segment: GiftAllocationTotals,
+): GiftAllocationTotals {
+  return {
+    paidGiftTimes: total.paidGiftTimes + segment.paidGiftTimes,
+    claimedGiftTimes: total.claimedGiftTimes + segment.claimedGiftTimes,
+    directedPendingGiftTimes: total.directedPendingGiftTimes + segment.directedPendingGiftTimes,
+    publicRemainingGiftTimes: total.publicRemainingGiftTimes + segment.publicRemainingGiftTimes,
+    unconfiguredGiftTimes: total.unconfiguredGiftTimes + segment.unconfiguredGiftTimes,
+    unallocatedGiftTimes: total.unallocatedGiftTimes + segment.unallocatedGiftTimes,
   };
 }
 
@@ -70,18 +130,39 @@ export class ClubGiftDispatchService {
 
   async preparation(clubId: string, userId: string, orderId: string): Promise<GiftDispatchPreparation> {
     await this.directory.requireMember(clubId, userId);
-    const order = await this.getOrder(orderId, { ...claimable, clubId, dispatcherUserId: userId });
+    const order = await this.getOrder(orderId, { ...publishedGiftOrder, clubId, dispatcherUserId: userId });
     const quotes = eligibleOrder(order);
+    const acceptingClaims = acceptsClaims(order);
     const candidates = await this.candidates(clubId, userId);
     const segments = await Promise.all((order.giftDispatch?.segments ?? []).map(async segment => {
-      const view = giftSegmentView(segment, quotes[segment.segmentIndex]);
-      return { ...view, shares: await Promise.all(view.shares.map(async share => ({
-        ...share,
-        deliveredGiftTimes: [...(await this.sentGiftTimes(order._id, share.id, share.userId, segment.segmentIndex)).values()]
-          .reduce((sum, times) => sum + times, 0),
-      }))) };
+      const view = giftSegmentView(segment, quotes[segment.segmentIndex], undefined, acceptingClaims);
+      return {
+        ...view,
+        memberAllocations: giftMemberAllocations(segment.shares),
+        shares: await Promise.all(view.shares.map(async share => ({
+          ...share,
+          deliveredGiftTimes: [...(await this.sentGiftTimes(order._id, share.id, share.userId, segment.segmentIndex)).values()]
+            .reduce((sum, times) => sum + times, 0),
+        }))),
+      };
     }));
-    return { quotes, segments, candidates };
+    const segmentsByIndex = new Map(segments.map(segment => [segment.segmentIndex, segment]));
+    const segmentTotals = quotes.map(({ paidGiftTimes }, segmentIndex) => {
+      const segment = segmentsByIndex.get(segmentIndex);
+      const claimedGiftTimes = segment?.shares.reduce((sum, share) => sum + share.netGiftTimes, 0) ?? 0;
+      const directedPendingGiftTimes = segment?.offers.reduce((sum, offer) => sum + (offer.accepted ? 0 : offer.giftTimes), 0) ?? 0;
+      const publicRemainingGiftTimes = segment?.publicRemainingGiftTimes ?? 0;
+      return {
+        segmentIndex, configured: !!segment, paidGiftTimes, claimedGiftTimes, directedPendingGiftTimes, publicRemainingGiftTimes,
+        unconfiguredGiftTimes: segment ? 0 : paidGiftTimes,
+        unallocatedGiftTimes: segment ? paidGiftTimes - claimedGiftTimes - directedPendingGiftTimes - publicRemainingGiftTimes : 0,
+      };
+    });
+    const totals = segmentTotals.reduce(totalAllocation, {
+      paidGiftTimes: 0, claimedGiftTimes: 0, directedPendingGiftTimes: 0, publicRemainingGiftTimes: 0,
+      unconfiguredGiftTimes: 0, unallocatedGiftTimes: 0,
+    });
+    return { quotes, segments, candidates, acceptingClaims, totals, segmentTotals };
   }
 
   async configure(clubId: string, userId: string, orderId: string, input: ConfigureGiftDispatchDto) {
@@ -123,6 +204,15 @@ export class ClubGiftDispatchService {
     return readOrder(await this.getOrder(orderId, this.claimScope(clubId, userId)), userId);
   }
 
+  async receipt(clubId: string, userId: string, orderId: string, requestId: string) {
+    await this.directory.requireMember(clubId, userId);
+    const scope = this.receiptScope(clubId, userId, requestId);
+    const order = await this.getOrder(orderId, scope);
+    const state = order.giftDispatch!;
+    const saved = state.claims.find(item => item.requestId === requestId && item.userId === userId)!;
+    return claimReceipt(state, saved);
+  }
+
   async claim(clubId: string, userId: string, orderId: string, input: ClaimGiftDispatchDto) {
     await this.directory.requireMember(clubId, userId);
     const scope = this.claimScope(clubId, userId);
@@ -131,34 +221,50 @@ export class ClubGiftDispatchService {
     if (kind === 'public' && offerId !== undefined || kind === 'directed' && dailyGiftTimes !== undefined)
       throw new BadRequestException('公开抢单填写日量，定向接单确认指定份额');
     const fingerprint = JSON.stringify([segmentIndex, kind, offerId, dailyGiftTimes, actualReceivedHearts]);
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const order = await this.getOrder(orderId, scope);
-      const quotes = eligibleOrder(order);
+    const receiptScope = this.receiptScope(clubId, userId, requestId);
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const order = await this.getOrder(orderId, { $or: [scope, receiptScope] });
       const state = order.giftDispatch!;
       const saved = state.claims.find(item => item.requestId === requestId && item.userId === userId);
       if (saved) {
         matchReplay(saved, fingerprint);
-        return saved.result;
+        return claimReceipt(state, saved);
       }
+      if (order.pendingDailyReport) throw retryClaim();
+      const quotes = eligibleOrder(order);
       const segment = state.segments.find(item => item.segmentIndex === segmentIndex);
       if (!segment) throw new NotFoundException('该段还没有分工');
       let days: ReturnType<typeof publicGiftDays>;
+      let requestedDaily;
+      let additionalDaily;
       if (kind === 'public') {
         if (!segment.openToClaim) throw new ForbiddenException('此段仅接受定向承接');
-        if (segment.shares.some(share => share.userId === userId && share.kind === 'public'))
-          throw new ConflictException('你已在本段领取公开份额');
-        days = publicGiftDays(segment, quotes[segmentIndex], dailyGiftTimes!);
+        const previousDaily = publicRequestBySegment(state.claims, userId).get(segmentIndex) ?? 0;
+        requestedDaily = dailyGiftTimes!;
+        if (requestedDaily <= previousDaily)
+          throw new ConflictException('追加领取须提高本段已申报的总日量，请刷新后确认');
+        const increase = requestedDaily - previousDaily;
+        additionalDaily = previousDaily ? increase : undefined;
+        days = publicGiftDays(segment, quotes[segmentIndex], increase);
       } else {
         const offer = segment.offers.find(item => item.id === offerId && item.userId === userId);
         if (!offer) throw new ForbiddenException('本段没有此项指定给你的份额');
         if (offer.accepted) throw new ConflictException('你已确认承接此份额');
+        requestedDaily = offer.dailyGiftTimes;
         days = directedGiftDays(offer);
       }
-      const result = awardGiftShare(segment, kind, userId, days, actualReceivedHearts);
+      const result = awardGiftShare(segment, kind, userId, days, requestedDaily, actualReceivedHearts, additionalDaily);
       state.claims.push({ requestId, userId, fingerprint, result });
       if (await this.save(order, scope, state)) return result;
     }
-    throw concurrentChange();
+    const finalOrder = await this.findOrder(orderId, receiptScope);
+    const state = finalOrder?.giftDispatch;
+    const saved = state?.claims.find(item => item.requestId === requestId && item.userId === userId);
+    if (state && saved) {
+      matchReplay(saved, fingerprint);
+      return claimReceipt(state, saved);
+    }
+    throw retryClaim();
   }
 
   async reassign(clubId: string, userId: string, orderId: string, input: ReassignGiftDispatchDto) {
@@ -202,11 +308,19 @@ export class ClubGiftDispatchService {
     };
   }
 
+  private receiptScope(clubId: string, userId: string, requestId: string): QueryFilter<ClubOrder> {
+    return { clubId, 'giftDispatch.claims': { $elemMatch: { userId, requestId } } };
+  }
+
   private async getOrder(id: string, scope: QueryFilter<ClubOrder>) {
-    if (!isObjectIdOrHexString(id)) throw new BadRequestException('订单标识格式无效');
-    const order = await this.orders.findOne({ ...scope, _id: id }).lean();
+    const order = await this.findOrder(id, scope);
     if (!order) throw new NotFoundException('当前没有可操作的已派发按次订单');
     return order;
+  }
+
+  private findOrder(id: string, scope: QueryFilter<ClubOrder>) {
+    if (!isObjectIdOrHexString(id)) throw new BadRequestException('订单标识格式无效');
+    return this.orders.findOne({ ...scope, _id: id }).lean();
   }
 
   private async requireCandidates(clubId: string, input: GiftSegmentDispatchInput[]) {

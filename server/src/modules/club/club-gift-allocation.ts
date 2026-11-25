@@ -10,7 +10,7 @@ const maximumWindowDays = 3660;
 type DayAmounts = Map<number, number>;
 type GiftDayRun = GiftDayAllocation;
 export type StoredGiftOffer = Omit<GiftOffer, 'schedule'> & { days: GiftDayRun[] };
-export type StoredGiftShare = Omit<GiftShare, 'schedule'> & { days: GiftDayRun[] };
+export type StoredGiftShare = Omit<GiftShare, 'schedule' | 'netGiftTimes' | 'originalSchedule'> & { days: GiftDayRun[] };
 export type StoredGiftSegment = GiftWindow & {
   segmentIndex: number;
   openToClaim: boolean;
@@ -20,9 +20,22 @@ export type StoredGiftSegment = GiftWindow & {
 export type GiftDispatchState = {
   segments: StoredGiftSegment[];
   configurations: { requestId: string; fingerprint: string }[];
-  claims: { requestId: string; userId: string; fingerprint: string; result: GiftClaimResult }[];
+  claims: StoredGiftClaim[];
   transfers: { requestId: string; fingerprint: string; result: GiftOffer }[];
 };
+
+export type StoredGiftClaim = {
+  requestId: string;
+  userId: string;
+  fingerprint: string;
+  result: Omit<GiftClaimResult, 'requestedDailyGiftTimes' | 'schedule'>
+    & Partial<Pick<GiftClaimResult, 'requestedDailyGiftTimes' | 'schedule'>>;
+};
+
+export function giftClaimFields(claim: StoredGiftClaim) {
+  // This is the unchanged fingerprint format used by the original published receipts.
+  return JSON.parse(claim.fingerprint) as [number, 'public' | 'directed', string | null, number | null, number | null];
+}
 
 function dateAt(day: number) {
   return new Date(day * dayMilliseconds).toISOString().slice(0, 10);
@@ -152,25 +165,46 @@ export function giftOfferView({ days: _days, ...offer }: StoredGiftOffer): GiftO
   return { ...offer, schedule: _days };
 }
 
-export function giftShareView({ days, ...share }: StoredGiftShare): GiftShare {
-  return { ...share, schedule: days };
+export function giftShareView({ days, ...share }: StoredGiftShare, offers: StoredGiftOffer[] = []): GiftShare {
+  const outgoing = offers.filter(offer => offer.transferredFromShareId === share.id);
+  const original = new Map<number, number>();
+  if (outgoing.length) {
+    addDays(original, days);
+    for (const offer of outgoing) addDays(original, offer.days);
+  }
+  return {
+    ...share,
+    schedule: days,
+    netGiftTimes: share.giftTimes - (share.transferredGiftTimes ?? 0),
+    ...(outgoing.length ? { originalSchedule: compress(original) } : {}),
+  };
 }
 
-export function giftSegmentView(segment: StoredGiftSegment, quote: GiftPriceSegment, userId?: string): GiftDispatchSegment {
+export function giftSegmentView(
+  segment: StoredGiftSegment, quote: GiftPriceSegment, userId?: string, acceptingClaims = true,
+): GiftDispatchSegment {
   const { free, remaining } = inventory(segment, quote);
-  const publicDays = take(free, Number.MAX_SAFE_INTEGER, remaining);
+  const publicDays = segment.openToClaim && acceptingClaims ? take(free, Number.MAX_SAFE_INTEGER, remaining) : new Map<number, number>();
   const ownShares = segment.shares.filter(share => share.userId === userId);
-  const publicAvailable = segment.openToClaim && remaining > 0 && free.size > 0 &&
-    !ownShares.some(share => share.kind === 'public');
   return {
     segmentIndex: segment.segmentIndex, startDate: segment.startDate, endDate: segment.endDate,
     openToClaim: segment.openToClaim,
-    publicDailyGiftTimes: publicAvailable ? Math.max(...publicDays.values()) : 0,
-    publicRemainingGiftTimes: publicAvailable ? total(publicDays) : 0,
-    publicSchedule: publicAvailable ? compress(publicDays) : [],
+    publicDailyGiftTimes: publicDays.size ? Math.max(...publicDays.values()) : 0,
+    publicRemainingGiftTimes: total(publicDays),
+    publicSchedule: compress(publicDays),
     offers: segment.offers.filter(offer => userId === undefined || offer.userId === userId).map(giftOfferView),
-    shares: (userId === undefined ? segment.shares : ownShares).map(giftShareView),
+    shares: (userId === undefined ? segment.shares : ownShares).map(share => giftShareView(share, segment.offers)),
   };
+}
+
+export function giftMemberAllocations(shares: StoredGiftShare[]) {
+  const byMember = new Map<string, DayAmounts>();
+  for (const share of shares) {
+    const days = byMember.get(share.userId) ?? new Map<number, number>();
+    addDays(days, share.days);
+    byMember.set(share.userId, days);
+  }
+  return [...byMember].map(([userId, days]) => ({ userId, giftTimes: total(days), schedule: compress(days) }));
 }
 
 export function publicGiftDays(segment: StoredGiftSegment, quote: GiftPriceSegment, requestedDaily: number) {
@@ -180,19 +214,24 @@ export function publicGiftDays(segment: StoredGiftSegment, quote: GiftPriceSegme
 
 export function awardGiftShare(
   segment: StoredGiftSegment, kind: 'public' | 'directed', userId: string,
-  amounts: DayAmounts, actualReceivedHearts?: number,
+  amounts: DayAmounts, requestedDailyGiftTimes: number, actualReceivedHearts?: number,
+  additionalRequestedDailyGiftTimes?: number,
 ): GiftClaimResult {
-  const days = compress(amounts);
-  if (!days.length) return { dailyGiftTimes: 0, giftTimes: 0 };
+  const schedule = compress(amounts);
+  const request = {
+    requestedDailyGiftTimes, schedule,
+    ...(additionalRequestedDailyGiftTimes === undefined ? {} : { additionalRequestedDailyGiftTimes }),
+  };
+  if (!schedule.length) return { ...request, dailyGiftTimes: 0, giftTimes: 0 };
   const share: StoredGiftShare = {
-    id: new Types.ObjectId().toHexString(), kind, userId, days,
-    startDate: days[0].startDate, endDate: days.at(-1)!.endDate,
-    dailyGiftTimes: Math.max(...days.map(day => day.dailyGiftTimes)), giftTimes: total(amounts),
+    id: new Types.ObjectId().toHexString(), kind, userId, days: schedule,
+    startDate: schedule[0].startDate, endDate: schedule.at(-1)!.endDate,
+    dailyGiftTimes: Math.max(...schedule.map(day => day.dailyGiftTimes)), giftTimes: total(amounts),
     ...(actualReceivedHearts === undefined ? {} : { actualReceivedHearts }),
   };
   segment.shares.push(share);
   const { dailyGiftTimes, giftTimes } = share;
-  return { shareId: share.id, dailyGiftTimes, giftTimes, ...(actualReceivedHearts === undefined ? {} : { actualReceivedHearts }) };
+  return { ...request, shareId: share.id, dailyGiftTimes, giftTimes, ...(actualReceivedHearts === undefined ? {} : { actualReceivedHearts }) };
 }
 
 export function directedGiftDays(offer: StoredGiftOffer) {

@@ -92,14 +92,24 @@ export async function startSystem(t, { database, origins, adminUsername, extraFi
     },
     windowsHide: true,
   };
-  const checkServer = await startChild(cleanup, process.execPath, ['--require', './fixtures.cjs', ...entry], options);
-  for (let i = 0; i < 180; i++) {
-    checkServer();
-    const response = await fetch(base + '/captcha/login?app=client', { headers: { origin: origins.client } }).catch(() => null);
-    if (response?.ok) {
-      return { db, base, password, runCommand: (...args) => exec(process.execPath, args, options) };
+  const launch = async (appPort) => {
+    const checkServer = await startChild(cleanup, process.execPath, ['--require', './fixtures.cjs', ...entry], {
+      ...options,
+      env: { ...options.env, APP_PORT: String(appPort) },
+    });
+    const appBase = `http://127.0.0.1:${appPort}/api`;
+    for (let i = 0; i < 180; i++) {
+      checkServer();
+      const response = await fetch(appBase + '/captcha/login?app=client', { headers: { origin: origins.client } }).catch(() => null);
+      if (response?.ok) return appBase;
+      await sleep(250);
     }
-    await sleep(250);
-  }
-  throw new Error('等待服务启动超时');
+    throw new Error('等待服务启动超时');
+  };
+  await launch(port);
+  return {
+    db, base, password,
+    runCommand: (...args) => exec(process.execPath, args, options),
+    startPeer: async () => launch(await freePort()),
+  };
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { IsMongoId, ValidateIf } from 'class-validator';
 import type { SessionUser } from '../../auth/app-access';
 import { AppAccess, AuthUser } from '../../auth/auth.decorator';
@@ -48,6 +48,12 @@ export class ClubGiftDispatchController {
   @Get('gift-claims/:orderId')
   async detail(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string) {
     return Resp.success(await this.dispatch.detail(clubId, user.id, orderId));
+  }
+
+  @Get('gift-claims/:orderId/receipts/:requestId')
+  async receipt(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string,
+    @Param('requestId', new ParseUUIDPipe({ version: '4' })) requestId: string) {
+    return Resp.success(await this.dispatch.receipt(clubId, user.id, orderId, requestId.toLowerCase()));
   }
 
   @Post('gift-claims/:orderId')

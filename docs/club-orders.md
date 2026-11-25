@@ -149,4 +149,14 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 后台规则更新后，可通过 `PATCH /api/employee/clubs/:clubId/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
 
-实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。承接及绑定个人送心号随对应任务接入。
+实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。
+
+### 按次接单与领取汇总
+
+团员从「按次接单」打开本俱乐部已派发订单。写入使用 `POST /api/employee/clubs/:clubId/gift-claims/:orderId`。公开抢单传 UUID v4 `requestId`、`segmentIndex`、`kind: "public"` 和本段本人申报的总日量 `dailyGiftTimes`。提高总日量时只按较前次增加的日量分配，填写相同或更低总日量的新请求返回 HTTP 409。定向承接传 `kind: "directed"` 和本人的 `offerId`。两种请求都可另填 `actualReceivedHearts`。
+
+回执返回申报日量 `requestedDailyGiftTimes`、实际获分的最高日量 `dailyGiftTimes`、实际日程 `schedule` 和份额总次数 `giftTimes`。追加时另返回 `additionalRequestedDailyGiftTimes`。正份额有 `shareId`，0 次结果只保存回执。相同订单、团员、标识和内容的重试返回原回执，包括截量结果。本人用相同标识提交不同内容返回 HTTP 409。订单撤回或停止承接后，有效团员仍可重试本人已保存的操作，或者用 `GET /api/employee/clubs/:clubId/gift-claims/:orderId/receipts/:requestId` 只读核对；新的领取依然受当前状态限制。
+
+团员端在当前标签页按账号、俱乐部、订单、段和动作保留待确认请求。刷新只查询本人回执。未查到时，可在「待确认的领取」点击「重试本次领取」，使用原标识和内容。领取结果或冲突返回后，页面刷新公开余量和本人定向份额。
+
+派单人从「派单准备」查看整单及各段汇总。 `GET /api/employee/clubs/:clubId/orders/:orderId/gift-dispatch` 返回 `totals` 和按报价段排列的 `segmentTotals`，包括付费总次数、净已领、公开待领、定向待确认、未配置和当前不可领。改派前的原份额、日程和实绩仍可查，已移出的份额转入待确认，接手人确认后计入其净承接。接单人只可查本人回执和份额。

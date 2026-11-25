@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import type { GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare } from "@webapp-template/common";
+import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare } from "@webapp-template/common";
 import { employeeRequest } from "#/service/request";
 
 type Candidate = GiftDispatchPreparation["candidates"][number];
@@ -49,6 +49,13 @@ export function GiftSchedule({ schedule }: { schedule: GiftDayAllocation[] }) {
   return schedule.length ? <ul style={{ marginBlock: 4, paddingInlineStart: 24 }}>{schedule.map(day =>
     <li key={day.startDate}>{day.startDate}{day.startDate === day.endDate ? "" : " 至 " + day.endDate} · {day.dailyGiftTimes} 次/日</li>,
   )}</ul> : null;
+}
+
+function AllocationTotals({ totals }: { totals: GiftAllocationTotals }) {
+  return <p>已领 {totals.claimedGiftTimes} / {totals.paidGiftTimes} 次 · 公开待领 {totals.publicRemainingGiftTimes} 次
+    {" · 定向待确认 "}{totals.directedPendingGiftTimes} 次
+    {totals.unconfiguredGiftTimes > 0 ? ` · 未配置 ${totals.unconfiguredGiftTimes} 次` : ""}
+    {totals.unallocatedGiftTimes > 0 ? ` · 当前不可领 ${totals.unallocatedGiftTimes} 次` : ""}</p>;
 }
 
 export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy, onSubmit }: {
@@ -183,7 +190,8 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
     }
   }
 
-  const remaining = data?.quotes.map((_, index) => index).filter(index => !data.segments.some(segment => segment.segmentIndex === index));
+  const remaining = data?.segmentTotals.filter(segment => !segment.configured).map(segment => segment.segmentIndex);
+  const labels = new Map(candidateOptions(data?.candidates ?? []).map(item => [item.value, item.label]));
   return <section aria-label="按次派发与分工">
     <Typography.Title level={5}>按次派发与分工</Typography.Title>
     {savedTransfer && !transfer && <Alert type="warning" showIcon title="上一次改派尚未收到确认"
@@ -192,29 +200,45 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
       setError("");
       setAttempt(value => value + 1);
     }}>刷新</Button>} />}
-    {!data ? !error && <Spin aria-label="加载按次分工" /> : data.segments.map(segment =>
-      <Card key={segment.segmentIndex} size="small" style={{ marginBlock: 8 }} title={`第 ${segment.segmentIndex + 1} 段`}>
-        <p>{segment.startDate} 至 {segment.endDate} · {segment.openToClaim ? `公开待领 ${segment.publicRemainingGiftTimes} 次` : "仅定向承接"}</p>
-        <GiftSchedule schedule={segment.publicSchedule} />
-        {segment.offers.filter(offer => !offer.accepted).map(offer => <div key={offer.id}>
-          <Typography.Text>{candidateOptions(data.candidates).find(item => item.value === offer.userId)?.label ?? offer.userId}
-            {" · 待确认 "}{offer.giftTimes} 次</Typography.Text>
-          <GiftSchedule schedule={offer.schedule} />
-        </div>)}
-        {segment.shares.map(share => {
-          const outstanding = share.giftTimes - (share.transferredGiftTimes ?? 0) - (share.deliveredGiftTimes ?? 0);
-          return <Card key={share.id} size="small" style={{ marginBlock: 8 }}>
-            <p>{candidateOptions(data.candidates).find(item => item.value === share.userId)?.label ?? share.userId} · 领取 {share.giftTimes} 次
-              {" · 已送 "}{share.deliveredGiftTimes ?? 0} 次 · 可改派 {Math.max(0, outstanding)} 次
-              {share.transferredGiftTimes ? ` · 已改派 ${share.transferredGiftTimes} 次` : ""}</p>
-            <p>接单实收爱心 {share.actualReceivedHearts === undefined ? "未记录" : `${share.actualReceivedHearts} 颗`}</p>
-            <GiftSchedule schedule={share.schedule} />
-            {outstanding > 0 && <Button disabled={!!savedTransfer} onClick={() => { setError(""); setTransfer(share); }}>改派未送次数</Button>}
-          </Card>;
-        })}
-      </Card>,
-    )}
-    {!!remaining?.length && data && <GiftDispatchForm key={remaining.join(",")} quotes={data.quotes} indices={remaining}
+    {!data ? !error && <Spin aria-label="加载按次分工" /> : <>
+      <Card size="small" title="整单领取汇总"><AllocationTotals totals={data.totals} /></Card>
+      {!data.acceptingClaims && <p>本单已停止新领取。</p>}
+      {data.segmentTotals.map(totals => {
+        const segment = data.segments.find(item => item.segmentIndex === totals.segmentIndex);
+        const shareCount = new Map<string, number>();
+        for (const share of segment?.shares ?? []) shareCount.set(share.userId, (shareCount.get(share.userId) ?? 0) + 1);
+        return <Card key={totals.segmentIndex} size="small" style={{ marginBlock: 8 }} title={`第 ${totals.segmentIndex + 1} 段`}>
+          <AllocationTotals totals={totals} />
+          {segment ? <>
+            <p>{segment.startDate} 至 {segment.endDate} · {segment.openToClaim ? "公开抢单" : "仅定向承接"}</p>
+            <GiftSchedule schedule={segment.publicSchedule} />
+            {segment.offers.filter(offer => !offer.accepted).map(offer => <div key={offer.id}>
+              <Typography.Text>{labels.get(offer.userId) ?? offer.userId}
+                {" · 待确认 "}{offer.giftTimes} 次</Typography.Text>
+              <GiftSchedule schedule={offer.schedule} />
+            </div>)}
+            {segment.memberAllocations.filter(member => (shareCount.get(member.userId) ?? 0) > 1).map(member => <div key={member.userId}>
+              <Typography.Text strong>{labels.get(member.userId) ?? member.userId}{" · 日量合计 · 共 "}{member.giftTimes} 次</Typography.Text>
+              <GiftSchedule schedule={member.schedule} />
+            </div>)}
+            {segment.shares.map(share => {
+              const outstanding = share.netGiftTimes - (share.deliveredGiftTimes ?? 0);
+              return <Card key={share.id} size="small" style={{ marginBlock: 8 }}>
+                <p>{labels.get(share.userId) ?? share.userId} · 当前承接 {share.netGiftTimes} 次
+                  {" · 已送 "}{share.deliveredGiftTimes ?? 0} 次 · 未送 {Math.max(0, outstanding)} 次
+                  {share.transferredGiftTimes ? ` · 原领 ${share.giftTimes} 次 · 已改派 ${share.transferredGiftTimes} 次` : ""}</p>
+                <p>接单实收爱心 {share.actualReceivedHearts === undefined ? "未记录" : `${share.actualReceivedHearts} 颗`}</p>
+                <GiftSchedule schedule={share.schedule} />
+                {share.originalSchedule && <details><summary>原领取日程</summary><GiftSchedule schedule={share.originalSchedule} /></details>}
+                {data.acceptingClaims && outstanding > 0 &&
+                  <Button disabled={!!savedTransfer} onClick={() => { setError(""); setTransfer(share); }}>改派未送次数</Button>}
+              </Card>;
+            })}
+          </> : <p>本段尚未配置派发。</p>}
+        </Card>;
+      })}
+    </>}
+    {!!remaining?.length && data?.acceptingClaims && <GiftDispatchForm key={remaining.join(",")} quotes={data.quotes} indices={remaining}
       clubRoute={route.split("/orders/")[0]} busy={busy} submitLabel="派发以上计价段"
       onSubmit={segments => void save("", { segments })} />}
     <Modal open={!!transfer} destroyOnHidden title="改派未送次数" footer={null} onCancel={() => !busy && setTransfer(undefined)}>
@@ -225,7 +249,7 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
           <Select showSearch optionFilterProp="label" options={candidateOptions(data.candidates, transfer.userId)} />
         </Form.Item>
         <Form.Item name="giftTimes" label="改派次数（留空改派全部未送次数）">
-          <InputNumber min={1} max={transfer.giftTimes - (transfer.transferredGiftTimes ?? 0) - (transfer.deliveredGiftTimes ?? 0)} precision={0} />
+          <InputNumber min={1} max={transfer.netGiftTimes - (transfer.deliveredGiftTimes ?? 0)} precision={0} />
         </Form.Item>
         {error && <Alert type="error" showIcon title={error} />}
         {savedTransfer ? <Button type="primary" loading={busy} onClick={() => void sendTransfer(savedTransfer)}>重试上次改派</Button>
