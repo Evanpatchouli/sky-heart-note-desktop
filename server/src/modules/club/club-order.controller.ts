@@ -1,3 +1,4 @@
+import { CLUB_ID } from './club.schema';
 import { IsISO8601, Matches, ValidateIf } from 'class-validator';
 import { giftBusinessDatePattern } from './club-gift-segment.dto';
 import {
@@ -56,7 +57,7 @@ const orderValidation = new ValidationPipe({
 
 @AppAccess('employee')
 @UsePipes(orderValidation)
-@Controller('employee/clubs')
+@Controller('employee/club')
 export class EmployeeClubController {
   constructor(
     private readonly directory: ClubDirectoryService,
@@ -69,36 +70,30 @@ export class EmployeeClubController {
   }
 
   @Get()
-  async list(@AuthUser() user: SessionUser) {
-    const clubs = await this.directory.listEmployeeClubs(user.id);
-    const clientOrigin = appOrigins().client;
-    return Resp.success(clubs.map((club) => {
-      const orderUrl = new URL('/order', clientOrigin);
-      orderUrl.searchParams.set('club', club.id);
-      return { ...club, orderUrl: orderUrl.href };
-    }));
+  async getClub(@AuthUser() user: SessionUser) {
+    const club = await this.directory.getEmployeeClub(user.id);
+    return Resp.success(club ? { ...club, orderUrl: new URL('/order', appOrigins().client).href } : null);
   }
 
-  @Get(':clubId/assignment-candidates')
-  async assignmentCandidates(@AuthUser() user: SessionUser, @Param('clubId') clubId: string) {
-    return Resp.success(await this.directory.listAssignmentCandidates(clubId, user.id));
+  @Get('assignment-candidates')
+  async assignmentCandidates(@AuthUser() user: SessionUser) {
+    return Resp.success(await this.directory.listAssignmentCandidates(CLUB_ID, user.id));
   }
 
-  @Get(':clubId/order-customers')
+  @Get('order-customers')
   async orderCustomers(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Query() query: OrderCustomerQuery,
   ) {
     return Resp.success(
-      await this.orders.searchDirectOrderCustomers(clubId, user.id, query.q),
+      await this.orders.searchDirectOrderCustomers(CLUB_ID, user.id, query.q),
     );
   }
 }
 
 @AppAccess('employee')
 @UsePipes(orderValidation)
-@Controller('employee/clubs/:clubId/orders')
+@Controller('employee/club/orders')
 export class EmployeeClubOrderController {
   constructor(
     private readonly orders: ClubOrderService,
@@ -108,214 +103,187 @@ export class EmployeeClubOrderController {
   @Get('pending-assignment')
   async listPendingAssignment(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Query() query: ClubOrderQuery,
   ) {
-    return Resp.success(await this.orders.listPendingAssignmentOrders(clubId, user.id, query));
+    return Resp.success(await this.orders.listPendingAssignmentOrders(CLUB_ID, user.id, query));
   }
 
   @Post(':orderId/assign-dispatcher')
   async assignDispatcher(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
     @Body() input: AssignDispatcherDto,
   ) {
-    return Resp.success(await this.orders.assignPendingOrder(clubId, user.id, orderId, input));
+    return Resp.success(await this.orders.assignPendingOrder(CLUB_ID, user.id, orderId, input));
   }
 
   @Post(':orderId/customer-activation')
   @Header('Cache-Control', 'no-store')
   async issueCustomerActivation(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
   ) {
-    return Resp.success(await this.orders.issueCustomerActivation(clubId, user.id, orderId));
+    return Resp.success(await this.orders.issueCustomerActivation(CLUB_ID, user.id, orderId));
   }
 
   @Post()
   async create(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Body() input: CreateDirectOrderDto,
   ) {
     return Resp.success(
-      await this.orders.createDirectOrder(clubId, user.id, input),
+      await this.orders.createDirectOrder(CLUB_ID, user.id, input),
     );
   }
 
   @Get()
   async list(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Query() query: EmployeeClubOrderQuery,
   ) {
     return Resp.success(
-      await this.orders.listEmployeeOrders(clubId, user.id, query),
+      await this.orders.listEmployeeOrders(CLUB_ID, user.id, query),
     );
   }
 
   @Get('fulfillment-exceptions')
   async fulfillmentExceptions(
-    @AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Query() query: FulfillmentExceptionsQuery,
+    @AuthUser() user: SessionUser, @Query() query: FulfillmentExceptionsQuery,
   ) {
-    return Resp.success(await this.orders.listFulfillmentExceptions(clubId, user.id, query));
+    return Resp.success(await this.orders.listFulfillmentExceptions(CLUB_ID, user.id, query));
   }
 
   @Get(':orderId/fulfillment')
   async fulfillment(
-    @AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string,
+    @AuthUser() user: SessionUser, @Param('orderId') orderId: string,
     @Query() query: FulfillmentQuery,
   ) {
-    return Resp.success(await this.orders.getDispatchFulfillment(clubId, user.id, orderId, query.through));
+    return Resp.success(await this.orders.getDispatchFulfillment(CLUB_ID, user.id, orderId, query.through));
   }
 
   @Get(':orderId')
   async detail(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
   ) {
     return Resp.success(
-      await this.orders.getEmployeeOrder(clubId, user.id, orderId),
+      await this.orders.getEmployeeOrder(CLUB_ID, user.id, orderId),
     );
   }
 
   @Get(':orderId/pricing')
   async getPricing(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
   ) {
     return Resp.success(
-      await this.orders.getDispatchPreparation(clubId, user.id, orderId),
+      await this.orders.getDispatchPreparation(CLUB_ID, user.id, orderId),
     );
   }
 
   @Post(':orderId/shares/:shareId/execution-accounts')
   async linkAccount(
-    @AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string,
+    @AuthUser() user: SessionUser, @Param('orderId') orderId: string,
     @Param('shareId') shareId: string, @Body() input: LinkGameAccountDto,
   ) {
-    return Resp.success(await this.execution.linkAccount(clubId, user.id, orderId, shareId, input.personalAccountId));
+    return Resp.success(await this.execution.linkAccount(CLUB_ID, user.id, orderId, shareId, input.personalAccountId));
   }
 
   @Post(':orderId/receipts')
   async recordOrderReceipt(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
     @Body() input: RecordOrderReceiptDto,
   ) {
-    return Resp.success(await this.orders.recordOrderReceipt(clubId, user.id, orderId, input));
+    return Resp.success(await this.orders.recordOrderReceipt(CLUB_ID, user.id, orderId, input));
   }
 
   @Patch(':orderId/dispatch-commission')
   async reviewDispatchCommission(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
     @Body() input: ReviewDispatchCommissionDto,
   ) {
-    return Resp.success(await this.orders.reviewDispatchCommission(clubId, user.id, orderId, input));
+    return Resp.success(await this.orders.reviewDispatchCommission(CLUB_ID, user.id, orderId, input));
   }
 
   @Post(':orderId/publish')
   async commitDispatchAfterPayment(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
     @Body() input: PublishOrderDto,
   ) {
-    return Resp.success(await this.orders.commitDispatchAfterPayment(clubId, user.id, orderId, input));
+    return Resp.success(await this.orders.commitDispatchAfterPayment(CLUB_ID, user.id, orderId, input));
   }
 
   @Patch(':orderId/pricing')
   async updatePricing(
     @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
     @Body() input: UpdateOrderPricingDto,
   ) {
     return Resp.success(
-      await this.orders.updateDispatchPricing(clubId, user.id, orderId, input),
+      await this.orders.updateDispatchPricing(CLUB_ID, user.id, orderId, input),
     );
-  }
-}
-
-@AppAccess('client')
-@UsePipes(orderValidation)
-@Controller('client/clubs/:clubId/orders')
-export class ClientClubOrderController {
-  constructor(private readonly orders: ClubOrderService) {}
-
-  @Post(':orderId/cancel-before-assignment')
-  async cancelPendingOrder(
-    @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
-    @Param('orderId') orderId: string,
-    @Body() input: OrderRequestDto,
-  ) {
-    return Resp.success(await this.orders.cancelPendingOrder(clubId, user.id, orderId, input.requestId));
-  }
-
-  @Post()
-  async create(
-    @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
-    @Body() input: CreateClientOrderDto,
-  ) {
-    return Resp.success(
-      await this.orders.createClientOrder(clubId, user.id, input),
-    );
-  }
-
-  @Get()
-  async list(
-    @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
-    @Query() query: ClubOrderQuery,
-  ) {
-    return Resp.success(
-      await this.orders.listCustomerOrders(clubId, user.id, query),
-    );
-  }
-
-  @Get(':orderId')
-  async detail(
-    @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
-    @Param('orderId') orderId: string,
-  ) {
-    return Resp.success(
-      await this.orders.getCustomerOrder(clubId, user.id, orderId),
-    );
-  }
-}
-
-@AppAccess('client')
-@Controller('client/clubs')
-export class ClientClubController {
-  constructor(private readonly directory: ClubDirectoryService, private readonly orders: ClubOrderService) {}
-
-  @Get(':clubId/order-options')
-  async orderOptions(@Param('clubId') clubId: string, @AuthUser() user: SessionUser) {
-    const [options, coupons] = await Promise.all([
-      this.directory.getClientOrderOptions(clubId), this.orders.getCustomerCoupons(clubId, user.id),
-    ]);
-    return Resp.success({ ...options, ...(coupons.length ? { coupons } : {}) });
   }
 }
 
 @AppAccess('client')
 @UsePipes(orderValidation)
 @Controller('client/orders')
-export class ClientOwnOrdersController {
+export class ClientClubOrderController {
   constructor(private readonly orders: ClubOrderService) {}
 
+  @Post(':orderId/cancel-before-assignment')
+  async cancelPendingOrder(
+    @AuthUser() user: SessionUser,
+    @Param('orderId') orderId: string,
+    @Body() input: OrderRequestDto,
+  ) {
+    return Resp.success(await this.orders.cancelPendingOrder(CLUB_ID, user.id, orderId, input.requestId));
+  }
+
+  @Post()
+  async create(
+    @AuthUser() user: SessionUser,
+    @Body() input: CreateClientOrderDto,
+  ) {
+    return Resp.success(
+      await this.orders.createClientOrder(CLUB_ID, user.id, input),
+    );
+  }
+
   @Get()
-  async list(@AuthUser() user: SessionUser, @Query() query: ClubOrderQuery) {
-    return Resp.success(await this.orders.listMyCustomerOrders(user.id, query));
+  async list(
+    @AuthUser() user: SessionUser,
+    @Query() query: ClubOrderQuery,
+  ) {
+    return Resp.success(
+      await this.orders.listCustomerOrders(CLUB_ID, user.id, query),
+    );
+  }
+
+  @Get(':orderId')
+  async detail(
+    @AuthUser() user: SessionUser,
+    @Param('orderId') orderId: string,
+  ) {
+    return Resp.success(
+      await this.orders.getCustomerOrder(CLUB_ID, user.id, orderId),
+    );
+  }
+}
+
+@AppAccess('client')
+@Controller('client/club')
+export class ClientClubController {
+  constructor(private readonly directory: ClubDirectoryService, private readonly orders: ClubOrderService) {}
+
+  @Get('order-options')
+  async orderOptions(@AuthUser() user: SessionUser) {
+    const [options, coupons] = await Promise.all([
+      this.directory.getClientOrderOptions(CLUB_ID), this.orders.getCustomerCoupons(CLUB_ID, user.id),
+    ]);
+    return Resp.success({ ...options, ...(coupons.length ? { coupons } : {}) });
   }
 }

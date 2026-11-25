@@ -12,7 +12,7 @@ import { validateAccountCredentials } from '../user-module/account-credentials';
 import { isDuplicateKey, withNewUserId } from '../user-module/user-id';
 import { User } from '../user-module/user.schema';
 import { ClubDirectoryService } from './club-directory.service';
-import { ClubMember } from './club.schema';
+import { CLUB_ID, ClubMember } from './club.schema';
 
 @Schema({ collection: 'club_member_invitations', versionKey: false })
 export class ClubMemberInvitation {
@@ -66,7 +66,7 @@ export class ClubMemberInvitationService implements OnModuleInit {
   async register(token: string, username: string, password: string) {
     if (!opaqueTokenPattern.test(token))
       throw new NotFoundException('注册邀请链接无效');
-    const invitation = await this.invitations.findOne({ tokenHash: digestToken(token) }).lean();
+    const invitation = await this.invitations.findOne({ tokenHash: digestToken(token), clubId: CLUB_ID }).lean();
     if (!invitation) throw new NotFoundException('注册邀请链接无效');
     if (invitation.expiresAt.getTime() <= Date.now())
       throw new GoneException('注册邀请已过期，请联系团员重新邀请');

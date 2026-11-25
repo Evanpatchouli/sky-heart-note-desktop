@@ -1,3 +1,4 @@
+import { CLUB_ID } from './club.schema';
 import { ClubGiftSupervision, canContinueGiftOrder, giftExceptionScope } from './club-gift-supervision';
 import { continuationView } from './club-continuation.service';
 import { jsonReportCount } from './club-daily-report-view';
@@ -383,22 +384,10 @@ export class ClubOrderService implements OnModuleInit {
     throw new ConflictException('订单当前不可分配或取消');
   }
 
-  async listCustomerOrders(
-    clubId: string,
-    userId: string,
-    query: ClubOrderQuery,
-  ) {
+  async listCustomerOrders(clubId: string, userId: string, query: ClubOrderQuery) {
     await this.directory.requireClub(clubId);
-    return this.customerOrdersPage(userId, query, clubId);
-  }
-
-  async listMyCustomerOrders(userId: string, query: ClubOrderQuery) {
-    return this.customerOrdersPage(userId, query);
-  }
-
-  private async customerOrdersPage(userId: string, query: ClubOrderQuery, clubId?: string) {
     const { orders, nextCursor } = await this.list(
-      { ...(clubId ? { clubId } : {}), customerUserId: userId, customerLinkStatus: 'verified' },
+      { clubId, customerUserId: userId, customerLinkStatus: 'verified' },
       query,
     );
     const [names, progress] = await Promise.all([
@@ -544,15 +533,14 @@ export class ClubOrderService implements OnModuleInit {
   }
 
   async listClientOrderNotices(userId: string) {
-    const clubs = await this.directory.listEmployeeClubs(userId);
-    if (!clubs.length) return [];
+    const club = await this.directory.getEmployeeClub(userId);
+    if (!club) return [];
     const orders = await this.orders.find({
-      clubId: { $in: clubs.map(club => club.id) },
+      clubId: CLUB_ID,
       dispatcherUserId: userId, source: 'client_order', dispatchStatus: 'pending', customerLinkStatus: 'verified',
-    }).sort({ _id: -1 }).limit(20).select({ clubId: 1, recipientGameAccount: 1, createdAt: 1 }).lean();
-    const names = new Map(clubs.map(club => [club.id, club.name]));
+    }).sort({ _id: -1 }).limit(20).select({ recipientGameAccount: 1, createdAt: 1 }).lean();
     return orders.map(order => ({
-      orderId: order._id.toHexString(), clubId: order.clubId, clubName: names.get(order.clubId),
+      orderId: order._id.toHexString(), clubName: club.name,
       recipientGameAccount: order.recipientGameAccount, createdAt: order.createdAt,
     }));
   }

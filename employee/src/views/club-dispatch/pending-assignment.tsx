@@ -36,13 +36,12 @@ function rememberActions(key: string, actions: Actions) {
   } catch { /* The open page keeps the action in memory. */ }
 }
 
-export default function PendingAssignment({ clubId, onAssigned }: {
-  clubId: string;
+export default function PendingAssignment({ onAssigned }: {
   onAssigned: (orderId: string) => void;
 }) {
   const { id, token } = useAuthSession();
-  const route = `clubs/${clubId}`;
-  const storageKey = `sky-heart.employee.assignment.v1:${id}:${clubId}`;
+  const route = "club";
+  const storageKey = `sky-heart.employee.assignment.v1:${id}`;
   const [board, setBoard] = useState<{ page: Page; candidates: Candidate[] }>();
   const [after, setAfter] = useState<string>();
   const [attempt, setAttempt] = useState(0);

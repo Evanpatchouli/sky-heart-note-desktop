@@ -2,10 +2,9 @@ import type { ClubPromotionPolicy, CommissionRule, DispatchPricing, PlatformProm
 import type Resp from "@/models/Resp";
 import { createAppRequest } from "./request";
 
-const request = createAppRequest("/admin/clubs");
+const request = createAppRequest("/admin/club");
 
 export interface AdminClub {
-  id: string;
   name: string;
   permissions: string[];
 }
@@ -17,40 +16,40 @@ export type DispatchPricingRow = CommissionRule & Partial<Pick<DispatchPricing, 
   publishedAt: string;
 };
 
-export async function getAdminClubs() {
-  const response: Resp<AdminClub[]> = await request.get("");
-  return response.getData() ?? [];
-}
-
-export async function getCommissionRule(clubId: string) {
-  const response: Resp<CommissionRule | null> = await request.get(`/${clubId}/commission-rule`);
-  return response.getData() ?? null;
-}
-
-export async function saveCommissionRule(clubId: string, input: { expectedVersion: number; clubFeeCents: number }) {
-  const response: Resp<CommissionRule> = await request.patch(`/${clubId}/commission-rule`, input);
-  return response.getData() ?? null;
-}
-
-export async function getClubPromotions(clubId: string) {
-  const response: Resp<ClubPromotionPolicy> = await request.get(`/${clubId}/promotions`);
+export async function getAdminClub() {
+  const response: Resp<AdminClub> = await request.get("");
   return response.getData();
 }
 
-export async function saveClubPromotions(clubId: string, input: { expectedVersion: number; activityName?: string; activityPayableBasisPoints?: number }) {
-  const response: Resp<ClubPromotionPolicy> = await request.patch(`/${clubId}/promotions`, input);
+export async function getCommissionRule() {
+  const response: Resp<CommissionRule | null> = await request.get("/commission-rule");
+  return response.getData() ?? null;
+}
+
+export async function saveCommissionRule(input: { expectedVersion: number; clubFeeCents: number }) {
+  const response: Resp<CommissionRule> = await request.patch("/commission-rule", input);
+  return response.getData() ?? null;
+}
+
+export async function getClubPromotions() {
+  const response: Resp<ClubPromotionPolicy> = await request.get("/promotions");
   return response.getData();
 }
 
-export async function issueClubCoupon(clubId: string, input: {
+export async function saveClubPromotions(input: { expectedVersion: number; activityName?: string; activityPayableBasisPoints?: number }) {
+  const response: Resp<ClubPromotionPolicy> = await request.patch("/promotions", input);
+  return response.getData();
+}
+
+export async function issueClubCoupon(input: {
   requestId: string; customerUserId: string; name: string; kind: "rate_coupon" | "threshold_coupon";
   payableBasisPoints?: number; thresholdCents?: number; discountCents?: number;
 }) {
-  const response: Resp<PlatformPromotionSource> = await request.post(`/${clubId}/promotions/coupons`, input);
+  const response: Resp<PlatformPromotionSource> = await request.post("/promotions/coupons", input);
   return response.getData();
 }
 
-export async function getDispatchHistory(clubId: string, after?: string) {
-  const response: Resp<{ items: DispatchPricingRow[]; nextCursor: string | null }> = await request.get(`/${clubId}/dispatch-pricing`, { params: { limit: 5, after } });
+export async function getDispatchHistory(after?: string) {
+  const response: Resp<{ items: DispatchPricingRow[]; nextCursor: string | null }> = await request.get("/dispatch-pricing", { params: { limit: 5, after } });
   return response.getData() ?? { items: [], nextCursor: null };
 }

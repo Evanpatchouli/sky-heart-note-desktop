@@ -9,14 +9,16 @@ export async function v3() {
   const roles = mongoose.model('Role', RoleSchema);
   const users = mongoose.model('User', UserSchema);
   const permissions = mongoose.model('Permission', PermissionSchema);
+  await Promise.all([roles.init(), users.init()]);
   const roleIds = new Map<string, mongoose.Types.ObjectId>();
   for (const [code, name] of [
     ['admin', '管理员'],
     ['employee', '团员'],
     ['common', '普通用户'],
   ]) {
+    const key = { role_code: code };
     const role = await roles.findOneAndUpdate(
-      { role_code: code },
+      key,
       {
         $setOnInsert: {
           role_name: name,
@@ -27,7 +29,12 @@ export async function v3() {
         },
       },
       { upsert: true, returnDocument: 'after' },
-    );
+    ).catch(async (error: unknown) => {
+      if (!isDuplicateKey(error, 'role_code')) throw error;
+      const initialized = await roles.findOne(key);
+      if (!initialized) throw error;
+      return initialized;
+    });
     roleIds.set(code, role._id);
   }
   const adminId = roleIds.get('admin')!;
@@ -54,7 +61,6 @@ export async function v3() {
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   if (!password)
     throw new Error('请设置 BOOTSTRAP_ADMIN_PASSWORD 来初始化管理员');
-  await users.init();
   const hashedPassword = await hashPassword(password);
   try {
     await withNewUserId((_id) =>

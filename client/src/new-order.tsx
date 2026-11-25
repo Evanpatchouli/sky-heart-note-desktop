@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, platformPromotionDescription, type DeliveryPeriodPreference, type PlatformPromotionSource } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
 import {
-  clientRequest, clubOrderPath, detailHref, dispatcherName, dispatchLabel, orderDispatcher,
+  clientRequest, clientOrdersPath, detailHref, dispatcherName, dispatchLabel, orderDispatcher,
   sourceLabel, useClientRead, type OrderSummary,
 } from "./order-api";
 import { readClientContext, rememberClientContext } from "./navigation";
@@ -69,12 +69,12 @@ function savePending(storageKey: string, input: OrderInput | null) {
   }
 }
 
-export function NewOrder({ clubId }: { clubId: string }) {
+export function NewOrder() {
   const { id, token } = useAuthSession();
   const { loggingOut } = useSessionActions();
-  const options = useClientRead<OrderOptions>(`/client/clubs/${encodeURIComponent(clubId)}/order-options`, "暂时无法读取派单人，请检查网络连接后重试。");
-  const storageKey = `sky-heart.client.order-submission.v1:${id}:${clubId}`;
-  const draftKey = `order-draft:${clubId}`;
+  const options = useClientRead<OrderOptions>("/client/club/order-options", "暂时无法读取派单人，请检查网络连接后重试。");
+  const storageKey = `sky-heart.client.order-submission.v1:${id}`;
+  const draftKey = "order-draft";
   const [pending, setPending] = useState(() => readPending(storageKey));
   const [draft] = useState(() => readDraft(id, draftKey));
   const [recipient, setRecipient] = useState(pending ? pending.recipientGameAccount : draft.recipient);
@@ -135,14 +135,14 @@ export function NewOrder({ clubId }: { clubId: string }) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
-      const order = await clientRequest<OrderSummary>(token, clubOrderPath(clubId), {
+      const order = await clientRequest<OrderSummary>(token, clientOrdersPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
         signal: controller.signal,
       });
       if (getAppToken("client") !== token) return;
-      if (!order?.id || order.clubId !== clubId || order.source !== "client_order" || !(order.dispatchStatus in dispatchLabel)) {
+      if (!order?.id || order.source !== "client_order" || !(order.dispatchStatus in dispatchLabel)) {
         throw new Error(unknownResult);
       }
       savePending(storageKey, null);

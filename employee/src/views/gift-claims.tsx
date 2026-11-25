@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Select, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Flex, Form, InputNumber, Modal, Spin, Tag, Typography } from "antd";
 import { Link, useSearchParams } from "react-router";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import type { GiftClaimOrder, GiftClaimResult, GiftOffer } from "@webapp-template/common";
@@ -9,7 +9,7 @@ import GiftDeliveryDiary from "./gift-delivery-diary";
 import { GiftSchedule } from "./club-dispatch/gift-allocation";
 import { GiftExecutionAccounts } from "./club-dispatch/gift-execution-accounts";
 
-type Club = { id: string; name: string };
+type Club = { name: string };
 type Page = { items: GiftClaimOrder[]; nextCursor: string | null };
 type Target = { orderId: string; segmentIndex: number; offer?: GiftOffer; previousDaily?: number; myGiftTimes?: number };
 type ClaimFields = { dailyGiftTimes?: number; actualReceivedHearts?: number };
@@ -59,15 +59,14 @@ function failure(error: unknown) {
 export default function GiftClaims() {
   const { id, token } = useAuthSession();
   const [params, setParams] = useSearchParams();
-  const [clubs, setClubs] = useState<Club[]>();
+  const [club, setClub] = useState<Club | null>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const selected = clubs?.find(club => club.id === params.get("clubId")) ?? clubs?.[0];
 
   useEffect(() => {
     const controller = new AbortController();
-    employeeRequest<Club[]>("clubs", "GET", undefined, controller.signal).then(data => {
-      if (!controller.signal.aborted) setClubs(data);
+    employeeRequest<Club | null>("club", "GET", undefined, controller.signal).then(data => {
+      if (!controller.signal.aborted) setClub(data);
     }).catch(err => {
       if (!controller.signal.aborted) setError(failure(err));
     });
@@ -78,29 +77,25 @@ export default function GiftClaims() {
     <Header />
     <main style={{ flex: 1, overflow: "auto", width: "100%", padding: 16, boxSizing: "border-box" }}>
       <Flex vertical gap="middle" style={{ maxWidth: 820, marginInline: "auto" }}>
-        <Link to={selected ? `/club/dispatch?clubId=${selected.id}` : "/club/dispatch"}>派单准备</Link>
+        <Link to="/club/dispatch">派单准备</Link>
         <Typography.Title level={3} style={{ margin: 0 }}>按次接单</Typography.Title>
         {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => {
           setError("");
           setAttempt(value => value + 1);
-        }}>重试</Button>} /> : !clubs ? <Spin aria-label="加载俱乐部" /> : selected ? <>
-          <Flex gap="small" align="center">
-            <Typography.Text>俱乐部</Typography.Text>
-            <Select aria-label="俱乐部" value={selected.id} onChange={clubId => setParams({ clubId })}
-              options={clubs.map(club => ({ value: club.id, label: club.name }))} style={{ minWidth: 150 }} />
-          </Flex>
-          <Orders key={id + ":" + selected.id + ":" + (params.get("orderId") ?? "")} clubId={selected.id}
-            orderId={params.get("orderId") ?? undefined} onClearOrder={() => setParams({ clubId: selected.id })} />
-        </> : <Empty description="暂无可访问的俱乐部" />}
+        }}>重试</Button>} /> : club === undefined ? <Spin aria-label="加载俱乐部" /> : club ? <>
+          <Typography.Text strong>{club.name}</Typography.Text>
+          <Orders key={id + ":" + (params.get("orderId") ?? "")}
+            orderId={params.get("orderId") ?? undefined} onClearOrder={() => setParams({})} />
+        </> : <Empty description="当前账号尚无有效团员身份" />}
       </Flex>
     </main>
   </>;
 }
 
-function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: string; onClearOrder: () => void }) {
+function Orders({ orderId, onClearOrder }: { orderId?: string; onClearOrder: () => void }) {
   const { id, token } = useAuthSession();
-  const root = `clubs/${clubId}/gift-claims`;
-  const prefix = `sky-heart.employee.gift-claim.v1:${id}:${clubId}:`;
+  const root = "club/gift-claims";
+  const prefix = `sky-heart.employee.gift-claim.v1:${id}:`;
   const [page, setPage] = useState<Page>();
   const [after, setAfter] = useState<string>();
   const [error, setError] = useState("");
@@ -261,7 +256,7 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
               <GiftSchedule schedule={share.schedule} />
               {share.originalSchedule && <details><summary>原领取日程</summary><GiftSchedule schedule={share.originalSchedule} /></details>}
               {order.recipientGameAccount && <GiftExecutionAccounts
-                orderRoute={`clubs/${clubId}/orders/${order.id}`} share={share}
+                orderRoute={`club/orders/${order.id}`} share={share}
                 readOnly={order.acceptingClaims === false || !share.netGiftTimes}
                 onSaved={refresh} />}
             </div>)}
@@ -295,6 +290,6 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
       </Form>}
     </Modal>
     {diaryOrder && <GiftDeliveryDiary key={diaryOrder.id} order={diaryOrder}
-      orderRoute={`clubs/${clubId}/orders/${diaryOrder.id}`} onClose={() => setDiaryOrder(undefined)} />}
+      orderRoute={`club/orders/${diaryOrder.id}`} onClose={() => setDiaryOrder(undefined)} />}
   </>;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router";
-import { Alert, Button, Card, Descriptions, Empty, Flex, Form, Grid, InputNumber, Modal, Select, Spin, Table, Tag, Typography, type TableColumnsType } from "antd";
+import { Alert, Button, Card, Descriptions, Empty, Flex, Form, Grid, InputNumber, Modal, Spin, Table, Tag, Typography, type TableColumnsType } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 import {
   commissionBasisLabel, commissionUnit, formatCentsAsYuan, parseYuanAsCents,
@@ -21,21 +21,18 @@ function errorText(error: unknown, fallback: string) {
 }
 
 export default function Rules() {
-  const { clubs, loadFailed, reload } = useOutletContext<AdminClubContext>();
-  const [selectedId, setSelectedId] = useState<string>();
-  const eligible = clubs?.filter(club => club.permissions.includes("CLUB_COMMISSION_MANAGE")) ?? [];
-  const selected = eligible.find(club => club.id === selectedId) ?? eligible[0];
+  const { club, loadFailed, reload } = useOutletContext<AdminClubContext>();
+  const selected = club?.permissions.includes("CLUB_COMMISSION_MANAGE") ? club : null;
 
   return <Flex vertical gap="middle" aria-label="抽成规则">
     <Typography.Title level={4} style={{ margin: 0 }}>抽成规则</Typography.Title>
     {loadFailed ? <Alert type="error" showIcon title="俱乐部加载失败" action={<Button onClick={reload}>重试</Button>} />
-      : clubs === null ? <Spin aria-label="加载俱乐部" />
+      : club === undefined ? <Spin aria-label="加载俱乐部" />
       : selected ? <>
-        <label>俱乐部 <Select aria-label="俱乐部" value={selected.id} onChange={setSelectedId}
-          options={eligible.map(club => ({ value: club.id, label: club.name }))} style={{ minWidth: 150 }} /></label>
-        <ClubRules key={selected.id} club={selected} />
-        <ClubPromotions key={selected.id + "-promotions"} clubId={selected.id} />
-      </> : <Empty description="暂无获授权配置抽成的俱乐部" />}
+        <Typography.Text strong>{selected.name}</Typography.Text>
+        <ClubRules club={selected} />
+        <ClubPromotions />
+      </> : <Empty description="当前账号未获团抽配置权限" />}
   </Flex>;
 }
 
@@ -54,13 +51,13 @@ function ClubRules({ club }: { club: AdminClub }) {
   useEffect(() => {
     let active = true;
     setLoadError("");
-    getCommissionRule(club.id).then(data => {
+    getCommissionRule().then(data => {
       if (active) setRule(data);
     }).catch(error => {
       if (active) setLoadError(errorText(error, "抽成规则加载失败"));
     });
     return () => { active = false; };
-  }, [club.id, attempt]);
+  }, [attempt]);
 
   function openForm() {
     setSaveError("");
@@ -75,7 +72,7 @@ function ClubRules({ club }: { club: AdminClub }) {
     setSaving(true);
     setSaveError("");
     try {
-      const data = await saveCommissionRule(club.id, { expectedVersion: editVersion, clubFeeCents: amount });
+      const data = await saveCommissionRule({ expectedVersion: editVersion, clubFeeCents: amount });
       setRule(data);
       setEditVersion(null);
       setSaved(true);
@@ -138,7 +135,7 @@ function DispatchHistory({ club }: { club: AdminClub }) {
     let active = true;
     setPending(true);
     setError("");
-    getDispatchHistory(club.id, cursor).then(data => {
+    getDispatchHistory(cursor).then(data => {
       if (!active) return;
       setPage(data.items);
       setNextCursor(data.nextCursor);
@@ -146,7 +143,7 @@ function DispatchHistory({ club }: { club: AdminClub }) {
       if (active) setError(errorText(err, "规则快照加载失败"));
     }).finally(() => { if (active) setPending(false); });
     return () => { active = false; };
-  }, [club.id, cursor, attempt]);
+  }, [cursor, attempt]);
 
   const columns: TableColumnsType<DispatchPricingRow> = [
     { title: "订单", dataIndex: "id", render: (id: string) => <Typography.Text copyable style={{ overflowWrap: "anywhere" }}>{id}</Typography.Text> },

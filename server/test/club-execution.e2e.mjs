@@ -5,17 +5,16 @@ import mongoose from 'mongoose';
 import { captchaCode, startSystem } from './start-system.mjs';
 
 const origin = app => `https://${app}.execution.test`;
-const club = '/employee/clubs/execution';
+const club = '/employee/club';
 const accountRoute = '/employee/songxinhao';
 const startDate = '2026-12-01';
 const endDate = '2026-12-10';
 
 test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout: 120000 }, async t => {
-  const { db, base, password, runCommand, startPeer } = await startSystem(t, {
+  const { db, base, password, seedClub, startPeer } = await startSystem(t, {
     database: 'club_execution_e2e', adminUsername: 'execution_admin',
     origins: Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, origin(app)])),
   });
-  const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
   async function request(app, path, { actor, method = 'GET', body, status = 200, cookie, server = base } = {}) {
     const headers = { origin: origin(app) };
     if (actor) headers.authorization = `Bearer ${actor.token}`;
@@ -36,11 +35,10 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
   }
   const dispatcher = await login('employee', 'execution_admin');
   const administrator = await login('admin', 'execution_admin');
-  await configure('club', 'execution', '送心俱乐部');
-  await configure('club', 'outside', '另一家俱乐部');
-  await configure('member', 'execution', dispatcher.id, 'active', 'dispatcher');
-  await configure('grant', 'execution', administrator.id, 'CLUB_COMMISSION_MANAGE');
-  await call(administrator, '/admin/clubs/execution/commission-rule', 'PATCH', {
+  await seedClub('name', '送心俱乐部');
+  await seedClub('member', dispatcher.id, 'active', 'dispatcher');
+  await seedClub('grant', administrator.id, 'CLUB_COMMISSION_MANAGE');
+  await call(administrator, '/admin/club/commission-rule', 'PATCH', {
     expectedVersion: 0, basis: 'gift_times', clubFeeCents: 5,
   }, 200, 'admin');
 
@@ -61,7 +59,6 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
   const second = await invite('execution_second');
   const customer = await register('execution_customer');
   const otherCustomer = await register('execution_other_customer');
-  await configure('member', 'outside', first.id, 'active', 'member');
   await db.collection('users').updateMany({ _id: { $in: [first.id, second.id] } }, { $set: { nickname: '同名团员' } });
   await db.collection('users').updateOne({ _id: customer.id }, { $set: { nickname: '平台老板' } });
   const peer = await startPeer();
@@ -81,7 +78,7 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
   async function publish({ directed = [], fromClient = false, split = false } = {}) {
     const input = { requestId: randomUUID(), recipientGameAccount: '接收账号 · 云海', requestedGiftTimes: 100 };
     const order = fromClient
-      ? await call(customer, '/client/clubs/execution/orders', 'POST', { ...input, dispatcherUserId: dispatcher.id }, 201, 'client')
+      ? await call(customer, '/client/orders', 'POST', { ...input, dispatcherUserId: dispatcher.id }, 201, 'client')
       : await call(dispatcher, club + '/orders', 'POST', { ...input, existingCustomerUserId: customer.id });
     const route = club + '/orders/' + order.id;
     const quote = (paidGiftTimes, dailyGiftTimes, period = 'normal') => ({ period, paidGiftTimes, dailyGiftTimes, unitPriceCents: 50 });
@@ -113,12 +110,12 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
     const memberB = await invite('role_matrix_b');
     const personalByUser = new Map();
     for (const actor of [memberA, memberB]) {
-      await configure('member', 'execution', actor.id, 'active', 'dispatcher');
+      await seedClub('member', actor.id, 'active', 'dispatcher');
       await add(actor, '互换职责验收号');
       const [personal] = await listPersonal(actor);
       personalByUser.set(actor.id, personal.id);
     }
-    const clientOrders = '/client/clubs/execution/orders';
+    const clientOrders = '/client/orders';
     const input = recipientGameAccount => ({ requestId: randomUUID(), recipientGameAccount, requestedGiftTimes: 100 });
     const direct = await call(memberA, club + '/orders', 'POST', { ...input('甲派乙接'), existingCustomerUserId: customer.id });
     const online = await call(otherCustomer, clientOrders, 'POST', {
@@ -207,13 +204,13 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
     await link(order, firstShare, second, secondAccounts[0].id, 404);
     await link(order, firstShare, first, secondAccounts[0].id, 404);
     await link(order, firstShare, dispatcher, firstAccounts[0].id, 404);
-    await link({ ...order, route: order.route.replace('/execution/', '/outside/') }, firstShare, first, firstAccounts[0].id, 404);
+    await link({ ...order, route: order.route.replace('/employee/club/', '/employee/clubs/outside/') }, firstShare, first, firstAccounts[0].id, 404);
     await call(second, order.route + '/gift-dispatch', 'GET', undefined, 404);
     await call(customer, accountsPath(order, firstShare), 'POST', { personalAccountId: firstAccounts[0].id }, 403, 'client');
     await call(first, accountsPath(order, firstShare), 'POST', { personalAccountId: firstAccounts[0].id, name: '替换名称' }, 400);
-    await configure('member', 'execution', first.id, 'inactive', 'member');
+    await seedClub('member', first.id, 'inactive', 'member');
     await link(order, firstShare, first, firstAccounts[0].id, 403);
-    await configure('member', 'execution', first.id, 'active', 'member');
+    await seedClub('member', first.id, 'active', 'member');
 
     await call(first, `${accountsPath(order, firstShare)}/${bound.id}/relationship`, 'POST', {
       relationship: 'new_unlock',
@@ -254,12 +251,12 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
     assert.deepEqual(current.receipt, original.receipt);
     assert.deepEqual(current.dispatchPricing, original.dispatchPricing);
     assert.equal(current.giftDispatch.executionAccounts.length, 12);
-    const clientOrder = await call(customer, '/client/clubs/execution/orders/' + order.id, 'GET', undefined, 200, 'client');
+    const clientOrder = await call(customer, '/client/orders/' + order.id, 'GET', undefined, 200, 'client');
     assert.equal(clientOrder.receipt.receivedAmountCents, 5000);
     assert.equal(clientOrder.deliveryProgress.deliveredGiftTimes, 10);
     for (const key of ['fulfillment', 'unlockReview', 'giftDispatch', 'executionAccounts', 'giftShares'])
       assert.equal(clientOrder[key], undefined);
-    await call(otherCustomer, '/client/clubs/execution/orders/' + order.id, 'GET', undefined, 404, 'client');
+    await call(otherCustomer, '/client/orders/' + order.id, 'GET', undefined, 404, 'client');
   });
 
   await t.test('跨段、追加和改派中的同一送心号复用关联并保留归属', async () => {
@@ -311,7 +308,7 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
     const shareId = new mongoose.Types.ObjectId();
     const historical = { _id: new mongoose.Types.ObjectId(), name: '旧版执行号' };
     await db.collection('club_orders').insertOne({
-      _id: orderId, clubId: 'execution', source: 'direct_dispatch', businessType: 'heart_delivery',
+      _id: orderId, clubId: 'club', source: 'direct_dispatch', businessType: 'heart_delivery',
       createdAt: new Date(), createdByUserId: dispatcher.id, dispatcherUserId: dispatcher.id, requestId: randomUUID(),
       customerLinkStatus: 'verified', customerUserId: customer.id, recipientGameAccount: '旧接收号',
       dispatchStatus: 'published', heartDelivery: { requestedHearts: 10 },

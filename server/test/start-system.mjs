@@ -31,17 +31,19 @@ async function startChild(cleanup, executable, args, options) {
   child.stdout.on('data', capture);
   child.stderr.on('data', capture);
   const closed = new Promise((resolve) => child.once('close', resolve));
-  cleanup.push(async () => {
+  const stop = async () => {
     if (child.exitCode === null && child.signalCode === null) child.kill();
     await closed;
-  });
+  };
+  cleanup.push(stop);
   await once(child, 'spawn');
-  return () => {
+  const check = () => {
     if (child.exitCode !== null || child.signalCode !== null) throw new Error(`子进程已退出\n${output}`);
   };
+  return { check, stop };
 }
 
-export async function startSystem(t, { database, origins, adminUsername, extraFixtures = '', initialCache = {} }) {
+export async function startSystem(t, { database, origins, adminUsername, extraFixtures = '', initialCache = {}, extraEnv = {}, concurrentStarts = false }) {
   const directory = await mkdtemp(join(tmpdir(), 'sky-heart-e2e-'));
   const cleanup = [];
   t.after(async () => {
@@ -61,6 +63,30 @@ export async function startSystem(t, { database, origins, adminUsername, extraFi
   cleanup.push(() => client.close());
   await client.connect();
   const db = client.db();
+  const members = db.collection('club_members');
+  const seedClub = async (fixture, userId, value, mark) => {
+    if (fixture === 'name') {
+      await db.collection('clubs').updateOne({ _id: 'club' }, { $set: { name: userId } });
+      return;
+    }
+    const key = { clubId: 'club', userId };
+    if (fixture === 'member') {
+      const active = value === 'active';
+      await members.updateOne(key, {
+        $set: { active, dispatcher: active && mark === 'dispatcher', ...(active ? {} : { permissions: [], position: 'member' }) },
+        $setOnInsert: { ...key, ...(active ? { permissions: [], position: 'member' } : {}) },
+      }, { upsert: true });
+      return;
+    }
+    const updates = {
+      grant: { $addToSet: { permissions: value } },
+      revoke: { $pull: { permissions: value } },
+      position: { $set: { position: value } },
+    };
+    assert.ok(updates[fixture]);
+    const result = await members.updateOne({ ...key, active: true }, updates[fixture]);
+    assert.equal(result.matchedCount, 1);
+  };
   const dbPassword = secret();
   await db.command({ createUser: 'test_server', pwd: dbPassword, roles: [{ role: 'readWrite', db: database }] });
 
@@ -89,27 +115,33 @@ export async function startSystem(t, { database, origins, adminUsername, extraFi
       EMPLOYEE_DATA_DIR: join(directory, 'employee'), ADMIN_ORIGIN: origins.admin, EMPLOYEE_ORIGIN: origins.employee,
       CLIENT_ORIGIN: origins.client, SITE_ORIGIN: origins.site, LOG_LEVEL: 'error',
       BOOTSTRAP_ADMIN_USERNAME: adminUsername, BOOTSTRAP_ADMIN_PASSWORD: password,
+      ...extraEnv,
     },
     windowsHide: true,
   };
-  const launch = async (appPort) => {
-    const checkServer = await startChild(cleanup, process.execPath, ['--require', './fixtures.cjs', ...entry], {
+  const launch = async (appPort, overrides = {}) => {
+    const running = await startChild(cleanup, process.execPath, ['--require', './fixtures.cjs', ...entry], {
       ...options,
-      env: { ...options.env, APP_PORT: String(appPort) },
+      env: { ...options.env, APP_PORT: String(appPort), ...overrides },
     });
     const appBase = `http://127.0.0.1:${appPort}/api`;
     for (let i = 0; i < 180; i++) {
-      checkServer();
+      running.check();
       const response = await fetch(appBase + '/captcha/login?app=client', { headers: { origin: origins.client } }).catch(() => null);
-      if (response?.ok) return appBase;
+      if (response?.ok) return { ...running, base: appBase };
       await sleep(250);
     }
     throw new Error('等待服务启动超时');
   };
-  await launch(port);
+  const peerPort = concurrentStarts ? await freePort() : undefined;
+  let [running] = await Promise.all([launch(port), ...(peerPort ? [launch(peerPort)] : [])]);
   return {
-    db, base, password,
+    db, base, password, seedClub,
     runCommand: (...args) => exec(process.execPath, args, options),
-    startPeer: async () => launch(await freePort()),
+    restartServer: async (overrides) => {
+      await running.stop();
+      running = await launch(port, overrides);
+    },
+    startPeer: async (overrides) => (await launch(await freePort(), overrides)).base,
   };
 }

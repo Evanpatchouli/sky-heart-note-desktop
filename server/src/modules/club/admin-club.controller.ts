@@ -1,3 +1,4 @@
+import { CLUB_ID } from './club.schema';
 import {
   Body,
   Controller,
@@ -33,7 +34,7 @@ class UpdateDispatcherDto {
     forbidNonWhitelisted: true,
   }),
 )
-@Controller('admin/clubs')
+@Controller('admin/club')
 export class AdminClubController {
   constructor(
     private readonly directory: ClubDirectoryService,
@@ -43,96 +44,89 @@ export class AdminClubController {
 
   @Get()
   async list(@AuthUser() actor: SessionUser) {
-    return Resp.success(await this.directory.listAdminClubs(actor));
+    return Resp.success(await this.directory.getAdminClub(actor));
   }
 
-  @Get(':clubId/commission-rule')
+  @Get('commission-rule')
   async getCommissionRule(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
   ) {
     return Resp.success(
-      await this.directory.getAdminCommissionRule(clubId, actor),
+      await this.directory.getCommissionRule(CLUB_ID, actor),
     );
   }
 
-  @Get(':clubId/promotions')
-  async getPromotions(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string) {
-    return Resp.success(await this.promotions.readAdminPolicy(clubId, actor));
+  @Get('promotions')
+  async getPromotions(@AuthUser() actor: SessionUser) {
+    return Resp.success(await this.promotions.readAdminPolicy(CLUB_ID, actor));
   }
 
-  @Patch(':clubId/promotions')
-  async updatePromotions(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string, @Body() input: UpdateClubPromotionDto) {
-    return Resp.success(await this.promotions.updatePolicy(clubId, actor, input));
+  @Patch('promotions')
+  async updatePromotions(@AuthUser() actor: SessionUser, @Body() input: UpdateClubPromotionDto) {
+    return Resp.success(await this.promotions.updatePolicy(CLUB_ID, actor, input));
   }
 
-  @Post(':clubId/promotions/coupons')
-  async issueCoupon(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string, @Body() input: IssueClubCouponDto) {
-    return Resp.success(await this.promotions.issueCoupon(clubId, actor, input));
+  @Post('promotions/coupons')
+  async issueCoupon(@AuthUser() actor: SessionUser, @Body() input: IssueClubCouponDto) {
+    return Resp.success(await this.promotions.issueCoupon(CLUB_ID, actor, input));
   }
 
-  @Patch(':clubId/commission-rule')
+  @Patch('commission-rule')
   async updateCommissionRule(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
     @Body() input: UpdateCommissionRuleDto,
   ) {
     return Resp.success(
-      await this.directory.updateCommissionRule(clubId, actor, input),
+      await this.directory.updateCommissionRule(CLUB_ID, actor, input),
     );
   }
 
-  @Get(':clubId/dispatch-pricing')
+  @Get('dispatch-pricing')
   async listDispatchPricing(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
     @Query() query: ClubOrderQuery,
   ) {
     return Resp.success(
-      await this.orders.listAdminDispatchPricing(clubId, actor, query),
+      await this.orders.listAdminDispatchPricing(CLUB_ID, actor, query),
     );
   }
 
-  @Get(':clubId/orders')
+  @Get('orders')
   async listOrders(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
     @Query() query: ClubOrderQuery,
   ) {
     return Resp.success(
-      await this.orders.listAdminOrders(clubId, actor, query),
+      await this.orders.listAdminOrders(CLUB_ID, actor, query),
     );
   }
 
-  @Get(':clubId/orders/:orderId')
+  @Get('orders/:orderId')
   async getOrder(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('orderId') orderId: string,
   ) {
     return Resp.success(
-      await this.orders.getAdminOrder(clubId, actor, orderId),
+      await this.orders.getAdminOrder(CLUB_ID, actor, orderId),
     );
   }
 
-  @Get(':clubId/members')
+  @Get('members')
   async listMembers(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
   ) {
-    return Resp.success(await this.directory.listAdminMembers(clubId, actor));
+    return Resp.success(await this.directory.listMembers(CLUB_ID, actor));
   }
 
-  @Patch(':clubId/members/:userId/dispatcher')
+  @Patch('members/:userId/dispatcher')
   async setDispatcher(
     @AuthUser() actor: SessionUser,
-    @Param('clubId') clubId: string,
     @Param('userId') userId: string,
     @Body() input: UpdateDispatcherDto,
   ) {
     return Resp.success(
       await this.directory.setMemberDispatcher(
-        clubId,
+        CLUB_ID,
         actor,
         userId,
         input.dispatcher,

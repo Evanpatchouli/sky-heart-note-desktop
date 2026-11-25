@@ -7,6 +7,7 @@ import {
 } from "@webapp-template/common";
 import { Link, useSearchParams } from "react-router";
 import Header from "#/components/Header";
+import type { EmployeeClub } from "../club-operations";
 import { employeeRequest } from "#/service/request";
 
 import NewDirectDraft from "./new-direct-draft";
@@ -17,7 +18,6 @@ import PendingAssignment from "./pending-assignment";
 import MemberInvitation from "./member-invitation";
 import type { DeliveryPeriodPreference } from "@webapp-template/common";
 
-type Club = { id: string; name: string; orderUrl: string; canAssignPendingOrders?: boolean };
 type Order = {
   id: string;
   source: keyof typeof sources;
@@ -48,18 +48,16 @@ function requestError(err: unknown) {
 }
 
 export default function ClubDispatch() {
-  const [clubs, setClubs] = useState<Club[] | null>(null);
-  const [params, setParams] = useSearchParams();
-  const clubId = params.get("clubId");
+  const [params] = useSearchParams();
+  const [club, setClub] = useState<EmployeeClub | null>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const selected = clubs?.find(club => club.id === clubId) ?? clubs?.[0];
 
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    employeeRequest<Club[]>("clubs", "GET", undefined, controller.signal).then(data => {
-      if (!controller.signal.aborted) setClubs(data);
+    employeeRequest<EmployeeClub | null>("club", "GET", undefined, controller.signal).then(data => {
+      if (!controller.signal.aborted) setClub(data);
     }).catch(err => {
       if (!controller.signal.aborted) setError(requestError(err));
     });
@@ -73,24 +71,23 @@ export default function ClubDispatch() {
         <Link to="/">返回个人订单</Link>
         <Typography.Title level={3} style={{ margin: 0 }}>派单准备</Typography.Title>
         {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
-          : clubs === null ? <Spin aria-label="加载俱乐部" />
-          : selected ? <>
-            <label>俱乐部 <Select aria-label="俱乐部" value={selected.id} onChange={clubId => setParams({ clubId })}
-              options={clubs.map(club => ({ value: club.id, label: club.name }))} style={{ minWidth: 140 }} /></label>
-            <Typography.Text copyable={{ text: selected.orderUrl, tooltips: ["复制客户端下单链接", "已复制"] }}>
-              <Typography.Link href={selected.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
+          : club === undefined ? <Spin aria-label="加载俱乐部" />
+          : club ? <>
+            <Typography.Text strong>{club.name}</Typography.Text>
+            <Typography.Text copyable={{ text: club.orderUrl, tooltips: ["复制客户端下单链接", "已复制"] }}>
+              <Typography.Link href={club.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
             </Typography.Text>
-            <MemberInvitation key={selected.id} clubId={selected.id} />
-            <ClubOrders key={selected.id + (params.get("orderId") ?? "")} clubId={selected.id}
-              linkedId={params.get("orderId") ?? undefined} canAssign={selected.canAssignPendingOrders} />
-          </> : <Empty description="暂无可访问的俱乐部" />}
+            <MemberInvitation />
+            <ClubOrders key={params.get("orderId") ?? ""}
+              linkedId={params.get("orderId") ?? undefined} canAssign={club.canAssignPendingOrders} />
+          </> : <Empty description="当前账号尚无有效团员身份" />}
       </Flex>
     </main>
   </>;
 }
 
-function ClubOrders({ clubId, canAssign, linkedId }: { clubId: string; canAssign?: boolean; linkedId?: string }) {
-  const route = `clubs/${clubId}/orders`;
+function ClubOrders({ canAssign, linkedId }: { canAssign?: boolean; linkedId?: string }) {
+  const route = "club/orders";
   const [page, setPage] = useState<Page>();
   const [after, setAfter] = useState<string>();
   const [selectedId, setSelectedId] = useState(linkedId);
@@ -150,7 +147,7 @@ function ClubOrders({ clubId, canAssign, linkedId }: { clubId: string; canAssign
   }
 
   return <>
-    {canAssign ? <PendingAssignment clubId={clubId} onAssigned={id => {
+    {canAssign ? <PendingAssignment onAssigned={id => {
       setSelectedId(id);
       setAfter(undefined);
       setAttempt(value => value + 1);
@@ -189,7 +186,7 @@ function ClubOrders({ clubId, canAssign, linkedId }: { clubId: string; canAssign
         }); }} />
         : <OrderPricingForm key={order.id} route={`${route}/${order.id}/pricing`} order={order} />}
     </> : null}
-    {creating ? <NewDirectDraft clubId={clubId} onClose={() => setCreating(false)} onCreated={id => {
+    {creating ? <NewDirectDraft onClose={() => setCreating(false)} onCreated={id => {
       setCreating(false);
       setExceptionOrder(undefined);
       setSelectedId(id);

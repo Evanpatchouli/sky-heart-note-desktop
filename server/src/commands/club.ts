@@ -5,12 +5,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import AppConfig from '../app.config';
 import { ClubModule } from '../modules/club';
 import { ClubDirectoryService } from '../modules/club/club-directory.service';
-import {
-  CLUB_PERMISSIONS,
-  isClubPermission,
-} from '../modules/club/club-permissions';
-import { CLUB_MEMBER_POSITIONS } from '../modules/club/club.schema';
-
 const mongo = AppConfig.DataBase.Mongo;
 
 @Module({
@@ -25,28 +19,9 @@ const mongo = AppConfig.DataBase.Mongo;
 class ClubCommandModule {}
 
 async function run(args: string[]) {
-  const [command, clubId, value, status, mark] = args;
-  const saveClub = command === 'club' && args.length === 3;
-  const saveMember =
-    command === 'member' &&
-    args.length === 5 &&
-    (status === 'active' || status === 'inactive') &&
-    (mark === 'dispatcher' || mark === 'member');
-  const changePermission =
-    (command === 'grant' || command === 'revoke') &&
-    args.length === 4 &&
-    isClubPermission(status);
-  const position = CLUB_MEMBER_POSITIONS.find((item) => item === status);
-  const changePosition = command === 'position' && args.length === 4 && position;
-  if (!saveClub && !saveMember && !changePermission && !changePosition) {
-    throw new Error(
-      [
-        '用法：club <俱乐部标识> <名称>',
-        '      member <俱乐部标识> <四位用户ID> <active|inactive> <dispatcher|member>',
-        `      position <俱乐部标识> <四位用户ID> <${CLUB_MEMBER_POSITIONS.join('|')}>`,
-        `      <grant|revoke> <俱乐部标识> <四位用户ID> <${CLUB_PERMISSIONS.join('|')}>`,
-      ].join('\n'),
-    );
+  const [command, userId] = args;
+  if (command !== 'init-leader' || args.length !== 2) {
+    throw new Error('用法：club init-leader <四位用户ID>');
   }
 
   const app = await NestFactory.createApplicationContext(ClubCommandModule, {
@@ -55,24 +30,8 @@ async function run(args: string[]) {
   });
   try {
     const directory = app.get(ClubDirectoryService);
-    if (saveClub) await directory.saveClub(clubId, value);
-    else if (saveMember)
-      await directory.saveMember(
-        clubId,
-        value,
-        status === 'active',
-        mark === 'dispatcher',
-      );
-    else if (changePosition)
-      await directory.setMemberPosition(clubId, value, changePosition);
-    else if (changePermission)
-      await directory.setAdminPermission(
-        clubId,
-        value,
-        status,
-        command === 'grant',
-      );
-    console.log('已保存俱乐部配置');
+    await directory.initializeLeader(userId);
+    console.log('已初始化本俱乐部团长');
   } finally {
     await app.close();
   }

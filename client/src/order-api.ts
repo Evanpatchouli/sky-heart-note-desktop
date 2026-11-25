@@ -22,16 +22,10 @@ export type OrderSummary = {
   deliveryPeriodPreference?: DeliveryPeriodPreference;
 };
 
-export function clubOrderPath(clubId: string) {
-  return `/client/clubs/${encodeURIComponent(clubId)}/orders`;
-}
-
-export function orderHref(clubId?: string) {
-  return clubId ? `/order?${new URLSearchParams({ club: clubId })}` : "/order";
-}
+export const clientOrdersPath = "/client/orders";
 
 export function detailHref(order: OrderSummary) {
-  return `/order-detail?${new URLSearchParams({ club: order.clubId, order: order.id })}`;
+  return `/order-detail?${new URLSearchParams({ order: order.id })}`;
 }
 
 export function dispatcherName(userId: string, nickname: string | null) {

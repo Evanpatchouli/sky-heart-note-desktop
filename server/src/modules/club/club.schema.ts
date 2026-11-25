@@ -5,6 +5,7 @@ import { SchemaTypes } from 'mongoose';
 import { CLUB_PERMISSIONS, type ClubPermission } from './club-permissions';
 import { CommissionRuleSchema } from './club-pricing.schema';
 
+export const CLUB_ID = 'club';
 export const CLUB_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 export const CLUB_LEADERSHIP_POSITIONS = ['leader', 'deputy'] as const;
 export const CLUB_MEMBER_POSITIONS = ['member', ...CLUB_LEADERSHIP_POSITIONS] as const;
@@ -12,7 +13,7 @@ export type ClubMemberPosition = (typeof CLUB_MEMBER_POSITIONS)[number];
 
 @Schema({ collection: 'clubs', timestamps: true, versionKey: false })
 export class Club {
-  @Prop({ type: String, required: true, match: CLUB_ID_PATTERN })
+  @Prop({ type: String, required: true, enum: [CLUB_ID] })
   _id: string;
 
   @Prop({ type: String, required: true, trim: true, maxlength: 80 })
@@ -60,5 +61,9 @@ export class ClubMember {
 
 export const ClubMemberSchema = SchemaFactory.createForClass(ClubMember);
 ClubMemberSchema.index({ clubId: 1, userId: 1 }, { unique: true });
+ClubMemberSchema.index(
+  { clubId: 1, position: 1 },
+  { unique: true, partialFilterExpression: { position: 'leader' } },
+);
 ClubMemberSchema.index({ clubId: 1, active: 1, dispatcher: 1 });
 ClubMemberSchema.index({ userId: 1, active: 1 });

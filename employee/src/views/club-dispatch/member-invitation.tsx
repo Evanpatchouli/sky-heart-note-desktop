@@ -3,7 +3,7 @@ import { Alert, Button, Flex, Typography } from "antd";
 import { RequestError } from "@webapp-template/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
-export default function MemberInvitation({ clubId }: { clubId: string }) {
+export default function MemberInvitation() {
   const [invitation, setInvitation] = useState<{ invitationUrl: string; expiresAt: number }>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -12,7 +12,7 @@ export default function MemberInvitation({ clubId }: { clubId: string }) {
     setBusy(true);
     setError("");
     try {
-      setInvitation(await employeeRequest(`clubs/${clubId}/member-invitations`, "POST"));
+      setInvitation(await employeeRequest("club/member-invitations", "POST"));
     } catch (err) {
       setError(err instanceof RequestError ? err.message : "暂时无法生成注册邀请");
     } finally {

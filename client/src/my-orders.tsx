@@ -5,7 +5,7 @@ import { authRequest, invalidateSession, RequestError, useAuthSession } from "@w
 import { ContinuationFacts, CustomerContinuation, giftCount, GiftOrderProgress, totalGiftPayments } from "./order-gift-progress";
 import { CancelPendingOrder } from "./cancel-pending-order";
 import { OrderGiftPriceAdjustment } from "./order-gift-price-adjustment";
-import { clubOrderPath, detailHref, dispatchLabel, orderDispatcher, orderHref, sourceLabel, useClientRead, type OrderSummary } from "./order-api";
+import { clientOrdersPath, detailHref, dispatchLabel, orderDispatcher, sourceLabel, useClientRead, type OrderSummary } from "./order-api";
 
 const periods = { normal: "普通期", double: "双倍期" };
 type Order = OrderSummary & {
@@ -96,16 +96,16 @@ export default function MyOrders() {
   </section>;
 }
 
-export function OrderDetail({ clubId, orderId }: { clubId: string; orderId: string }) {
+export function OrderDetail({ orderId }: { orderId: string }) {
   const { data: order, error, loading, reload } = useClientRead<Order>(
-    `${clubOrderPath(clubId)}/${orderId}`, "订单加载失败",
+    `${clientOrdersPath}/${orderId}`, "订单加载失败",
   );
   const progress = isGiftOrderProgress(order?.deliveryProgress) ? order.deliveryProgress : undefined;
   return <section className="client-orders__panel">
     <h1>订单详情</h1>
     <div className="client-orders__actions">
       <a className="client-orders__action" href="/">返回我的订单</a>
-      <a className="client-orders__action" href={orderHref(clubId)}>向此俱乐部下单</a>
+      <a className="client-orders__action" href="/order">下单</a>
       <button type="button" disabled={loading} onClick={reload}>刷新</button>
     </div>
     {error ? <p role="alert">{error} <button type="button" onClick={reload}>重试</button></p>
@@ -114,8 +114,8 @@ export function OrderDetail({ clubId, orderId }: { clubId: string; orderId: stri
         <p>{sourceLabel[order.source]} · <strong>{dispatchLabel[order.dispatchStatus]}</strong></p>
         <OrderFacts order={order} manageContinuation />
         {progress?.priceAdjustment && <OrderGiftPriceAdjustment key={progress.priceAdjustment.id}
-          route={`${clubOrderPath(clubId)}/${orderId}`} value={progress.priceAdjustment} history={progress.priceAdjustmentHistory} reload={reload} />}
-        <CustomerContinuation route={`${clubOrderPath(clubId)}/${orderId}`}
+          route={`${clientOrdersPath}/${orderId}`} value={progress.priceAdjustment} history={progress.priceAdjustmentHistory} reload={reload} />}
+        <CustomerContinuation route={`${clientOrdersPath}/${orderId}`}
           canRequest={isGiftOrderProgress(order.deliveryProgress) && order.deliveryProgress.canRequestContinuation}
           requests={order.continuationRequests} quotes={order.continuationQuotes} reload={reload} />
         {order.dispatchStatus === "pending_assignment" ? <CancelPendingOrder order={order} onChange={reload} /> : null}
@@ -127,7 +127,7 @@ function OrderFacts({ order, manageContinuation = false }: { order: Order; manag
   const hasContinuation = !!(order.continuationQuotes?.length || order.continuationRequests?.length);
   return <>
     <p>订单号 {order.id}</p>
-    <p>俱乐部 {order.clubId} · 派单人 {orderDispatcher(order)} · {hasContinuation ? "初次订购" : "订购"} {order.requestedGiftTimes !== undefined ? `${order.requestedGiftTimes} 次` : `${order.requestedHearts} 颗`}</p>
+    <p>派单人 {orderDispatcher(order)} · {hasContinuation ? "初次订购" : "订购"} {order.requestedGiftTimes !== undefined ? `${order.requestedGiftTimes} 次` : `${order.requestedHearts} 颗`}</p>
     {isGiftOrderProgress(order.deliveryProgress)
       ? <GiftOrderProgress progress={order.deliveryProgress} />
       : order.deliveryProgress ? <p>历史按颗 · 实际到账 {order.deliveryProgress.observedHearts} 颗 · 已履约 {order.deliveryProgress.creditedHearts} 颗 · 剩余 {order.deliveryProgress.remainingHearts} 颗

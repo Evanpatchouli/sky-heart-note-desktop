@@ -12,19 +12,9 @@ P1-14 待按确认报价锁定的分摊明细核平已履约爱心款和应退�
 
 ## 初始化俱乐部
 
-先启动服务并准备平台账号。具有服务端数据库访问权的部署人员可运行以下命令。俱乐部标识由 1 至 32 位小写字母、数字及中间的连字符组成。`00A1` 和 `00B2` 是已有且拥有团员端准入的四位账号示例。
+每套安装使用同一个俱乐部。API 从空库启动时保存 `CLUB_NAME` 或默认值「送心手记」。此后由本团有效团长在团员端修改名称，重启与其他 API 实例沿用数据库中的值。
 
-```powershell
-pnpm --dir server build
-pnpm --dir server exec node dist/src/commands/club.js club sky-hearts "送心俱乐部"
-pnpm --dir server exec node dist/src/commands/club.js member sky-hearts 00A1 active dispatcher
-pnpm --dir server exec node dist/src/commands/club.js member sky-hearts 00B2 active member
-pnpm --dir server exec node dist/src/commands/club.js position sky-hearts 00B2 leader
-```
-
-Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/commands/club.js`，后接相同参数。重复使用同一俱乐部标识和四位账号会更新既有成员记录。用 `inactive` 停用成员会撤销团员侧订单访问并清空该成员在本俱乐部的管理权限，同时保留历史归属。重新启用成员后需逐项重新授权。`dispatcher` 标记用于客户下单的派单候选。有效成员均可发起自己的直接派单草稿。
-
-部署人员用 `position <俱乐部标识> <四位用户ID> <leader|deputy|member>` 设置团长、副团长或普通团员。既有成员未设置时按普通团员处理，停用成员会清除领导职务。俱乐部职务与派单标记、管理端及财务权限分别配置。
+按[首次启用俱乐部运营](../README.md#首次启用俱乐部运营)为拥有团员端准入的启用账号运行一次 `init-leader <四位用户ID>`。团长登录团员端，从「账户菜单 → 俱乐部运营」维护成员和授权。副团长职务由团长调整。派单标记与职务各自独立。停用成员会清空其运营授权，并保留历史订单归属。恢复后可重新授予所需权限。
 
 老板主动指定与系统随机指定均限本俱乐部有效且带“派单”标记的团员。无候选时创建待分配订单，之后新增候选不会改变原订单。团长或副团长从团员端「派单准备 → 待分配订单」选择任一有团员端准入的本俱乐部有效成员，带“派单”标记者优先显示。手工分配只确定本单派单人。分配前老板可在本人订单详情取消。
 
@@ -32,27 +22,35 @@ Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/
 
 ## 客户端下单入口
 
-团员在「派单准备」选择俱乐部后，可以复制「客户端下单链接」，例如 `https://client.example.com/order?club=sky-hearts`。链接使用服务端配置的 `CLIENT_ORIGIN`。老板登录后填写接收游戏账号、赠送次数，可另填期望交付时段与预计实收爱心颗数。提交后可查看订单详情，该详情也提供「向此俱乐部下单」。在当前标签页刷新后，「下单」沿用当前账号上次打开的俱乐部。单俱乐部部署可在 Vite 环境配置 `VITE_CLIENT_ORDER_CLUB_ID`。
+客户从客户端「下单」或直接打开 `/order` 进入本团表单。团员在「派单准备」可复制完整的客户端地址，例如 `https://client.example.com/order`。客户填写接收游戏账号、赠送次数，可另填期望交付时段与预计实收爱心颗数。本人订单详情使用 `/order-detail?order=<订单ID>`。
 
-没有合格候选时，老板可以提交待分配订单。网络结果不明时，客户端在当前浏览器标签页按客户账号与俱乐部保留原请求，点击「重试本次提交」可取回已创建的订单。
+没有合格候选时，客户可以提交待分配订单。网络结果不明时，客户端在当前标签页按客户账号保留原请求和未提交草稿，点击「重试本次提交」可取回已创建的订单。
 
-## 管理端俱乐部授权
+## 俱乐部运营权限
 
-管理操作需要当前管理端会话、在目标俱乐部的有效成员身份，以及针对该操作的俱乐部权限。部署人员通过同一运维命令逐项授予或撤销权限。以下示例中的 `00C3` 代表具有管理端准入的本俱乐部有效成员。
+有效团长默认可办理成员管理和每次团抽配置。团长在「俱乐部运营」查看有效团员，逐项授予或收回业务权限，并可授予或收回副团长职务。副团长可按职务分配待分配订单，办理运营事项时按明确授予的权限执行。财务明细始终按财务权限或订单本人的具体职责读取。
 
-```powershell
-pnpm --dir server exec node dist/src/commands/club.js grant sky-hearts 00C3 CLUB_ORDERS_READ
-pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLUB_ORDERS_READ
-```
-
-| 权限码 | 业务范围 |
+| 权限码 | 用途及准入 |
 | --- | --- |
-| `CLUB_ORDERS_READ` | 查看指定俱乐部的订单监管视图 |
-| `CLUB_MEMBERS_MANAGE` | 查看指定俱乐部的成员名单，编辑有效成员的派单标记 |
-| `CLUB_COMMISSION_MANAGE` | 修改指定俱乐部每次团抽规则 |
-| `CLUB_FINANCE_READ` | 读取指定俱乐部的资金明细，由财务接口接入 |
+| `CLUB_MEMBERS_MANAGE` | 在团员端维护本团启用成员、普通成员停用状态及派单候选标记。管理端会话也可查看本团成员及调整派单候选标记。 |
+| `CLUB_COMMISSION_MANAGE` | 在团员端或管理端读取和更新每次团抽。管理端的优惠设置沿用此权限。 |
+| `CLUB_ORDERS_READ` | 通过管理端会话读取本团订单的监管视图。与团抽配置权限合用可读已派发订单的规则摘要。 |
+| `CLUB_FINANCE_READ` | 通过管理端会话读取相应财务明细。 |
 
-现有会话在下次请求时按当前数据检查权限。成员授权和启停继续由运维命令处理。管理端通过 `GET /api/admin/clubs` 读取本账号已获业务授权的俱乐部及各俱乐部的权限码。运营订单视图只返回订单和份额信息。团抽与财务服务的接入点是 `ClubDirectoryService.requireAdminPermission`，传入管理端会话、目标俱乐部标识和对应权限码。服务在准入、当前成员状态或单项权限不满足时返回 403。测试用已登录账号和同一测试数据库验证授权及撤销。实际团抽修改与资金查询随对应任务接入。[开发任务](todo.md)
+管理端准入由平台角色管理。每次业务请求实时核对当前账号的有效成员身份、职务和所需单项权限。授予或收回在已登录账号的下次请求生效。仅团长可修改名称、管理授权和副团长职务。
+
+| 方法 | 路径 | 操作 |
+| --- | --- | --- |
+| `GET` | `/api/employee/club` | 有效团员读取本团名称、客户端下单链接和本人运营能力。无有效成员身份时返回空值。 |
+| `PATCH` | `/api/employee/club/name` | 团长提交 `{ name }`，去除首尾空白后为 1 至 80 个字符。 |
+| `GET` | `/api/employee/club/members` | 获成员管理权限的团员读取本团成员。 |
+| `PUT` | `/api/employee/club/members/:userId` | 提交 `{ active }`。添加或恢复具备团员端准入的账号，或停用普通成员。 |
+| `PATCH` | `/api/employee/club/members/:userId/dispatcher` | 提交 `{ dispatcher }` 更新有效成员的派单候选标记。 |
+| `GET`、`PATCH` | `/api/employee/club/commission-rule` | 获团抽配置权限的团员读取或提交 `{ expectedVersion, clubFeeCents }`。首次配置的预期版本为 0。 |
+| `GET` | `/api/employee/club/authorizations` | 团长读取有效团员的职务、权限及可授予的权限。 |
+| `PATCH` | `/api/employee/club/authorizations/:userId/permission` | 团长提交 `{ permission, granted }`。 |
+| `PATCH` | `/api/employee/club/authorizations/:userId/deputy` | 团长提交 `{ deputy }`，授予或收回副团长职务。 |
+| `GET` | `/api/admin/club` | 读取本团名称及当前账号在管理端可用的业务权限。 |
 
 ## 按次派发、承接和注册邀请
 
@@ -62,17 +60,17 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 
 本单派单人可把尚未送出的次数全部或部分改派给本团另一位有效团员，接手人确认后获得该段的相应份额。已送次数按同一份额的最新日报版本核对，原日报和人员归属保留。改派网络结果不明时，可在原订单重试同一次请求。
 
-在「派单准备」选择俱乐部后可生成本团注册邀请。链接有效期为 24 小时，仅限创建一个新账号，直接进入该俱乐部的普通团员身份。新团员设置登录凭据并入团后可在团员端登录，派单人刷新选人列表后可选到该账号。
+有效团员可在「派单准备」生成本团注册邀请。链接有效期为 24 小时，仅限创建一个新账号，直接进入该俱乐部的普通团员身份。新团员设置登录凭据并入团后可在团员端登录，派单人刷新选人列表后可选到该账号。
 
 | 方法 | 挂在 `/api` 下的路由 | 操作 |
 | --- | --- | --- |
-| `POST` | `/employee/clubs/:clubId/orders/:orderId/publish` | 原发布字段可附带 `giftDispatchSegments`，每项含 `segmentIndex`、`startDate`、`endDate`、`openToClaim` 和 `directed`。定向项含 `userId`、`dailyGiftTimes`、`startDate`、`endDate`。 |
-| `GET`、`POST` | `/employee/clubs/:clubId/orders/:orderId/gift-dispatch` | 当单派单人读分工或补配未配置的已付段。补配提交 `{ requestId, segments }`，每项与正式派发分工的结构相同。 |
-| `GET` | `/employee/clubs/:clubId/gift-claims`、`/employee/clubs/:clubId/gift-claims/:orderId` | 读取当前团员可见的按次派单。定向份额和已领取详情按身份裁剪，执行日期相连且日量相同的记录合并显示。 |
-| `POST` | `/employee/clubs/:clubId/gift-claims/:orderId` | 公开提交 `{ requestId, segmentIndex, kind: "public", dailyGiftTimes }`。定向提交 `{ requestId, segmentIndex, kind: "directed", offerId }`。两种承接均可传 `actualReceivedHearts`。回执包含获分 `giftTimes` 和 `dailyGiftTimes`。正份额另有 `shareId`。 |
-| `POST` | `/employee/clubs/:clubId/orders/:orderId/gift-dispatch/reassign` | 提交 `{ requestId, shareId, userId, giftTimes? }`。省略次数时改派全部未送次数，返回给新团员的待确认定向份额。 |
-| `GET` | `/employee/clubs/:clubId/gift-candidates` | 查询团内当前可接单的有效成员。 |
-| `POST` | `/employee/clubs/:clubId/member-invitations` | 有效团员取得本团一次性注册链接和截止时间。 |
+| `POST` | `/employee/club/orders/:orderId/publish` | 原发布字段可附带 `giftDispatchSegments`，每项含 `segmentIndex`、`startDate`、`endDate`、`openToClaim` 和 `directed`。定向项含 `userId`、`dailyGiftTimes`、`startDate`、`endDate`。 |
+| `GET`、`POST` | `/employee/club/orders/:orderId/gift-dispatch` | 当单派单人读分工或补配未配置的已付段。补配提交 `{ requestId, segments }`，每项与正式派发分工的结构相同。 |
+| `GET` | `/employee/club/gift-claims`、`/employee/club/gift-claims/:orderId` | 读取当前团员可见的按次派单。定向份额和已领取详情按身份裁剪，执行日期相连且日量相同的记录合并显示。 |
+| `POST` | `/employee/club/gift-claims/:orderId` | 公开提交 `{ requestId, segmentIndex, kind: "public", dailyGiftTimes }`。定向提交 `{ requestId, segmentIndex, kind: "directed", offerId }`。两种承接均可传 `actualReceivedHearts`。回执包含获分 `giftTimes` 和 `dailyGiftTimes`。正份额另有 `shareId`。 |
+| `POST` | `/employee/club/orders/:orderId/gift-dispatch/reassign` | 提交 `{ requestId, shareId, userId, giftTimes? }`。省略次数时改派全部未送次数，返回给新团员的待确认定向份额。 |
+| `GET` | `/employee/club/gift-candidates` | 查询团内当前可接单的有效成员。 |
+| `POST` | `/employee/club/member-invitations` | 有效团员取得本团一次性注册链接和截止时间。 |
 | `POST` | `/client/club-invitations/register` | 通过客户端来源提交 `{ token, username, password }`，完成新团员入团。 |
 
 段序号从 0 开始，执行日期为 `YYYY-MM-DD`，窗口包含首尾日。请求标识用 UUID v4。新增续段仍须先核款，待核款的续段报价不会进入可接单列表。历史按颗订单沿用既有数量、金额及已发记录。
@@ -81,24 +79,22 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 
 | 方法 | 路由 | 可执行的操作 |
 | --- | --- | --- |
-| `GET` | `/api/employee/clubs/:clubId/order-customers?q=关键词` | 有效团员按用户名、昵称或四位 ID 搜索可进入客户端的启用账号，最多返回 20 条 `{ userId, nickname }`。完整 ID 优先，其次是完整用户名、昵称。 |
-| `POST` | `/api/employee/clubs/:clubId/orders` | 有效团员新建直接派单草稿，选择已有用户或填写新老板昵称。创建人与本单派单人均为当前团员。 |
-| `POST` | `/api/employee/clubs/:clubId/orders/:orderId/customer-activation` | 原建档订单的当单派单人生成客户端一次性激活链接，返回 `activationUrl` 和毫秒时间戳 `expiresAt`。 |
+| `GET` | `/api/employee/club/order-customers?q=关键词` | 有效团员按用户名、昵称或四位 ID 搜索可进入客户端的启用账号，最多返回 20 条 `{ userId, nickname }`。完整 ID 优先，其次是完整用户名、昵称。 |
+| `POST` | `/api/employee/club/orders` | 有效团员新建直接派单草稿，选择已有用户或填写新老板昵称。创建人与本单派单人均为当前团员。 |
+| `POST` | `/api/employee/club/orders/:orderId/customer-activation` | 原建档订单的当单派单人生成客户端一次性激活链接，返回 `activationUrl` 和毫秒时间戳 `expiresAt`。 |
 | `POST` | `/api/user/activate-dispatch-customer` | 客户端来源提交 JSON `{ token, username, password }`，为链接对应的原客户账号设置首次登录凭据。 |
-| `POST` | `/api/client/clubs/:clubId/orders` | 登录客户按赠送次数提交本人订单。可填 `dispatcherUserId` 指定合格派单人，省略时随机选人。无候选时创建待分配订单。 |
-| `POST` | `/api/client/clubs/:clubId/orders/:orderId/cancel-before-assignment` | 客户提交 `{ requestId }` 取消本人的待分配订单。 |
-| `GET` | `/api/employee/clubs/:clubId/orders/pending-assignment` | 团长或副团长分页读取本俱乐部待分配订单。 |
-| `GET` | `/api/employee/clubs/:clubId/assignment-candidates` | 团长或副团长读取本俱乐部有效团员的 `{ userId, nickname, dispatcher }`，带派单标记者排在前面。 |
-| `POST` | `/api/employee/clubs/:clubId/orders/:orderId/assign-dispatcher` | 团长或副团长提交 `{ requestId, dispatcherUserId }` 为本俱乐部的待分配订单确定派单人。 |
-| `GET` | `/api/{employee\|client}/clubs/:clubId/orders` | 客户端查本人已核实归属的订单。团员端查本人负责派单、或已派发且本人承接的订单。 |
-| `GET` | `/api/{employee\|client}/clubs/:clubId/orders/:orderId` | 按列表相同的归属范围查询详情。 |
-| `GET` | `/api/client/orders` | 跨俱乐部查询归属本人的订单，使用相同的筛选和分页参数。 |
-| `GET` | `/api/client/clubs/:clubId/order-options` | 登录客户查看俱乐部名称、可选派单人的昵称和四位 ID。 |
-| `GET` | `/api/employee/clubs` | 读取当前团员的有效成员俱乐部、客户端下单链接及待分配操作权限。 |
-| `GET` | `/api/admin/clubs/:clubId/orders` | 按俱乐部授权监管该俱乐部所有订单，返回业务状态、客户归属及份额分配。 |
-| `GET` | `/api/admin/clubs/:clubId/orders/:orderId` | 在同一监管范围内查询指定订单。 |
-| `GET` | `/api/admin/clubs/:clubId/members` | 查询指定俱乐部成员的昵称、四位 ID、成员状态和派单标记。 |
-| `PATCH` | `/api/admin/clubs/:clubId/members/:userId/dispatcher` | 用 `{"dispatcher": true}` 或 `{"dispatcher": false}` 更新有效成员的派单标记。 |
+| `POST` | `/api/client/orders` | 登录客户按赠送次数提交本人订单。可填 `dispatcherUserId` 指定合格派单人，省略时随机选人。无候选时创建待分配订单。 |
+| `POST` | `/api/client/orders/:orderId/cancel-before-assignment` | 客户提交 `{ requestId }` 取消本人的待分配订单。 |
+| `GET` | `/api/employee/club/orders/pending-assignment` | 团长或副团长分页读取本俱乐部待分配订单。 |
+| `GET` | `/api/employee/club/assignment-candidates` | 团长或副团长读取本俱乐部有效团员的 `{ userId, nickname, dispatcher }`，带派单标记者排在前面。 |
+| `POST` | `/api/employee/club/orders/:orderId/assign-dispatcher` | 团长或副团长提交 `{ requestId, dispatcherUserId }` 为本俱乐部的待分配订单确定派单人。 |
+| `GET` | `/api/employee/club/orders`、`/api/client/orders` | 客户端查本人已核实归属的订单。团员端查本人负责派单、或已派发且本人承接的订单。 |
+| `GET` | `/api/employee/club/orders/:orderId`、`/api/client/orders/:orderId` | 按列表相同的归属范围查询详情。 |
+| `GET` | `/api/client/club/order-options` | 登录客户查看俱乐部名称、可选派单人的昵称和四位 ID。 |
+| `GET` | `/api/admin/club/orders` | 按本团业务授权监管订单，返回业务状态、客户归属及份额分配。 |
+| `GET` | `/api/admin/club/orders/:orderId` | 在同一监管范围内查询指定订单。 |
+| `GET` | `/api/admin/club/members` | 查询本团成员的昵称、四位 ID、成员状态和派单标记。 |
+| `PATCH` | `/api/admin/club/members/:userId/dispatcher` | 用 `{"dispatcher": true}` 或 `{"dispatcher": false}` 更新有效成员的派单标记。 |
 
 下单需要相应端的访问令牌和 JSON 请求体。两个下单入口共用 `requestId`、`recipientGameAccount`、`requestedGiftTimes`，可另填 `estimatedReceivedHearts`。历史 `requestedHearts` 允许同一俱乐部、来源、创建人和标识原样重试已保存的请求。新单一律使用赠送次数。新建、取消和分配各使用 UUID v4，请求重试时沿用相同的 `requestId` 与内容。相同标识配不同内容或争抢已处理的订单返回 HTTP 409。显式指定候选范围之外的账号返回 HTTP 400。随机候选为空时订单的 `dispatchStatus` 为 `pending_assignment`，派单人和归属方式返回 `null`。取消后为 `cancelled`。手动分配后为 `pending`，归属方式为 `manual`。
 
@@ -133,7 +129,7 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 ## 固定金额抽成与派单准备
 
-管理端通过 `GET /api/admin/clubs/:clubId/commission-rule` 查当前规则，通过相同路径的 `PATCH` 更新。派单人通过 `GET /api/employee/clubs/:clubId/orders/:orderId/pricing` 查报价和规则，通过相同路径的 `PATCH` 保存报价。
+管理端通过 `GET /api/admin/club/commission-rule` 查当前规则，通过相同路径的 `PATCH` 更新。派单人通过 `GET /api/employee/club/orders/:orderId/pricing` 查报价和规则，通过相同路径的 `PATCH` 保存报价。
 
 管理端只填写每次团抽，派单人只填写每次服务单价与每次派抽。金额使用整数分。规则更新请求包含 `expectedVersion` 和 `clubFeeCents`，首次配置使用版本 `0`。报价更新请求包含 `ruleVersion`、`expectedRevision`（首次为 `0`）、`dispatchFeeCents` 和 `giftSegments`。两类请求可省略 `basis`，显式填写时仅接受 `gift_times`。已有按颗团抽须由具备本俱乐部权限的管理员填写新的每次金额后启用。规则或报价版本已变化时，服务返回 HTTP 409。
 
@@ -147,17 +143,17 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 历史订单保留 `requestedHearts`、原报价和已派发快照。历史报价没有按次标记时，报价按原颗数和每颗单价展示。历史抽成按快照的 `basis` 和版本展示，即使同一笔旧单使用按次抽成，也继续按颗展示原报价。
 
-派单人在「派单准备」保存报价后可登记本人实收。使用 `POST /api/employee/clubs/:clubId/orders/:orderId/receipts`，提交 `pricingRevision`、整数分 `receivedAmountCents`、带时区的 `receivedAt` 和 UUID v4 `requestId`。服务记录收款人、经办人、两次时间和完整原报价。同一标识与内容可原样重试。报价修改与实收登记同时提交时，只有先写入的请求生效，另一个返回 HTTP 409。实收有差额时保留登记和原报价，订单继续待核款。
+派单人在「派单准备」保存报价后可登记本人实收。使用 `POST /api/employee/club/orders/:orderId/receipts`，提交 `pricingRevision`、整数分 `receivedAmountCents`、带时区的 `receivedAt` 和 UUID v4 `requestId`。服务记录收款人、经办人、两次时间和完整原报价。同一标识与内容可原样重试。报价修改与实收登记同时提交时，只有先写入的请求生效，另一个返回 HTTP 409。实收有差额时保留登记和原报价，订单继续待核款。
 
-后台规则更新后，可通过 `PATCH /api/employee/clubs/:clubId/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
+后台规则更新后，可通过 `PATCH /api/employee/club/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
 
-实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。
+实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/club/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。
 
 ### 按次优惠
 
 现行按次报价允许本单个人让利、一种平台优惠和促销赠送叠加。先按折前付费服务款核算平台优惠，再扣个人让利。用券有效时由券替代全场折扣，未用券时自动执行本团有效全场折扣。每笔金额优惠按各段折前付费服务款分摊到付费次数，整分明细和优惠来源随报价保留。[优惠的使用和出资](heart-delivery.md#优惠的使用和出资)
 
-有本团规则管理权限的管理员可在「抽成规则 → 平台优惠」启停全场折扣和向指定平台客户发券。读取及更新活动使用 `GET/PATCH /api/admin/clubs/:clubId/promotions`，更新送 `expectedVersion`、活动名与实付比例（万分比，例如九折填 `9000`）。发券使用 `POST /api/admin/clubs/:clubId/promotions/coupons`，填写领券客户短 ID、券名、券种、对应金额或实付比例和 UUID v4 请求标识。
+有本团规则管理权限的管理员可在「抽成规则 → 平台优惠」启停全场折扣和向指定平台客户发券。读取及更新活动使用 `GET/PATCH /api/admin/club/promotions`，更新送 `expectedVersion`、活动名与实付比例（万分比，例如九折填 `9000`）。发券使用 `POST /api/admin/club/promotions/coupons`，填写领券客户短 ID、券名、券种、对应金额或实付比例和 UUID v4 请求标识。
 
 客户下单选项返回本人在本团尚可使用的券，建单可传 `platformCouponId` 表示用券意向。接待通知在团员端站内铃铛中仅向本单派单人展示，点击打开对应订单的派单准备。正式发布后，抢单通知按全团接单通知流程处理。派单准备返回该老板名下可用券和预填选择。在报价时传 `platformCouponId` 更换券，传 `null` 表示不用券。折前服务款未达到门槛或券已不可用时，报价记录原因与实际生效的优惠。登记实收保存完整报价与券使用记录，数据库确保一张券只被一笔订单占用。
 
@@ -165,13 +161,13 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 ### 按次接单与领取汇总
 
-团员从「按次接单」打开本俱乐部已派发订单。写入使用 `POST /api/employee/clubs/:clubId/gift-claims/:orderId`。公开抢单传 UUID v4 `requestId`、`segmentIndex`、`kind: "public"` 和本段本人申报的总日量 `dailyGiftTimes`。提高总日量时只按较前次增加的日量分配，填写相同或更低总日量的新请求返回 HTTP 409。定向承接传 `kind: "directed"` 和本人的 `offerId`。两种请求都可另填 `actualReceivedHearts`。
+团员从「按次接单」打开本俱乐部已派发订单。写入使用 `POST /api/employee/club/gift-claims/:orderId`。公开抢单传 UUID v4 `requestId`、`segmentIndex`、`kind: "public"` 和本段本人申报的总日量 `dailyGiftTimes`。提高总日量时只按较前次增加的日量分配，填写相同或更低总日量的新请求返回 HTTP 409。定向承接传 `kind: "directed"` 和本人的 `offerId`。两种请求都可另填 `actualReceivedHearts`。
 
-回执返回申报日量 `requestedDailyGiftTimes`、实际获分的最高日量 `dailyGiftTimes`、实际日程 `schedule` 和份额总次数 `giftTimes`。追加时另返回 `additionalRequestedDailyGiftTimes`。正份额有 `shareId`，0 次结果只保存回执。相同订单、团员、标识和内容的重试返回原回执，包括截量结果。本人用相同标识提交不同内容返回 HTTP 409。订单撤回或停止承接后，有效团员仍可重试本人已保存的操作，或者用 `GET /api/employee/clubs/:clubId/gift-claims/:orderId/receipts/:requestId` 只读核对；新的领取依然受当前状态限制。
+回执返回申报日量 `requestedDailyGiftTimes`、实际获分的最高日量 `dailyGiftTimes`、实际日程 `schedule` 和份额总次数 `giftTimes`。追加时另返回 `additionalRequestedDailyGiftTimes`。正份额有 `shareId`，0 次结果只保存回执。相同订单、团员、标识和内容的重试返回原回执，包括截量结果。本人用相同标识提交不同内容返回 HTTP 409。订单撤回或停止承接后，有效团员仍可重试本人已保存的操作，或者用 `GET /api/employee/club/gift-claims/:orderId/receipts/:requestId` 只读核对；新的领取依然受当前状态限制。
 
 团员端在当前标签页按账号、俱乐部、订单、段和动作保留待确认请求。刷新只查询本人回执。未查到时，可在「待确认的领取」点击「重试本次领取」，使用原标识和内容。领取结果或冲突返回后，页面刷新公开余量和本人定向份额。
 
-派单人从「派单准备」查看整单及各段汇总。 `GET /api/employee/clubs/:clubId/orders/:orderId/gift-dispatch` 返回 `totals` 和按报价段排列的 `segmentTotals`，包括付费总次数、净已领、公开待领、定向待确认、未配置和当前不可领。改派前的原份额、日程和实绩仍可查，已移出的份额转入待确认，接手人确认后计入其净承接。接单人只可查本人回执和份额。
+派单人从「派单准备」查看整单及各段汇总。 `GET /api/employee/club/orders/:orderId/gift-dispatch` 返回 `totals` 和按报价段排列的 `segmentTotals`，包括付费总次数、净已领、公开待领、定向待确认、未配置和当前不可领。改派前的原份额、日程和实绩仍可查，已移出的份额转入待确认，接手人确认后计入其净承接。接单人只可查本人回执和份额。
 
 ## 按次承接关联送心号
 
@@ -180,8 +176,8 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 | 请求 | 用途 |
 | --- | --- |
 | `GET /api/employee/songxinhao/linkable` | 查本人的 SQLite 送心号。每项含稳定 `id`、十进制字符串 `localId` 和 `name`。 |
-| `GET /api/employee/clubs/:clubId/gift-claims/:orderId` | 查接收游戏号和已承接份额里属于本人的 `executionGameAccounts`。 |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/shares/:shareId/execution-accounts` | 提交 `{ personalAccountId }` 关联个人号。返回稳定执行账号 `id`、已关联份额 `shareIds`、个人号名称和编号快照。 |
+| `GET /api/employee/club/gift-claims/:orderId` | 查接收游戏号和已承接份额里属于本人的 `executionGameAccounts`。 |
+| `POST /api/employee/club/orders/:orderId/shares/:shareId/execution-accounts` | 提交 `{ personalAccountId }` 关联个人号。返回稳定执行账号 `id`、已关联份额 `shareIds`、个人号名称和编号快照。 |
 
 俱乐部、订单、有效成员及份额归属由服务端校验。相同关联重试返回原执行账号。客户按本人单据核对报价和现金实收。
 
@@ -197,9 +193,9 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 | 请求 | 用途 |
 | --- | --- |
-| `GET /api/employee/clubs/:clubId/orders/:orderId/daily-reports` | 每页读取本人的 25 条日报版本，用 `nextCursor` 作下一页的 `after`。按次单另返回 `giftProgress`。 |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/shares/:shareId/execution-accounts/:accountId/daily-reports` | 给本人承接中已关联的账号提交日报。`kind` 取 `daily` 或 `supplement`，补报需填 `reason`。`businessDate` 格式为 `YYYY-MM-DD`。 |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/daily-reports/:reportId/corrections` | 给本人的日报追加更正。`reportId` 取历史项的 `originalId`，提交当前 `expectedVersion` 与 `reason`。 |
+| `GET /api/employee/club/orders/:orderId/daily-reports` | 每页读取本人的 25 条日报版本，用 `nextCursor` 作下一页的 `after`。按次单另返回 `giftProgress`。 |
+| `POST /api/employee/club/orders/:orderId/shares/:shareId/execution-accounts/:accountId/daily-reports` | 给本人承接中已关联的账号提交日报。`kind` 取 `daily` 或 `supplement`，补报需填 `reason`。`businessDate` 格式为 `YYYY-MM-DD`。 |
+| `POST /api/employee/club/orders/:orderId/daily-reports/:reportId/corrections` | 给本人的日报追加更正。`reportId` 取历史项的 `originalId`，提交当前 `expectedVersion` 与 `reason`。 |
 
 两种写入均提交 UUID v4 `requestId` 和 `lines`。按次明细包含非负整数 `giftTimes` 和非负整数或 `null` 的 `receivedHearts`。省略 `receivedHearts` 同样表示未知。可填行级 `shareId` 选择该号已关联的本人份额，省略时使用首报路由的份额。计价段由份额确定，可选填 `quoteSegment` 核对对应的从 1 开始的段号。可填实际 `period`（`normal`、`double` 或 `unconfirmed`），省略则沿用该段约定时段。已知和未知实际到账均直接保留。
 
@@ -213,9 +209,9 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 | 请求 | 用途 |
 | --- | --- |
-| `GET /api/employee/clubs/:clubId/orders/fulfillment-exceptions?through=YYYY-MM-DD` | 当单派单人查本人异常队列。可用 `after`、`limit` 和 `source`。 |
-| `GET /api/employee/clubs/:clubId/orders/:orderId/fulfillment` | 当单派单人查看订单、段、团员及具体份额。传 `through` 时以该业务日为截止，包含当日。未选择核对日时展示当前累计和已填日报。 |
-| `GET /api/client/orders` 与 `GET /api/client/clubs/:clubId/orders/:orderId` | 老板查看归属本人的直接派单和客户端订单。老板视图仅返回客户侧金额及履约汇总。 |
+| `GET /api/employee/club/orders/fulfillment-exceptions?through=YYYY-MM-DD` | 当单派单人查本人异常队列。可用 `after`、`limit` 和 `source`。 |
+| `GET /api/employee/club/orders/:orderId/fulfillment` | 当单派单人查看订单、段、团员及具体份额。传 `through` 时以该业务日为截止，包含当日。未选择核对日时展示当前累计和已填日报。 |
+| `GET /api/client/orders` 与 `GET /api/client/orders/:orderId` | 老板查看归属本人的直接派单和客户端订单。老板视图仅返回客户侧金额及履约汇总。 |
 
 按次的 `deliveryProgress.priceUnit` 为 `gift_times`。老板在「我的订单」和订单详情核对整单及各段的约定、已送和剩余次数。建单预计实收与接单时登记的实际实收、日报实际到账分别展示。接单实收使用匿名、去重的观察值及未知数。日报累计取各有效日报实际到账，所有明细都已知时给出合计，存在未知时另给已知小计及未知明细数。明确零到账显示 0。履约送完和派单人确认结单各有状态，`closedAt` 取已记录的结单事实。结单后保留日报历史，关闭普通补报与更正写入。
 
@@ -241,11 +237,11 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 | 请求 | 数据 |
 | --- | --- |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/fulfillment/price-preview` | `{ quoteSegment, giftTimes, targetPeriod, targetUnitPriceCents }`。段号从 1 开始，时段为 `normal` 或 `double`。只有可以发起的试算返回 `adjustmentReview.version`。 |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/price-adjustment` | 原试算字段，另带 `expectedVersion`、`reason` 和 `requestId`。 |
-| `POST /api/client/clubs/:clubId/orders/:orderId/price-adjustment/decision` | `{ adjustmentId, expectedRevision, decision, requestId }`，答复为 `accept` 或 `decline`。团员端同路径登记线下答复时另填 `occurredAt` 和 `evidence`。 |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/price-adjustment/payments` | `{ adjustmentId, expectedRevision, kind, amountCents, occurredAt, requestId, reason? }`。实际补款用 `supplement`，实际退款用 `refund`。发生时间含时区，说明未填写时沿用改价原因。 |
-| `POST /api/employee/clubs/:clubId/orders/:orderId/price-adjustment/resume` | `{ adjustmentId, expectedRevision, requestId }`。派单人结束 `needs_requote` 方案，恢复尚待履约的现有段。 |
+| `POST /api/employee/club/orders/:orderId/fulfillment/price-preview` | `{ quoteSegment, giftTimes, targetPeriod, targetUnitPriceCents }`。段号从 1 开始，时段为 `normal` 或 `double`。只有可以发起的试算返回 `adjustmentReview.version`。 |
+| `POST /api/employee/club/orders/:orderId/price-adjustment` | 原试算字段，另带 `expectedVersion`、`reason` 和 `requestId`。 |
+| `POST /api/client/orders/:orderId/price-adjustment/decision` | `{ adjustmentId, expectedRevision, decision, requestId }`，答复为 `accept` 或 `decline`。团员端同路径登记线下答复时另填 `occurredAt` 和 `evidence`。 |
+| `POST /api/employee/club/orders/:orderId/price-adjustment/payments` | `{ adjustmentId, expectedRevision, kind, amountCents, occurredAt, requestId, reason? }`。实际补款用 `supplement`，实际退款用 `refund`。发生时间含时区，说明未填写时沿用改价原因。 |
+| `POST /api/employee/club/orders/:orderId/price-adjustment/resume` | `{ adjustmentId, expectedRevision, requestId }`。派单人结束 `needs_requote` 方案，恢复尚待履约的现有段。 |
 
 首版在线下收退款，由派单人在款项实际到账或退回后登记。同意本身不增加实收。派单人核对实际收到全额补款并登记后，涉及的未送次数进入新段，履约总量不变。继续履约时使用该段和对应份额。同一送心号当日已有日报时，可保留旧段明细并在同一日报的更正版本中追加实际续送的新段明细。已送记录、首次报价、实收、每次优惠的锁定分摊和抽成保留，后续改价只作用于当时剩余的付费次数。
 
@@ -257,7 +253,7 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 已正式派发的按次订单在可继续履约且尚未结单时，老板可在订单详情点「在原单追加计价段」，包括已完成原约定次数的订单。老板填写新段的期别、总次数、每日日量和起止日。当单派单人在「派单准备 → 报价与派发规则 → 续段处理」为该申请填写每次单价。老板确认报价后，派单人登记实际收到的全额款和收款时间。核款后，新段的次数进入全单约定和派单分工。派单人在同页「按次派发与分工」使用报价执行窗口配置公开领取或定向承接。各段独立计价，整单沿用首段每次派抽和团抽。原单的报价、原实收、历次续段报价和实收分别保留。老板可核对初次订购、当前约定次数、原报价和原收款。累计已登记收款合计原收款与已核款续段。
 
-下表路径相对于对应端的 `/api/{client|employee}/clubs/:clubId/orders/:orderId`。写入所用的 `requestId` 为 UUID v4。
+下表路径相对于对应端的 `/api/client/orders/:orderId` 或 `/api/employee/club/orders/:orderId`。写入所用的 `requestId` 为 UUID v4。
 
 | 端 | 请求 | 载荷 |
 | --- | --- | --- |

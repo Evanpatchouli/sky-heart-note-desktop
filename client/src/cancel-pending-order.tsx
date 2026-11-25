@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { readClientContext, rememberClientContext } from "./navigation";
-import { clientRequest, clubOrderPath, type OrderSummary } from "./order-api";
+import { clientRequest, clientOrdersPath, type OrderSummary } from "./order-api";
 
 const unknownResult = "暂时无法确认取消结果，请重试本次取消。";
 
@@ -26,7 +26,7 @@ export function CancelPendingOrder({ order, onChange }: { order: OrderSummary; o
     const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
       const result = await clientRequest<{ id: string; dispatchStatus: string }>(
-        token, `${clubOrderPath(order.clubId)}/${order.id}/cancel-before-assignment`,
+        token, `${clientOrdersPath}/${order.id}/cancel-before-assignment`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

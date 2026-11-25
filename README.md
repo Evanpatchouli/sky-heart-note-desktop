@@ -36,6 +36,21 @@ pnpm dev:client
 pnpm dev:site
 ```
 
+## 首次启用俱乐部运营
+
+API 从空库启动时创建本团，初始名称取 `CLUB_NAME`，默认「送心手记」。现有库保留已保存的名称。先让拟任团长拥有一个可登录团员端的启用账号。可使用初始化的 `root`，也可让该用户从客户端注册，再由平台管理员授予 `employee` 角色。请核对账号的四位用户 ID。
+
+在与 API 使用相同 MongoDB 配置的可信部署环境指定首位团长。将示例中的 `00A1` 换成已核对的 ID。
+
+```powershell
+pnpm --dir server build
+pnpm --dir server club:configure init-leader 00A1
+```
+
+Docker 部署使用 `docker compose exec server node dist/src/commands/club.js init-leader 00A1`。同一账号重复执行可核对初始化，另一账号会被拒绝。
+
+团长登录团员端，从右上角「账户菜单 → 俱乐部运营」修改本团名称、加入已有团员账号并授予或收回运营权限。有效团员可在「派单准备」生成入团邀请。客户打开客户端「下单」即可提交本团订单。[俱乐部运营 API](docs/club-orders.md#俱乐部运营权限)
+
 ## Docker 部署与重新部署
 
 在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，团员的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。

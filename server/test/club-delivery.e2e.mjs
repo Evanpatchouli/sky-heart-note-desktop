@@ -9,7 +9,7 @@ const firstDay = '2026-11-25';
 
 test('按次日报、补报与更正立即影响履约和本人待结依据，旧按颗报告按原状态读取', { timeout: 120000 }, async t => {
   const origins = Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, `https://${app}.diary.test`]));
-  const { db, base, password, runCommand, startPeer } = await startSystem(t, {
+  const { db, base, password, seedClub, startPeer } = await startSystem(t, {
     database: 'club_delivery_e2e', origins, adminUsername: 'diary_admin',
     extraFixtures: `
       const { Collection } = require('mongoose').mongo;
@@ -41,15 +41,13 @@ test('按次日报、补报与更正立即影响履约和本人待结依据，�
   const get = async (actor, path, status = 200) => (await call('employee', path, { token: actor.token, status })).data;
   const post = async (actor, path, body, status = 201, server) =>
     (await call('employee', path, { method: 'POST', token: actor.token, body, status, server })).data;
-  const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
   const admin = await login('admin', 'diary_admin');
   const dispatcher = await login('employee', 'diary_admin');
-  const club = '/employee/clubs/main';
-  await configure('club', 'main', '日报俱乐部');
-  await configure('club', 'other', '另一家俱乐部');
-  await configure('member', 'main', dispatcher.id, 'active', 'dispatcher');
-  await configure('grant', 'main', admin.id, 'CLUB_COMMISSION_MANAGE');
-  await call('admin', '/admin/clubs/main/commission-rule', {
+  const club = '/employee/club';
+  await seedClub('name', '日报俱乐部');
+  await seedClub('member', dispatcher.id, 'active', 'dispatcher');
+  await seedClub('grant', admin.id, 'CLUB_COMMISSION_MANAGE');
+  await call('admin', '/admin/club/commission-rule', {
     method: 'PATCH', token: admin.token, body: { expectedVersion: 0, basis: 'gift_times', clubFeeCents: 5 },
   });
   async function invite(username) {
@@ -62,7 +60,6 @@ test('按次日报、补报与更正立即影响履约和本人待结依据，�
   }
   const member = await invite('diary_member');
   const other = await invite('diary_other');
-  await configure('member', 'other', member.id, 'active', 'member');
   const registration = await call('client', '/captcha/register?app=client');
   const { data: customer } = await call('client', '/user/register?type=account', {
     method: 'POST', cookie: registration.cookie,
@@ -121,7 +118,7 @@ test('按次日报、补报与更正立即影响履约和本人待结依据，�
   await post(other, reportPath(firstShare, game.id), start, 404);
   await post(member, reportPath(firstShare, game2.id), start, 404);
   await post(member, reportPath(secondShare, game2.id), { ...start, lines: [{ ...start.lines[0], shareId: firstShare }] }, 404);
-  await post(member, reportPath(firstShare, game.id).replace('/main/', '/other/'), start, 404);
+  await post(member, reportPath(firstShare, game.id).replace('/employee/club/', '/employee/clubs/other/'), start, 404);
   await post(member, reportPath(firstShare, game.id), { ...start, businessDate: '2026-02-30' }, 400);
   await call('client', historyPath, { token: client.token, status: 403 });
   const [original, replay] = await Promise.all([post(member, reportPath(firstShare, game.id), start), post(member, reportPath(firstShare, game.id), start)]);
@@ -247,7 +244,7 @@ test('按次日报、补报与更正立即影响履约和本人待结依据，�
   const legacyAccountId = objectId();
   const legacyRootId = objectId();
   await orders.insertOne({
-    _id: legacyOrderId, clubId: 'main', source: 'direct_dispatch', requestId: randomUUID(), createdByUserId: dispatcher.id,
+    _id: legacyOrderId, clubId: 'club', source: 'direct_dispatch', requestId: randomUUID(), createdByUserId: dispatcher.id,
     dispatcherUserId: dispatcher.id, recipientGameAccount: '旧游戏号', customerLinkStatus: 'verified',
     dispatchStatus: 'published', heartDelivery: { requestedHearts: 4 },
     dispatchPricing: { version: 1, basis: 'received_hearts' },

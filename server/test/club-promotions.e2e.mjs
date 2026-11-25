@@ -4,10 +4,9 @@ import { test } from 'node:test';
 import { giftServiceAmounts } from '@webapp-template/common';
 import { startSystem, captchaCode } from './start-system.mjs';
 
-const club = 'promotion';
-const employee = '/employee/clubs/' + club;
-const client = '/client/clubs/' + club;
-const admin = '/admin/clubs/' + club;
+const employee = '/employee/club';
+const client = '/client';
+const admin = '/admin/club';
 const receivedAt = '2026-11-20T00:00:00.000Z';
 const segment = (paidGiftTimes, unitPriceCents = 50, period = 'normal') =>
   ({ period, paidGiftTimes, dailyGiftTimes: paidGiftTimes, unitPriceCents });
@@ -17,7 +16,7 @@ const window = date => ({ startDate: date, endDate: date });
 
 test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', { timeout: 150_000 }, async t => {
   const origins = Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, `https://${app}.promotion.test`]));
-  const { base, password, runCommand, startPeer } = await startSystem(t, { database: 'promotion_e2e', adminUsername: 'promo_admin', origins });
+  const { base, password, seedClub, startPeer } = await startSystem(t, { database: 'promotion_e2e', adminUsername: 'promo_admin', origins });
   const challenges = new Map();
   async function call(app, path, actor, body, method = body === undefined ? 'GET' : 'POST', status = method === 'POST' ? 201 : 200, server = base) {
     const headers = { origin: origins[app] };
@@ -49,13 +48,11 @@ test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', {
   const ep = (path, body, method, status, server) => call('employee', path, dispatcher, body, method, status, server);
   const cp = (path, body, method, status, actor = customer) => call('client', path, actor, body, method, status);
   const ap = (path, body, method, status) => call('admin', path, manager, body, method, status);
-  const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
-  await configure('club', club, '测试俱乐部');
-  await configure('member', club, dispatcher.id, 'active', 'dispatcher');
-  await configure('grant', club, dispatcher.id, 'CLUB_COMMISSION_MANAGE');
-  await configure('club', 'foreign', '另一个俱乐部');
+  await seedClub('name', '测试俱乐部');
+  await seedClub('member', dispatcher.id, 'active', 'dispatcher');
+  await seedClub('grant', dispatcher.id, 'CLUB_COMMISSION_MANAGE');
   await ap(admin + '/commission-rule', { expectedVersion: 0, clubFeeCents: 5 }, 'PATCH');
-  await ap('/admin/clubs/foreign/promotions', undefined, 'GET', 403);
+  await ap('/admin/clubs/foreign/promotions', undefined, 'GET', 404);
   await call('employee', admin + '/promotions', dispatcher, undefined, 'GET', 403);
 
   const activity = (expectedVersion, rate) => ap(admin + '/promotions', {
@@ -158,14 +155,14 @@ test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', {
     const terms = { kind: 'threshold_coupon', thresholdCents: 5000, discountCents: 800 };
     const { couponId } = await issue(customer.id, terms);
     const other = await issue(outsider.id, terms);
-    assert.deepEqual((await cp(client + '/order-options')).coupons.map(coupon => coupon.couponId), [couponId]);
+    assert.deepEqual((await cp('/client/club/order-options')).coupons.map(coupon => coupon.couponId), [couponId]);
     await cp(client + '/orders', { requestId: randomUUID(), recipientGameAccount: '借券', requestedGiftTimes: 100,
       platformCouponId: couponId }, 'POST', 400, outsider);
     const fromClient = await order(100, { fromClient: true, couponId });
-    const noticePath = '/employee/clubs/client-order-notices';
+    const noticePath = '/employee/club/client-order-notices';
     const notices = await ep(noticePath);
     assert.deepEqual(notices.map(item => item.orderId), [fromClient.id]);
-    assert.equal(notices[0].clubId, club);
+    assert.equal(notices[0].clubName, '测试俱乐部');
     await cp(noticePath, undefined, 'GET', 403);
     assert.equal((await ep(fromClient.path + '/pricing')).requestedPromotionCouponId, couponId);
     assert.equal((await price(fromClient)).quote.totalAmountCents, 4200);
@@ -185,7 +182,7 @@ test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', {
     await price(first, { platformCouponId: couponId });
     await price(second, { platformCouponId: couponId });
     await ep(first.path + '/receipts', receiptInput(4200, 2), 'POST', 409);
-    assert.equal((await cp(client + '/order-options')).coupons.length, 1);
+    assert.equal((await cp('/client/club/order-options')).coupons.length, 1);
     const peer = await startPeer();
     const requests = [receiptInput(4200), receiptInput(4200)];
     const results = await Promise.all([first, second].map((target, index) =>
@@ -193,7 +190,7 @@ test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', {
     assert.equal(results.filter(Boolean).length, 1);
     const winner = results.findIndex(Boolean);
     assert.deepEqual(await ep([first, second][winner].path + '/receipts', requests[winner]), results[winner]);
-    assert.equal((await cp(client + '/order-options')).coupons, undefined);
+    assert.equal((await cp('/client/club/order-options')).coupons, undefined);
   });
 
   await t.test('整单上限、多价尾分和零价核款', async () => {
@@ -250,7 +247,7 @@ test('按次优惠、客户优惠券和促销赠送的 HTTP 与 Mongo 回归', {
     const couponBasis = await deliver(half, couponQuote, 90);
     assert.deepEqual([couponQuote.heartsAmountCents, couponBasis.unfulfilledServiceCents, couponBasis.platformDiscountCents,
       couponBasis.customerServiceCents], [4500, 450, 450, 4050]);
-    assert.equal(((await cp(client + '/order-options')).coupons ?? []).some(coupon => coupon.couponId === couponId), false);
+    assert.equal(((await cp('/client/club/order-options')).coupons ?? []).some(coupon => coupon.couponId === couponId), false);
   });
 
   await t.test('各付费段分别赠送，沿用原段单价与期别，共用整单上限', async () => {

@@ -17,6 +17,7 @@ import { User, UserSchema } from '../user-module/user.schema';
 import { AdminClubController } from './admin-club.controller';
 import { ClubCustomerService } from './club-customer.service';
 import { ClubDirectoryService } from './club-directory.service';
+import { EmployeeClubOperationsController } from './employee-club-operations.controller';
 import { ClubGiftDispatchController } from './club-gift-dispatch.controller';
 import { ClubGiftDispatchService } from './club-gift-dispatch.service';
 import { ClientClubInvitationController, EmployeeClubInvitationController } from './club-member-invitation.controller';
@@ -24,7 +25,6 @@ import { ClubMemberInvitation, ClubMemberInvitationSchema, ClubMemberInvitationS
 import {
   ClientClubController,
   ClientClubOrderController,
-  ClientOwnOrdersController,
   EmployeeClubController,
   EmployeeClubOrderController,
 } from './club-order.controller';
@@ -60,10 +60,10 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubInvitationController,
     EmployeeClubInvitationController,
     EmployeeClubController,
+    EmployeeClubOperationsController,
     EmployeeClubOrderController,
     ClientClubController,
     ClientClubOrderController,
-    ClientOwnOrdersController,
   ],
   providers: [ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
   exports: [ClubDirectoryService, ClubOrderService],

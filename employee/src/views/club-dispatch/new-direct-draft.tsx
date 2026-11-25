@@ -24,7 +24,7 @@ type DraftRequest = {
   deliveryPeriodPreference?: DeliveryPeriodPreference;
   doubleGiftTimes?: number;
 } & ({ existingCustomerUserId: string; newCustomerNickname?: never } | { newCustomerNickname: string; existingCustomerUserId?: never });
-type SavedOrder = { id: string; clubId: string; source: string; customerUserId: string; customerLinkStatus: string };
+type SavedOrder = { id: string; source: string; customerUserId: string; customerLinkStatus: string };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const memoryPending = new Map<string, DraftRequest>();
 const unknownResult = "暂时无法确认创建结果。请重试本次提交，已创建的草稿会原样返回。";
@@ -60,9 +60,9 @@ function requestError(err: unknown) {
   return err instanceof RequestError ? err.message : "请求失败，请检查网络连接后重试";
 }
 
-export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId: string; onClose: () => void; onCreated: (id: string) => void }) {
+export default function NewDirectDraft({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const { id: userId, token } = useAuthSession();
-  const storageKey = `sky-heart.employee.direct-draft.v1:${userId}:${clubId}`;
+  const storageKey = `sky-heart.employee.direct-draft.v1:${userId}`;
   const [pending, setPending] = useState(() => readPending(storageKey));
   const [form] = Form.useForm<DraftFields>();
   const newCustomer = Form.useWatch("customerMode", form) === "new";
@@ -77,7 +77,7 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
   const inFlight = useRef(false);
   const query = search.trim();
   const activeLookup = lookup?.query === query ? lookup : undefined;
-  const clubRoute = `clubs/${clubId}`;
+  const clubRoute = "club";
 
   useEffect(() => {
     if (pending || newCustomer || !query) return;
@@ -129,7 +129,7 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
     const timer = window.setTimeout(() => controller.abort(), 20_000);
     try {
       const order = await employeeRequest<SavedOrder>(`${clubRoute}/orders`, "POST", input, controller.signal);
-      if (!order?.id || order.clubId !== clubId || order.source !== "direct_dispatch" ||
+      if (!order?.id || order.source !== "direct_dispatch" ||
           order.customerLinkStatus !== "verified" || !USER_ID_PATTERN.test(order.customerUserId) ||
           (input.existingCustomerUserId && order.customerUserId !== input.existingCustomerUserId)) {
         throw new Error(unknownResult);

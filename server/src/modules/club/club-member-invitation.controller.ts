@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Header, Param, Post, Req, UsePipes, ValidationPipe } from '@nestjs/common';
+import { CLUB_ID } from './club.schema';
+import { BadRequestException, Body, Controller, Header, Post, Req, UsePipes, ValidationPipe } from '@nestjs/common';
 import { IsString, Length } from 'class-validator';
 import type { Request } from 'express';
 import { checkOrigin, type SessionUser } from '../../auth/app-access';
@@ -21,14 +22,14 @@ class RegisterClubInviteDto {
 }
 
 @AppAccess('employee')
-@Controller('employee/clubs/:clubId/member-invitations')
+@Controller('employee/club/member-invitations')
 export class EmployeeClubInvitationController {
   constructor(private readonly invites: ClubMemberInvitationService) {}
 
   @Post()
   @Header('Cache-Control', 'no-store')
-  async issue(@AuthUser() actor: SessionUser, @Param('clubId') clubId: string) {
-    return Resp.success(await this.invites.issue(clubId, actor.id));
+  async issue(@AuthUser() actor: SessionUser) {
+    return Resp.success(await this.invites.issue(CLUB_ID, actor.id));
   }
 }
 

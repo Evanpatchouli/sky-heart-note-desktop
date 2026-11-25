@@ -17,7 +17,7 @@ function basisPoints(percent: number | undefined) {
   return percent == null ? undefined : Math.round(percent * 100);
 }
 
-export default function ClubPromotions({ clubId }: { clubId: string }) {
+export default function ClubPromotions() {
   const [policy, setPolicy] = useState<ClubPromotionPolicy>();
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
@@ -31,14 +31,14 @@ export default function ClubPromotions({ clubId }: { clubId: string }) {
 
   useEffect(() => {
     let active = true;
-    getClubPromotions(clubId).then(value => {
+    getClubPromotions().then(value => {
       if (!active || !value) return;
       setPolicy(value);
       activity.setFieldsValue({ name: value.activity?.name,
         payablePercent: value.activity ? value.activity.payableBasisPoints / 100 : undefined });
     }).catch(error => { if (active) setError(errorText(error)); });
     return () => { active = false; };
-  }, [activity, clubId, attempt]);
+  }, [activity, attempt]);
 
   async function write(action: () => Promise<void>) {
     if (inFlight.current) return;
@@ -56,7 +56,7 @@ export default function ClubPromotions({ clubId }: { clubId: string }) {
   function saveActivity(values: ActivityFields) {
     if (!policy) return;
     void write(async () => {
-      const result = await saveClubPromotions(clubId, { expectedVersion: policy.version,
+      const result = await saveClubPromotions({ expectedVersion: policy.version,
         activityName: values.name?.trim() || undefined, activityPayableBasisPoints: basisPoints(values.payablePercent) });
       if (!result) return;
       setPolicy(result);
@@ -73,7 +73,7 @@ export default function ClubPromotions({ clubId }: { clubId: string }) {
     void write(async () => {
       const fields = JSON.stringify(input);
       if (pendingCoupon.current?.fields !== fields) pendingCoupon.current = { fields, requestId: crypto.randomUUID() };
-      const result = await issueClubCoupon(clubId, { ...input, requestId: pendingCoupon.current.requestId });
+      const result = await issueClubCoupon({ ...input, requestId: pendingCoupon.current.requestId });
       if (!result) return;
       pendingCoupon.current = null;
       coupon.resetFields();

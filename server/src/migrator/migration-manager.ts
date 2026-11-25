@@ -71,7 +71,6 @@ export class MigrationManager {
     errorMessage?: string
   ) {
     await MigrationModel.updateOne({ version }, { $set: {
-      version,
       name,
       executed_at: Date.now(),
       execution_time: executionTime,
@@ -124,6 +123,7 @@ export class MigrationManager {
    */
   async run(options: { force?: boolean } = {}) {
     const { force = false } = options;
+    await MigrationModel.init();
 
     console.log('🚀 开始执行数据迁移...\n');
 

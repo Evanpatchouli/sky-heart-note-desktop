@@ -1,3 +1,4 @@
+import { CLUB_ID } from './club.schema';
 import { Body, Controller, Param, Post, UsePipes, ValidationPipe } from '@nestjs/common';
 import type { SessionUser } from '../../auth/app-access';
 import { AppAccess, AuthUser } from '../../auth/auth.decorator';
@@ -12,45 +13,45 @@ const validation = new ValidationPipe({ transform: true, whitelist: true, forbid
 
 @AppAccess('employee')
 @UsePipes(validation)
-@Controller('employee/clubs/:clubId/orders/:orderId')
+@Controller('employee/club/orders/:orderId')
 export class EmployeeGiftPriceAdjustmentController {
   constructor(private readonly amendments: ClubGiftPriceAdjustmentService) {}
 
   @Post('fulfillment/price-preview')
-  async preview(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string, @Body() input: GiftPriceShiftDto) {
-    return Resp.success(await this.amendments.preview(clubId, user.id, orderId, input));
+  async preview(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: GiftPriceShiftDto) {
+    return Resp.success(await this.amendments.preview(CLUB_ID, user.id, orderId, input));
   }
 
   @Post('price-adjustment')
-  async propose(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string, @Body() input: ProposeGiftPriceAdjustmentDto) {
-    return Resp.success(await this.amendments.propose(clubId, user.id, orderId, input));
+  async propose(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: ProposeGiftPriceAdjustmentDto) {
+    return Resp.success(await this.amendments.propose(CLUB_ID, user.id, orderId, input));
   }
 
   @Post('price-adjustment/decision')
-  async offline(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string, @Body() input: RecordOfflineGiftPriceDecisionDto) {
+  async offline(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: RecordOfflineGiftPriceDecisionDto) {
     const { occurredAt, evidence, ...decision } = input;
-    return Resp.success(await this.amendments.decide(clubId, user.id, orderId, decision, { occurredAt, evidence }));
+    return Resp.success(await this.amendments.decide(CLUB_ID, user.id, orderId, decision, { occurredAt, evidence }));
   }
 
   @Post('price-adjustment/payments')
-  async payment(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string, @Body() input: RecordGiftPricePaymentDto) {
-    return Resp.success(await this.amendments.payment(clubId, user.id, orderId, input));
+  async payment(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: RecordGiftPricePaymentDto) {
+    return Resp.success(await this.amendments.payment(CLUB_ID, user.id, orderId, input));
   }
 
   @Post('price-adjustment/resume')
-  async resume(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string, @Body() input: GiftPriceAdjustmentActionDto) {
-    return Resp.success(await this.amendments.resume(clubId, user.id, orderId, input));
+  async resume(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: GiftPriceAdjustmentActionDto) {
+    return Resp.success(await this.amendments.resume(CLUB_ID, user.id, orderId, input));
   }
 }
 
 @AppAccess('client')
 @UsePipes(validation)
-@Controller('client/clubs/:clubId/orders/:orderId')
+@Controller('client/orders/:orderId')
 export class ClientGiftPriceAdjustmentController {
   constructor(private readonly amendments: ClubGiftPriceAdjustmentService) {}
 
   @Post('price-adjustment/decision')
-  async decide(@AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string, @Body() input: DecideGiftPriceAdjustmentDto) {
-    return Resp.success(await this.amendments.decide(clubId, user.id, orderId, input));
+  async decide(@AuthUser() user: SessionUser, @Param('orderId') orderId: string, @Body() input: DecideGiftPriceAdjustmentDto) {
+    return Resp.success(await this.amendments.decide(CLUB_ID, user.id, orderId, input));
   }
 }

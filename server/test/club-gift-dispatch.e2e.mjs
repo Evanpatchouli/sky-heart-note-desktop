@@ -5,16 +5,15 @@ import mongoose from 'mongoose';
 import { captchaCode, startSystem } from './start-system.mjs';
 
 const origin = app => `https://${app}.gift.test`;
-const actorPath = '/employee/clubs/gifts';
+const actorPath = '/employee/club';
 const firstDay = '2026-12-01';
 const lastDay = '2026-12-10';
 
 test('已核款订单按计价段公开或定向承接，改派保留已送事实并用一次性邀请注册', { timeout: 120000 }, async t => {
-  const { db, base, password, runCommand, startPeer } = await startSystem(t, {
+  const { db, base, password, seedClub, startPeer } = await startSystem(t, {
     database: 'club_gift_dispatch_e2e', adminUsername: 'gift_admin',
     origins: Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, origin(app)])),
   });
-  const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
 
   async function request(app, path, { method = 'GET', auth, body, status = 200, cookie, server = base } = {}) {
     const headers = { origin: origin(app) };
@@ -41,11 +40,10 @@ test('已核款订单按计价段公开或定向承接，改派保留已送事�
 
   const manager = await login('admin', 'gift_admin');
   const dispatcher = await login('employee', 'gift_admin');
-  await configure('club', 'gifts', '按次俱乐部');
-  await configure('club', 'outside', '其他俱乐部');
-  await configure('member', 'gifts', dispatcher.id, 'active', 'dispatcher');
-  await configure('grant', 'gifts', manager.id, 'CLUB_COMMISSION_MANAGE');
-  await write('admin', '/admin/clubs/gifts/commission-rule', 'PATCH', manager, { basis: 'gift_times', expectedVersion: 0, clubFeeCents: 3 });
+  await seedClub('name', '按次俱乐部');
+  await seedClub('member', dispatcher.id, 'active', 'dispatcher');
+  await seedClub('grant', manager.id, 'CLUB_COMMISSION_MANAGE');
+  await write('admin', '/admin/club/commission-rule', 'PATCH', manager, { basis: 'gift_times', expectedVersion: 0, clubFeeCents: 3 });
 
   async function invite(username) {
     const { invitationUrl, expiresAt } = await post(dispatcher, actorPath + '/member-invitations');
@@ -58,9 +56,9 @@ test('已核款订单按计价段公开或定向承接，改派保留已送事�
     const registration = await write('client', '/client/club-invitations/register', 'POST', undefined, body, 201);
     assert.equal(registration.employeeUrl, origin('employee'));
     assert.match(registration.id, /^[A-Z0-9]{4}$/);
-    assert.equal(registration.clubId, 'gifts');
+    assert.equal(registration.clubId, 'club');
     await write('client', '/client/club-invitations/register', 'POST', undefined, { ...body, username: username + '_again' }, 409);
-    const membership = await db.collection('club_members').findOne({ clubId: 'gifts', userId: registration.id });
+    const membership = await db.collection('club_members').findOne({ clubId: 'club', userId: registration.id });
     assert.equal(membership.active, true);
     assert.equal(membership.position, 'member');
     assert.equal(membership.dispatcher, false);
@@ -153,7 +151,7 @@ test('已核款订单按计价段公开或定向承接，改派保留已送事�
   assert.equal(privateOrder.customerUserId, undefined);
   await get(fourth, orderPath(direct.id), 404);
 
-  const customerOrder = await write('client', '/client/clubs/gifts/orders', 'POST', customer, {
+  const customerOrder = await write('client', '/client/orders', 'POST', customer, {
     ...clientInput(16, 'customer recipient'), dispatcherUserId: dispatcher.id,
   }, 201);
   assert.equal(customerOrder.source, 'client_order');
@@ -303,6 +301,6 @@ test('已核款订单按计价段公开或定向承接，改派保留已送事�
   const stopped = await get(dispatcher, configRoute);
   assert.equal(stopped.acceptingClaims, false);
   assert.equal(stopped.totals.claimedGiftTimes, 16);
-  await db.collection('club_members').updateOne({ clubId: 'gifts', userId: racers[winner].auth.id }, { $set: { active: false } });
+  await db.collection('club_members').updateOne({ clubId: 'club', userId: racers[winner].auth.id }, { $set: { active: false } });
   await get(racers[winner].auth, receiptPath(customerOrder.id, racers[winner].body.requestId), 403);
 });

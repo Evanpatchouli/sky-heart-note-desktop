@@ -16,15 +16,16 @@ import {
 } from '../../auth/app-access';
 import { RoleService } from '../role-module/role.service';
 import { User } from '../user-module/user.schema';
+import { isDuplicateKey } from '../user-module/user-id';
 import {
   CLUB_PERMISSIONS,
-  isClubPermission,
+  CLUB_OPERATION_PERMISSIONS,
+  isClubOperationPermission,
   type ClubPermission,
 } from './club-permissions';
 import type { UpdateCommissionRuleDto } from './club-pricing.dto';
 import {
-  Club, ClubMember, CLUB_ID_PATTERN, CLUB_LEADERSHIP_POSITIONS,
-  CLUB_MEMBER_POSITIONS, type ClubMemberPosition,
+  Club, ClubMember, CLUB_ID, CLUB_LEADERSHIP_POSITIONS,
 } from './club.schema';
 
 @Injectable()
@@ -37,12 +38,22 @@ export class ClubDirectoryService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.members.init();
+    await Promise.all([this.clubs.init(), this.members.init()]);
+    const key = { _id: CLUB_ID };
+    if (await this.clubs.exists(key)) return;
+    const name = process.env.CLUB_NAME?.trim() || '送心手记';
+    if (name.length > 80) throw new Error('CLUB_NAME 最多可配置 80 个字符');
+    try {
+      await this.clubs.updateOne(key, { $setOnInsert: { ...key, name } }, {
+        upsert: true, runValidators: true,
+      });
+    } catch (error) {
+      if (!isDuplicateKey(error, '_id') || !await this.clubs.exists(key)) throw error;
+    }
   }
 
   async requireClub(clubId: string) {
-    if (!CLUB_ID_PATTERN.test(clubId))
-      throw new BadRequestException('俱乐部标识格式无效');
+    if (clubId !== CLUB_ID) throw new NotFoundException('俱乐部不存在');
     const club = await this.clubs.findById(clubId).select({ name: 1 }).lean();
     if (!club) throw new NotFoundException('俱乐部不存在');
     return club;
@@ -71,39 +82,39 @@ export class ClubDirectoryService implements OnModuleInit {
     permission: ClubPermission,
   ) {
     this.requireAdminSession(actor);
-    await this.requireClub(clubId);
-    const member = await this.members
-      .findOne({
-        clubId,
-        userId: actor.id,
-        active: true,
-        permissions: permission,
-      })
-      .select({ permissions: 1 })
-      .lean();
-    if (!member) {
-      throw new ForbiddenException('需要本俱乐部有效成员身份及相应业务授权');
-    }
-    return member.permissions;
+    return this.requirePermission(clubId, actor.id, permission);
   }
 
-  async listEmployeeClubs(userId: string) {
-    const memberships = await this.members
-      .find({ userId, active: true })
-      .select({ clubId: 1, position: 1 })
+  private async requirePermission(clubId: string, userId: string, permission: ClubPermission) {
+    await this.requireClub(clubId);
+    const member = await this.members
+      .findOne({ clubId, userId, active: true })
+      .select({ position: 1, permissions: 1 })
       .lean();
-    const leadershipClubs = new Set(memberships
-      .filter(({ position }) => position === 'leader' || position === 'deputy')
-      .map(({ clubId }) => clubId));
-    const clubs = await this.clubs
-      .find({ _id: { $in: memberships.map(({ clubId }) => clubId) } })
-      .select({ name: 1 })
-      .sort({ _id: 1 })
-      .lean();
-    return clubs.map(({ _id, name }) => ({
-      id: _id, name,
-      ...(leadershipClubs.has(_id) ? { canAssignPendingOrders: true } : {}),
-    }));
+    const permissions = member ? this.effectivePermissions(member) : [];
+    if (!permissions.includes(permission)) {
+      throw new ForbiddenException('需要本俱乐部有效成员身份及相应业务授权');
+    }
+    return permissions;
+  }
+
+  private effectivePermissions(member: Pick<ClubMember, 'permissions' | 'position'>) {
+    return CLUB_PERMISSIONS.filter((permission) => member.permissions?.includes(permission) ||
+      member.position === 'leader' && isClubOperationPermission(permission));
+  }
+
+  async getEmployeeClub(userId: string) {
+    const [club, membership] = await Promise.all([
+      this.requireClub(CLUB_ID),
+      this.members.findOne({ clubId: CLUB_ID, userId, active: true }).lean(),
+    ]);
+    if (!membership) return null;
+    return {
+      name: club.name,
+      canAssignPendingOrders: membership.position === 'leader' || membership.position === 'deputy',
+      canManageAuthorizations: membership.position === 'leader',
+      permissions: this.effectivePermissions(membership).filter(isClubOperationPermission),
+    };
   }
 
   async requireAssignmentLeader(clubId: string, userId: string) {
@@ -150,8 +161,8 @@ export class ClubDirectoryService implements OnModuleInit {
     return club.commissionRule ?? null;
   }
 
-  async getAdminCommissionRule(clubId: string, actor: SessionUser) {
-    await this.requireAdminPermission(clubId, actor, 'CLUB_COMMISSION_MANAGE');
+  async getCommissionRule(clubId: string, actor: SessionUser) {
+    await this.requirePermission(clubId, actor.id, 'CLUB_COMMISSION_MANAGE');
     return this.readCommissionRule(clubId);
   }
 
@@ -160,7 +171,7 @@ export class ClubDirectoryService implements OnModuleInit {
     actor: SessionUser,
     input: UpdateCommissionRuleDto,
   ) {
-    await this.requireAdminPermission(clubId, actor, 'CLUB_COMMISSION_MANAGE');
+    await this.requirePermission(clubId, actor.id, 'CLUB_COMMISSION_MANAGE');
     const { expectedVersion, clubFeeCents } = input;
     const commissionRule = {
       version: expectedVersion + 1,
@@ -180,40 +191,26 @@ export class ClubDirectoryService implements OnModuleInit {
     return commissionRule;
   }
 
-  async listAdminClubs(actor: SessionUser) {
+  async getAdminClub(actor: SessionUser) {
     this.requireAdminSession(actor);
-    const memberships = await this.members
-      .find({
-        userId: actor.id,
-        active: true,
-        permissions: { $in: CLUB_PERMISSIONS },
-      })
-      .select({ clubId: 1, permissions: 1, _id: 0 })
-      .lean();
-    const clubs = await this.clubs
-      .find({ _id: { $in: memberships.map(({ clubId }) => clubId) } })
-      .sort({ _id: 1 })
-      .lean();
-    const permissionsByClub = new Map(
-      memberships.map(({ clubId, permissions }) => [
-        clubId,
-        CLUB_PERMISSIONS.filter((permission) =>
-          permissions.includes(permission),
-        ),
-      ]),
-    );
-    return clubs.map(({ _id, name }) => ({
-      id: _id,
-      name,
-      permissions: permissionsByClub.get(_id),
-    }));
+    const [club, membership] = await Promise.all([
+      this.requireClub(CLUB_ID),
+      this.members.findOne({ clubId: CLUB_ID, userId: actor.id, active: true }).lean(),
+    ]);
+    return { name: club.name, permissions: membership ? this.effectivePermissions(membership) : [] };
   }
 
-  async listAdminMembers(clubId: string, actor: SessionUser) {
-    await this.requireAdminPermission(clubId, actor, 'CLUB_MEMBERS_MANAGE');
+  async updateClubName(actor: SessionUser, name: string) {
+    await this.requireLeader(actor.id);
+    await this.clubs.updateOne({ _id: CLUB_ID }, { $set: { name } }, { runValidators: true });
+    return { name };
+  }
+
+  async listMembers(clubId: string, actor: SessionUser) {
+    await this.requirePermission(clubId, actor.id, 'CLUB_MEMBERS_MANAGE');
     const members = await this.members
       .find({ clubId })
-      .select({ userId: 1, active: 1, dispatcher: 1, _id: 0 })
+      .select({ userId: 1, active: 1, dispatcher: 1, position: 1, _id: 0 })
       .sort({ userId: 1 })
       .lean();
     const nicknames = await this.memberNicknames(
@@ -231,7 +228,7 @@ export class ClubDirectoryService implements OnModuleInit {
     userId: string,
     dispatcher: boolean,
   ) {
-    await this.requireAdminPermission(clubId, actor, 'CLUB_MEMBERS_MANAGE');
+    await this.requirePermission(clubId, actor.id, 'CLUB_MEMBERS_MANAGE');
     this.requireUserId(userId);
     const member = await this.members
       .findOneAndUpdate(
@@ -259,88 +256,111 @@ export class ClubDirectoryService implements OnModuleInit {
     return this.enabledAppUserIds('employee', userIds);
   }
 
-  async saveClub(clubId: string, name: string) {
-    if (!CLUB_ID_PATTERN.test(clubId))
-      throw new BadRequestException('俱乐部标识格式无效');
-    if (!name.trim() || name.trim().length > 80)
-      throw new BadRequestException('俱乐部名称必须为 1 至 80 个字符');
-    await this.clubs.updateOne(
-      { _id: clubId },
-      { $set: { name } },
-      { upsert: true, runValidators: true },
-    );
+  async initializeLeader(userId: string) {
+    this.requireUserId(userId);
+    const key = { clubId: CLUB_ID, userId };
+    const leader = { clubId: CLUB_ID, position: 'leader' as const };
+    await this.requireAssignmentAccount(userId);
+    if (await this.members.exists({ ...key, position: 'leader' })) return;
+    if (await this.members.exists(leader)) throw new ConflictException('已经初始化本俱乐部团长');
+    try {
+      await this.members.updateOne(key, {
+        $set: { active: true, position: 'leader' },
+        $setOnInsert: { ...key, dispatcher: false },
+      }, { upsert: true, runValidators: true });
+    } catch (error) {
+      if (!isDuplicateKey(error, 'position') && !isDuplicateKey(error, 'userId')) throw error;
+      if (await this.members.exists({ ...key, position: 'leader' })) return;
+      throw new ConflictException('已经初始化本俱乐部团长');
+    }
   }
 
-  async saveMember(
-    clubId: string,
-    userId: string,
-    active: boolean,
-    dispatcher: boolean,
-  ) {
-    await this.requireClub(clubId);
+  async setMembership(actor: SessionUser, userId: string, active: boolean) {
+    await this.requirePermission(CLUB_ID, actor.id, 'CLUB_MEMBERS_MANAGE');
     this.requireUserId(userId);
-    if (
-      active &&
-      !(await this.enabledAppUserIds('employee', [userId])).length
-    ) {
-      throw new BadRequestException('成员须是拥有团员端准入权限的有效平台账号');
+    const key = { clubId: CLUB_ID, userId };
+    if (active) {
+      await this.requireAssignmentAccount(userId);
+      try {
+        await this.members.updateOne(key, {
+          $set: { active: true },
+          $setOnInsert: { ...key, dispatcher: false, position: 'member' },
+        }, { upsert: true, runValidators: true });
+      } catch (error) {
+        if (!isDuplicateKey(error, 'userId') || !await this.members.exists({ ...key, active: true })) throw error;
+      }
+      return;
     }
-    const key = { clubId, userId };
-    if (!active && !(await this.members.exists(key)))
-      throw new NotFoundException('俱乐部成员不存在');
-    await this.members.updateOne(
-      key,
-      { $set: { active, dispatcher, ...(active ? {} : { permissions: [], position: 'member' }) } },
-      { upsert: active, runValidators: true },
+    const result = await this.members.updateOne(
+      { ...key, position: { $nin: CLUB_LEADERSHIP_POSITIONS } },
+      { $set: { active: false, dispatcher: false, permissions: [], position: 'member' } },
     );
+    if (!result.matchedCount) throw new ConflictException('只能停用本俱乐部的普通成员');
   }
 
-  async setMemberPosition(clubId: string, userId: string, position: ClubMemberPosition) {
-    await this.requireClub(clubId);
+  async listAuthorizations(actor: SessionUser) {
+    await this.requireLeader(actor.id);
+    const members = await this.members
+      .find({ clubId: CLUB_ID, active: true }).sort({ userId: 1 }).lean();
+    const ids = members.map(({ userId }) => userId);
+    const [enabled, administrators, nicknames] = await Promise.all([
+      this.enabledAppUserIds('employee', ids),
+      this.enabledAppUserIds('admin', ids),
+      this.memberNicknames(ids),
+    ]);
+    const eligible = new Set(enabled);
+    const admins = new Set(administrators);
+    return {
+      permissions: CLUB_PERMISSIONS,
+      members: members.filter(({ userId }) => eligible.has(userId)).map((member) => ({
+        userId: member.userId,
+        nickname: nicknames.get(member.userId) ?? null,
+        position: member.position ?? 'member',
+        permissions: this.effectivePermissions(member),
+        grantablePermissions: (admins.has(member.userId) ? CLUB_PERMISSIONS : CLUB_OPERATION_PERMISSIONS)
+          .filter((permission) => member.position !== 'leader' || !isClubOperationPermission(permission)),
+      })),
+    };
+  }
+
+  async setMemberDeputy(actor: SessionUser, userId: string, deputy: boolean) {
+    await this.requireLeader(actor.id);
     this.requireUserId(userId);
-    if (!CLUB_MEMBER_POSITIONS.includes(position)) {
-      throw new BadRequestException('无效的俱乐部成员职务');
-    }
-    if (position !== 'member' && !(await this.enabledAppUserIds('employee', [userId])).length) {
-      throw new BadRequestException('任职对象须是拥有团员端准入权限的有效平台账号');
-    }
-    const { matchedCount } = await this.members.updateOne(
-      { clubId, userId, active: true },
-      { $set: { position } },
+    if (deputy) await this.requireAssignmentAccount(userId);
+    const result = await this.members.updateOne(
+      { clubId: CLUB_ID, userId, active: true, position: { $ne: 'leader' } },
+      { $set: { position: deputy ? 'deputy' : 'member' } },
       { runValidators: true },
     );
-    if (!matchedCount) throw new NotFoundException('本俱乐部有效成员不存在');
+    if (!result.matchedCount) throw new NotFoundException('本俱乐部可调整职务的有效成员不存在');
   }
 
-  async setAdminPermission(
-    clubId: string,
-    userId: string,
-    permission: ClubPermission,
-    granted: boolean,
-  ) {
-    await this.requireClub(clubId);
+  async setMemberPermission(actor: SessionUser, userId: string, permission: ClubPermission, granted: boolean) {
+    await this.requireLeader(actor.id);
     this.requireUserId(userId);
-    if (!isClubPermission(permission))
-      throw new BadRequestException('无效的俱乐部业务权限');
-    if (granted && !(await this.enabledAppUserIds('admin', [userId])).length) {
-      throw new BadRequestException(
-        '授权对象须是拥有管理端准入权限的有效平台账号',
-      );
+    if (granted) {
+      const app = isClubOperationPermission(permission) ? 'employee' : 'admin';
+      if (!(await this.enabledAppUserIds(app, [userId])).length) {
+        throw new BadRequestException(`授权对象须是拥有${app === 'admin' ? '管理端' : '团员端'}准入权限的有效平台账号`);
+      }
     }
-    const key = { clubId, userId };
-    const { matchedCount } = granted
-      ? await this.members.updateOne(
-          { ...key, active: true },
-          { $addToSet: { permissions: permission } },
-          { runValidators: true },
-        )
-      : await this.members.updateOne(key, {
-          $pull: { permissions: permission },
-        });
-    if (!matchedCount) {
-      throw new NotFoundException(
-        granted ? '本俱乐部有效成员不存在' : '俱乐部成员不存在',
-      );
+    const result = await this.members.updateOne(
+      { clubId: CLUB_ID, userId, active: true, ...(isClubOperationPermission(permission) ? { position: { $ne: 'leader' } } : {}) },
+      granted ? { $addToSet: { permissions: permission } } : { $pull: { permissions: permission } },
+      { runValidators: true },
+    );
+    if (!result.matchedCount) throw new NotFoundException('本俱乐部可调整该权限的有效成员不存在');
+  }
+
+  private async requireLeader(userId: string) {
+    if (!await this.members.exists({ clubId: CLUB_ID, userId, active: true, position: 'leader' })) {
+      throw new ForbiddenException('仅本俱乐部团长可管理授权');
+    }
+  }
+
+  private async requireAssignmentAccount(userId: string) {
+    if (!(await this.enabledAppUserIds('employee', [userId])).length) {
+      throw new BadRequestException('成员须是拥有团员端准入权限的有效平台账号');
     }
   }
 

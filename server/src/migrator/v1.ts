@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { Types } from 'mongoose';
+import { isDuplicateKey } from '../modules/user-module/user-id';
 import {
   PermissionType,
   PermissionStatus,
@@ -600,10 +601,8 @@ async function initializePermissions(
     }
 
     // 检查是否已存在（通过 perm_code 唯一性）
-    let permission = await permissionModel.findOne({
-      perm_code: seed.perm_code,
-      deleted_at: null,
-    });
+    const key = { perm_code: seed.perm_code, deleted_at: null };
+    let permission = await permissionModel.findOne(key);
 
     if (!permission) {
       // 创建新权限
@@ -625,8 +624,14 @@ async function initializePermissions(
         tag: seed.tag || '',
       };
 
-      permission = await permissionModel.create(permissionData);
-      console.log(`✅ 创建权限: ${seed.perm_code}`);
+      try {
+        permission = await permissionModel.create(permissionData);
+        console.log(`✅ 创建权限: ${seed.perm_code}`);
+      } catch (error) {
+        if (!isDuplicateKey(error, 'perm_code')) throw error;
+        permission = await permissionModel.findOne(key);
+        if (!permission) throw error;
+      }
     } else {
       // 更新父级关系（如果变化了）
       if (String(permission.parent_id) !== String(parent_id)) {
@@ -671,5 +676,6 @@ function sortByHierarchy(seeds: PermissionSeed[]): PermissionSeed[] {
 
 export async function v1() {
   const PermissionModel = mongoose.model('Permission', PermissionSchema);
+  await PermissionModel.init();
   await initializePermissions(PermissionModel);
 }

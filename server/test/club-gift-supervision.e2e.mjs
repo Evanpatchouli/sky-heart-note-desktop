@@ -4,17 +4,16 @@ import { test } from 'node:test';
 import mongoose from 'mongoose';
 import { captchaCode, startSystem } from './start-system.mjs';
 
-const employee = '/employee/clubs/supervision';
-const client = '/client/clubs/supervision/orders';
+const employee = '/employee/club';
+const client = '/client/orders';
 const date = ['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'];
 const objectId = (value) => new mongoose.Types.ObjectId(value);
 
 test('按次监督、老板的三类实收观察、未结原单续段和历史按颗进度', { timeout: 120000 }, async (t) => {
   const origins = Object.fromEntries(['admin', 'employee', 'client', 'site'].map(app => [app, `https://${app}.supervision.test`]));
-  const { db, base, password, runCommand } = await startSystem(t, {
+  const { db, base, password, seedClub } = await startSystem(t, {
     database: 'gift_supervision_e2e', adminUsername: 'supervision_admin', origins,
   });
-  const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
   const challenges = new Map();
   async function call(app, path, actor, body, method = body === undefined ? 'GET' : 'POST', status = method === 'POST' ? 201 : 200) {
     const headers = { origin: origins[app] };
@@ -43,10 +42,10 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
   const administrator = await login('admin', 'supervision_admin');
   const owner = await customer('supervision_owner');
   const outsider = await customer('supervision_outsider');
-  await configure('club', 'supervision', '履约监督');
-  await configure('member', 'supervision', operator.id, 'active', 'dispatcher');
-  await configure('grant', 'supervision', administrator.id, 'CLUB_COMMISSION_MANAGE');
-  const rule = (expectedVersion, clubFeeCents) => call('admin', '/admin/clubs/supervision/commission-rule', administrator,
+  await seedClub('name', '履约监督');
+  await seedClub('member', operator.id, 'active', 'dispatcher');
+  await seedClub('grant', administrator.id, 'CLUB_COMMISSION_MANAGE');
+  const rule = (expectedVersion, clubFeeCents) => call('admin', '/admin/club/commission-rule', administrator,
     { expectedVersion, clubFeeCents }, 'PATCH');
   await rule(0, 5);
   const invitation = async username => {
@@ -502,7 +501,7 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
 
   const historical = objectId();
   const historicalShare = objectId();
-  await orders.insertOne({ _id: historical, clubId: 'supervision', source: 'direct_dispatch', businessType: 'heart_delivery',
+  await orders.insertOne({ _id: historical, clubId: 'club', source: 'direct_dispatch', businessType: 'heart_delivery',
     requestId: randomUUID(), createdByUserId: operator.id, dispatcherUserId: operator.id,
     customerUserId: owner.id, customerLinkStatus: 'verified', dispatchStatus: 'published', recipientGameAccount: '历史老板',
     heartDelivery: { requestedHearts: 20, agreedDeadline: date[3] },

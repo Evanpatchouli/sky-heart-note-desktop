@@ -77,11 +77,16 @@ export default function Header() {
                     <strong>{user.username || name}</strong><span>{role}</span>
                   </span>,
                   children: [
+                    { key: "club-operations", label: "俱乐部运营" },
                     { key: "logout", icon: <LogoutOutlined />, label: "退出登录", disabled: loggingOut },
                   ],
                 },
               ],
               onClick: ({ key }) => {
+                if (key === "club-operations") {
+                  setMenuOpen(false);
+                  void navigate("/club/operations");
+                }
                 if (key === "logout") {
                   setMenuOpen(false);
                   void logout();

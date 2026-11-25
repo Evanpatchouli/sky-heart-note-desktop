@@ -10,12 +10,11 @@ const origin = (app) => `https://${app}.club.test`;
 const require = createRequire(import.meta.url);
 
 test('共享订单生产入口按平台账号、俱乐部和当单职责读写', { timeout: 120000 }, async (t) => {
-  const { db, base, password, runCommand } = await startSystem(t, {
+  const { db, base, password, seedClub } = await startSystem(t, {
     database: 'club_orders_e2e',
     origins: Object.fromEntries(['admin', 'employee', 'client', 'site'].map((app) => [app, origin(app)])),
     adminUsername: 'club_admin',
   });
-  const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
   const challenges = new Map();
   const api = async (app, path, { method = 'GET', body, token, status = 200, message } = {}) => {
     const headers = { origin: origin(app) };
@@ -70,21 +69,17 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
   const owner = await register('club_first_customer', 'client');
   const stranger = await register('club_second_customer', 'client');
   const adminEmployee = await login('employee', 'club_admin');
-  const member = (clubId, user, status, mark) => configure('member', clubId, user.id, status, mark);
+  const member = (user, status, mark) => seedClub('member', user.id, status, mark);
 
-  await configure('club', 'main', '送心俱乐部');
-  await configure('club', 'side', '另一俱乐部');
-  await configure('club', 'empty', '无候选俱乐部');
-  await member('main', dispatcher, 'active', 'dispatcher');
-  await member('main', executor, 'active', 'member');
-  await member('side', outsider, 'active', 'dispatcher');
-  await assert.rejects(member('main', owner, 'active', 'dispatcher'), /团员端准入权限/);
+  await seedClub('name', '送心俱乐部');
+  await member(dispatcher, 'active', 'dispatcher');
+  await member(executor, 'active', 'member');
   const membership = db.collection('club_members');
-  assert.equal(await membership.countDocuments({ clubId: 'main' }), 2);
-  assert.equal((await membership.findOne({ clubId: 'main', userId: dispatcher.id })).dispatcher, true);
+  assert.equal(await membership.countDocuments({ clubId: 'club' }), 2);
+  assert.equal((await membership.findOne({ clubId: 'club', userId: dispatcher.id })).dispatcher, true);
 
-  const employeeOrders = '/employee/clubs/main/orders';
-  const clientOrders = '/client/clubs/main/orders';
+  const employeeOrders = '/employee/club/orders';
+  const clientOrders = '/client/orders';
   const orders = db.collection('club_orders');
   const mongoId = (id) => new mongoose.Types.ObjectId(id);
   const get = (app, route, actor, status) => api(app, route, { token: actor.token, status });
@@ -145,7 +140,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal((await post('client', clientOrders, owner, { ...input, requestId: input.requestId.toUpperCase() })).id, random.id);
     await post('client', clientOrders, owner, { ...input, requestedGiftTimes: 99 }, 409);
 
-    await member('main', executor, 'active', 'dispatcher');
+    await member(executor, 'active', 'dispatcher');
     const explicit = { ...orderInput(), dispatcherUserId: executor.id };
     selected = await post('client', clientOrders, owner, explicit);
     assert.equal(selected.dispatcherAssignment, 'customer_selected');
@@ -234,26 +229,24 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.deepEqual(assigned.find(({ id }) => id === selected.id), both);
     await get('employee', `${employeeOrders}/${selected.id}`, outsider, 403);
 
-    const sideOrder = await post('employee', '/employee/clubs/side/orders', outsider, {
-      ...orderInput(),
-      existingCustomerUserId: owner.id,
+    const otherCustomerOrder = await post('employee', employeeOrders, executor, {
+      ...orderInput(), existingCustomerUserId: stranger.id,
     });
     assert.deepEqual((await get('client', `${clientOrders}?source=direct_dispatch`, owner)).items.map((order) => order.id), [direct.id]);
     assert.deepEqual(new Set((await get('client', `${clientOrders}?source=client_order`, owner)).items.map((order) => order.id)), new Set([random.id, selected.id]));
-    assert.deepEqual(new Set((await get('client', '/client/orders', owner)).items.map(({ id }) => id)),
-      new Set([direct.id, sideOrder.id, random.id, selected.id]));
+    assert.deepEqual(new Set((await get('client', clientOrders, owner)).items.map(({ id }) => id)),
+      new Set([direct.id, random.id, selected.id]));
     for (const order of [direct, selected]) {
       const clientView = await get('client', `${clientOrders}/${order.id}`, owner);
       assert.equal(clientView.customerLabel, undefined);
       assert.equal(clientView.shares, undefined);
       await get('client', `${clientOrders}/${order.id}`, stranger, 404);
-      await get('client', `/client/clubs/side/orders/${order.id}`, owner, 404);
     }
-    assert.equal((await get('client', `/client/clubs/side/orders/${sideOrder.id}`, owner)).id, sideOrder.id);
-    await get('client', `${clientOrders}/${sideOrder.id}`, owner, 404);
-    assert.deepEqual((await get('client', '/client/orders', stranger)).items, []);
+    assert.equal((await get('client', `${clientOrders}/${otherCustomerOrder.id}`, stranger)).id, otherCustomerOrder.id);
+    await get('client', `${clientOrders}/${otherCustomerOrder.id}`, owner, 404);
+    assert.deepEqual((await get('client', clientOrders, stranger)).items.map(({ id }) => id), [otherCustomerOrder.id]);
 
-    await member('main', executor, 'inactive', 'dispatcher');
+    await member(executor, 'inactive', 'dispatcher');
     await get('employee', `${employeeOrders}/${direct.id}`, executor, 403);
     await get('employee', `${employeeOrders}/${selected.id}`, executor, 403);
     await get('employee', employeeOrders, executor, 403);
@@ -261,52 +254,44 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal((await post('client', clientOrders, owner, { ...orderInput(), dispatcherUserId: dispatcher.id })).dispatcherUserId, dispatcher.id);
   });
 
-  await checkDirectCustomers(t, { db, base, api, configure, register, dispatcher, outsider });
+  await checkDirectCustomers(t, { db, base, api, seedClub, register, dispatcher, outsider });
 
-  await t.test('管理端按俱乐部及单项职责授权，已登录会话立即体现授权变更', async (adminTest) => {
+  await t.test('管理端按本团单项职责授权，已登录会话立即体现授权变更', async (adminTest) => {
     const secondAdmin = await register('club_second_admin', 'admin');
     assert.deepEqual(secondAdmin.roles, administrator.roles);
-    await member('main', administrator, 'active', 'dispatcher');
-    await member('side', administrator, 'active', 'member');
-    await member('main', secondAdmin, 'active', 'member');
-    await member('side', secondAdmin, 'active', 'member');
-    await member('main', executor, 'active', 'member');
-    const sideOrder = await post('employee', '/employee/clubs/side/orders', outsider, orderInput());
-    const adminClubs = '/admin/clubs';
-    const mainOrders = adminClubs + '/main/orders';
-    const sideOrders = adminClubs + '/side/orders';
-    const membersRoute = adminClubs + '/main/members';
+    await member(administrator, 'active', 'dispatcher');
+    await member(secondAdmin, 'active', 'member');
+    await member(executor, 'active', 'member');
+    const adminClub = '/admin/club';
+    const adminOrders = adminClub + '/orders';
+    const membersRoute = adminClub + '/members';
     const markRoute = (userId) => `${membersRoute}/${userId}/dispatcher`;
     const adminGet = (route, actor = administrator, status) => get('admin', route, actor, status);
     const mark = (userId, body, actor = administrator, status) => api('admin', markRoute(userId), {
       method: 'PATCH', token: actor.token, body, status,
     });
-    const grant = (clubId, actor, permission) => configure('grant', clubId, actor.id, permission);
-    const revoke = (clubId, actor, permission) => configure('revoke', clubId, actor.id, permission);
+    const grant = (actor, permission) => seedClub('grant', actor.id, permission);
+    const revoke = (actor, permission) => seedClub('revoke', actor.id, permission);
 
     await get('employee', `${employeeOrders}/${direct.id}`, adminEmployee, 404);
     assert.deepEqual((await get('employee', employeeOrders, adminEmployee)).items, []);
 
     // 成员旧数据可能没有权限字段。
-    await membership.updateOne({ clubId: 'main', userId: administrator.id }, { $unset: { permissions: '' } });
-    await api('admin', adminClubs, { status: 401 });
-    await adminGet(adminClubs, adminEmployee, 403);
-    assert.deepEqual(await adminGet(adminClubs), []);
-    await adminGet(mainOrders, administrator, 403);
-    await adminGet(`${mainOrders}/${direct.id}`, administrator, 403);
+    await membership.updateOne({ clubId: 'club', userId: administrator.id }, { $unset: { permissions: '' } });
+    await api('admin', adminClub, { status: 401 });
+    await adminGet(adminClub, adminEmployee, 403);
+    assert.deepEqual(await adminGet(adminClub), { name: '送心俱乐部', permissions: [] });
+    await adminGet(adminOrders, administrator, 403);
+    await adminGet(`${adminOrders}/${direct.id}`, administrator, 403);
     await adminGet(membersRoute, administrator, 403);
     await mark(executor.id, { dispatcher: true }, administrator, 403);
-    await assert.rejects(grant('main', executor, 'CLUB_COMMISSION_MANAGE'), /管理端准入权限/);
 
-    await grant('main', administrator, 'CLUB_ORDERS_READ');
-    await grant('side', administrator, 'CLUB_MEMBERS_MANAGE');
-    await grant('side', secondAdmin, 'CLUB_ORDERS_READ');
-    assert.deepEqual(await adminGet(adminClubs), [
-      { id: 'main', name: '送心俱乐部', permissions: ['CLUB_ORDERS_READ'] },
-      { id: 'side', name: '另一俱乐部', permissions: ['CLUB_MEMBERS_MANAGE'] },
-    ]);
-    const monitored = (await adminGet(mainOrders)).items;
-    assert.ok(monitored.length > 0 && monitored.every((order) => order.clubId === 'main'));
+    await grant(administrator, 'CLUB_ORDERS_READ');
+    assert.deepEqual(await adminGet(adminClub), {
+      name: '送心俱乐部', permissions: ['CLUB_ORDERS_READ'],
+    });
+    const monitored = (await adminGet(adminOrders)).items;
+    assert.ok(monitored.length > 0 && monitored.every((order) => order.clubId === 'club'));
     assert.ok([direct.id, selected.id, random.id].every((id) => monitored.some((order) => order.id === id)));
     const financialFields = {
       dispatchPricing: { clubFeeCents: 500 },
@@ -314,25 +299,20 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     };
     // 监管投影不得透传持久化的资金字段。团抽、收款业务由后续任务接入。
     await orders.updateOne({ _id: mongoId(direct.id) }, { $set: financialFields });
-    const adminOrder = await adminGet(`${mainOrders}/${direct.id}`);
+    const adminOrder = await adminGet(`${adminOrders}/${direct.id}`);
     assert.deepEqual(adminOrder, monitored.find(({ id }) => id === direct.id));
-    assert.deepEqual((await adminGet(mainOrders)).items, monitored);
+    assert.deepEqual((await adminGet(adminOrders)).items, monitored);
     await orders.updateOne({ _id: mongoId(direct.id) }, { $unset: { dispatchPricing: '', receipt: '' } });
     assert.equal(adminOrder.customerUserId, owner.id);
     assert.equal(adminOrder.shares.length, 1);
     assert.equal(adminOrder.shares[0].userId, executor.id);
     assert.equal(adminOrder.shares[0].executionGameAccounts, undefined);
     assert.equal(adminOrder.requestId, undefined);
-    await adminGet(`${mainOrders}/${sideOrder.id}`, administrator, 404);
-    await adminGet(mainOrders, adminEmployee, 403);
-    await adminGet(mainOrders, secondAdmin, 403);
-    await adminGet(sideOrders, administrator, 403);
-    assert.equal((await adminGet(sideOrders, secondAdmin)).items[0].id, sideOrder.id);
-    await adminGet(`${sideOrders}/${direct.id}`, secondAdmin, 404);
+    await adminGet(adminOrders, adminEmployee, 403);
+    await adminGet(adminOrders, secondAdmin, 403);
     await adminGet(membersRoute, administrator, 403);
-    assert.ok((await adminGet(adminClubs + '/side/members')).some((member) => member.userId === outsider.id));
 
-    await grant('main', administrator, 'CLUB_MEMBERS_MANAGE');
+    await grant(administrator, 'CLUB_MEMBERS_MANAGE');
     const nickname = '同名团员';
     await db.collection('users').updateMany(
       { _id: { $in: [dispatcher.id, executor.id] } },
@@ -341,7 +321,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     const roster = await adminGet(membersRoute);
     assert.deepEqual(new Set(roster.filter((member) => member.nickname === nickname).map((member) => member.userId)),
       new Set([dispatcher.id, executor.id]));
-    assert.ok(!roster.some((member) => member.userId === outsider.id));
+    assert.ok(!roster.some((member) => member.userId === outsider.id && member.active));
     assert.ok(roster.every((member) => member.permissions === undefined && member.email === undefined));
     await mark(executor.id, { dispatcher: true }, secondAdmin, 403);
     for (const forbidden of [{ active: true }, { clubId: 'side' }, { permissions: ['CLUB_FINANCE_READ'] }]) {
@@ -358,7 +338,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal((await mark(executor.id, { dispatcher: false })).dispatcher, false);
     await post('client', clientOrders, owner, requested(), 400);
 
-    await adminTest.test('规则与财务服务共用的授权边界按操作和俱乐部独立判定', async () => {
+    await adminTest.test('规则与财务服务共用的授权边界按单项授权独立判定', async () => {
       const { ClubDirectoryService } = require('../dist/src/modules/club/club-directory.service.js');
       const { Club, ClubSchema, ClubMember, ClubMemberSchema } = require('../dist/src/modules/club/club.schema.js');
       const connection = mongoose.createConnection().setClient(db.client);
@@ -376,57 +356,55 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
       const finance = 'CLUB_FINANCE_READ';
       const operator = session(administrator);
       const specialist = session(secondAdmin);
-      await denied('main', session(executor, 'employee'), rule);
-      await denied('main', operator, rule);
-      await denied('main', operator, finance);
+      await denied('club', session(executor, 'employee'), rule);
+      await denied('club', operator, rule);
+      await denied('club', operator, finance);
 
-      await grant('main', secondAdmin, rule);
-      assert.deepEqual((await adminGet(adminClubs, secondAdmin))[0].permissions, [rule]);
-      await check('main', specialist, rule);
-      await denied('main', session(secondAdmin, 'employee'), rule);
-      await denied('side', specialist, rule);
-      await denied('main', specialist, finance);
-      await adminGet(mainOrders, secondAdmin, 403);
+      await grant(secondAdmin, rule);
+      assert.deepEqual((await adminGet(adminClub, secondAdmin)).permissions, [rule]);
+      await check('club', specialist, rule);
+      await denied('club', session(secondAdmin, 'employee'), rule);
+      await denied('club', specialist, finance);
+      await adminGet(adminOrders, secondAdmin, 403);
       await adminGet(membersRoute, secondAdmin, 403);
 
-      await grant('main', secondAdmin, finance);
-      assert.deepEqual((await adminGet(adminClubs, secondAdmin))[0].permissions, [rule, finance]);
-      await check('main', specialist, finance);
-      await denied('side', specialist, finance);
-      await revoke('main', secondAdmin, rule);
-      assert.deepEqual((await adminGet(adminClubs, secondAdmin))[0].permissions, [finance]);
-      await denied('main', specialist, rule);
-      await check('main', specialist, finance);
-      await adminGet(mainOrders, secondAdmin, 403);
+      await grant(secondAdmin, finance);
+      assert.deepEqual((await adminGet(adminClub, secondAdmin)).permissions, [rule, finance]);
+      await check('club', specialist, finance);
+      await revoke(secondAdmin, rule);
+      assert.deepEqual((await adminGet(adminClub, secondAdmin)).permissions, [finance]);
+      await denied('club', specialist, rule);
+      await check('club', specialist, finance);
+      await adminGet(adminOrders, secondAdmin, 403);
       await adminGet(membersRoute, secondAdmin, 403);
 
-      await revoke('main', secondAdmin, finance);
-      await denied('main', specialist, finance);
-      assert.deepEqual((await adminGet(adminClubs, secondAdmin)).map(({ id }) => id), ['side']);
+      await revoke(secondAdmin, finance);
+      await denied('club', specialist, finance);
+      assert.deepEqual((await adminGet(adminClub, secondAdmin)).permissions, []);
     });
 
-    await revoke('main', administrator, 'CLUB_ORDERS_READ');
-    await adminGet(mainOrders, administrator, 403);
+    await revoke(administrator, 'CLUB_ORDERS_READ');
+    await adminGet(adminOrders, administrator, 403);
     await adminGet(membersRoute);
-    await member('main', administrator, 'inactive', 'dispatcher');
+    await member(administrator, 'inactive', 'dispatcher');
     await adminGet(membersRoute, administrator, 403);
-    assert.deepEqual((await adminGet(adminClubs)).map(({ id }) => id), ['side']);
-    await member('main', administrator, 'active', 'dispatcher');
-    assert.deepEqual((await membership.findOne({ clubId: 'main', userId: administrator.id })).permissions, []);
-    await adminGet(mainOrders, administrator, 403);
+    assert.deepEqual((await adminGet(adminClub)).permissions, []);
+    await member(administrator, 'active', 'dispatcher');
+    assert.deepEqual((await membership.findOne({ clubId: 'club', userId: administrator.id })).permissions, []);
+    await adminGet(adminOrders, administrator, 403);
     await adminGet(membersRoute, administrator, 403);
-    await grant('main', administrator, 'CLUB_MEMBERS_MANAGE');
+    await grant(administrator, 'CLUB_MEMBERS_MANAGE');
     await adminGet(membersRoute);
-    await adminGet(mainOrders, administrator, 403);
+    await adminGet(adminOrders, administrator, 403);
   });
 
   await t.test('按次抽成和首段快照通过真实 Mongo 保存，续段继承原规则', async (t) => {
-    const ruleRoute = '/admin/clubs/main/commission-rule';
-    const historyRoute = '/admin/clubs/main/dispatch-pricing';
+    const ruleRoute = '/admin/club/commission-rule';
+    const historyRoute = '/admin/club/dispatch-pricing';
     const patch = (app, route, actor, body, status) => api(app, route, { method: 'PATCH', token: actor.token, body, status });
     const adminGet = (route, status) => get('admin', route, administrator, status);
-    const grant = (permission) => configure('grant', 'main', administrator.id, permission);
-    const revoke = (permission) => configure('revoke', 'main', administrator.id, permission);
+    const grant = (permission) => seedClub('grant', administrator.id, permission);
+    const revoke = (permission) => seedClub('revoke', administrator.id, permission);
     const makeDirect = () => post('employee', employeeOrders, dispatcher, { ...orderInput(), existingCustomerUserId: owner.id });
     const draft = await makeDirect();
     const client = await post('client', clientOrders, owner, { ...orderInput(), estimatedReceivedHearts: 200, dispatcherUserId: dispatcher.id });
@@ -447,7 +425,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     await revoke('CLUB_ORDERS_READ');
     await grant('CLUB_COMMISSION_MANAGE');
     assert.equal(await adminGet(ruleRoute), null);
-    await adminGet('/admin/clubs/side/commission-rule', 403);
+    await adminGet('/admin/clubs/side/commission-rule', 404);
     await adminGet(historyRoute, 403);
     assert.equal((await get('employee', pricingRoute(draft), dispatcher)).pricing, null);
     await savePrice(draft, draftInput, 409);
@@ -679,7 +657,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
         segments: [{ period: 'double', hearts: 175, unitPriceCents: 21 }] };
       const now = new Date();
       const inserted = await orders.insertOne({
-        requestId: historicalInput.requestId, source: 'client_order', clubId: 'main', businessType: 'heart_delivery',
+        requestId: historicalInput.requestId, source: 'client_order', clubId: 'club', businessType: 'heart_delivery',
         recipientGameAccount: historicalInput.recipientGameAccount, customerUserId: owner.id, customerLinkStatus: 'verified',
         createdByUserId: owner.id, dispatcherUserId: dispatcher.id, dispatcherAssignment: 'customer_selected',
         dispatchStatus: 'published', publishedAt: now, createdAt: now, shares: [],
@@ -719,19 +697,19 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
   });
 
   await t.test('待分配订单按俱乐部职务处理，与客户取消原子互斥', async () => {
-    const customerRoute = '/client/clubs/empty/orders';
-    const staffRoute = '/employee/clubs/empty/orders';
+    const customerRoute = '/client/orders';
+    const staffRoute = '/employee/club/orders';
     const queue = staffRoute + '/pending-assignment';
-    const candidates = '/employee/clubs/empty/assignment-candidates';
+    const candidates = '/employee/club/assignment-candidates';
     const assignRoute = (id) => `${staffRoute}/${id}/assign-dispatcher`;
     const cancelRoute = (id) => `${customerRoute}/${id}/cancel-before-assignment`;
-    await member('empty', dispatcher, 'active', 'member');
-    await member('empty', executor, 'active', 'member');
-    await member('empty', adminEmployee, 'active', 'member');
-    await configure('grant', 'empty', adminEmployee.id, 'CLUB_MEMBERS_MANAGE');
-    await configure('position', 'empty', dispatcher.id, 'leader');
-    await configure('position', 'empty', executor.id, 'deputy');
-    assert.deepEqual((await get('client', '/client/clubs/empty/order-options', owner)).dispatchers, []);
+    await member(dispatcher, 'active', 'member');
+    await member(executor, 'active', 'member');
+    await member(adminEmployee, 'active', 'member');
+    await seedClub('grant', adminEmployee.id, 'CLUB_MEMBERS_MANAGE');
+    await seedClub('position', dispatcher.id, 'leader');
+    await seedClub('position', executor.id, 'deputy');
+    assert.deepEqual((await get('client', '/client/club/order-options', owner)).dispatchers, []);
 
     const input = { ...orderInput(31), deliveryPeriodPreference: 'split', doubleGiftTimes: 6 };
     const cancelInput = { ...orderInput(17), deliveryPeriodPreference: 'double' };
@@ -753,7 +731,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     await post('employee', assignRoute(pending.id), dispatcher, { ...assignment, dispatcherUserId: outsider.id }, 400);
     assert.deepEqual(new Set((await get('employee', queue, executor)).items.map(({ id }) => id)), new Set([pending.id, cancellable.id]));
 
-    await member('empty', dispatcher, 'active', 'dispatcher');
+    await member(dispatcher, 'active', 'dispatcher');
     assert.equal((await get('employee', candidates, dispatcher))[0].userId, dispatcher.id);
     assert.deepEqual(await post('client', customerRoute, owner, input), pending);
     const assigned = await post('employee', assignRoute(pending.id), dispatcher, assignment);
@@ -774,7 +752,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal(replayed.id, pending.id);
     assert.equal(replayed.dispatcherUserId, executor.id);
     assert.equal(replayed.source, 'client_order');
-    assert.equal((await membership.findOne({ clubId: 'empty', userId: executor.id })).dispatcher, false);
+    assert.equal((await membership.findOne({ clubId: 'club', userId: executor.id })).dispatcher, false);
 
     const cancellation = { requestId: randomUUID() };
     const cancelled = await post('client', cancelRoute(cancellable.id), owner, cancellation);
@@ -787,7 +765,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal((await post('client', customerRoute, owner, cancelInput)).dispatchStatus, 'cancelled');
     assert.deepEqual((await get('employee', queue, dispatcher)).items, []);
 
-    await member('empty', dispatcher, 'active', 'member');
+    await member(dispatcher, 'active', 'member');
     const competing = await post('client', customerRoute, owner, orderInput(11));
     const competingAssignment = { requestId: randomUUID(), dispatcherUserId: dispatcher.id };
     const [placed, withdrawn] = await Promise.all([
@@ -808,7 +786,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     } else {
       assert.deepEqual(await post('client', cancelRoute(competing.id), owner, cancellation), withdrawn);
     }
-    await configure('position', 'empty', executor.id, 'member');
+    await seedClub('position', executor.id, 'member');
     await get('employee', queue, executor, 403);
   });
 });

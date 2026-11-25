@@ -2,15 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { captchaCode } from './start-system.mjs';
 
-export async function checkDirectCustomers(t, { db, base, api, configure, register, dispatcher, outsider }) {
-  const clubId = 'customer-binding';
-  await configure('club', clubId, '客户绑定俱乐部');
-  await configure('member', clubId, dispatcher.id, 'active', 'dispatcher');
+export async function checkDirectCustomers(t, { db, base, api, seedClub, register, dispatcher, outsider }) {
+  const clubId = 'club';
+  await seedClub('member', dispatcher.id, 'active', 'dispatcher');
   const [ownerName, strangerName] = ['binding_first_customer', 'binding_second_customer'];
   const owner = await register(ownerName, 'client');
   const stranger = await register(strangerName, 'client');
-  const employeeRoute = `/employee/clubs/${clubId}/orders`;
-  const clientRoute = `/client/clubs/${clubId}/orders`;
+  const employeeRoute = `/employee/club/orders`;
+  const clientRoute = `/client/orders`;
   const users = db.collection('users');
   const orders = db.collection('club_orders');
   const common = await db.collection('roles').findOne({ role_code: 'common' });
@@ -19,7 +18,7 @@ export async function checkDirectCustomers(t, { db, base, api, configure, regist
   const post = (app, path, actor, body, status = 201) => api(app, path, { method: 'POST', token: actor.token, body, status });
   const direct = (body, status) => post('employee', employeeRoute, dispatcher, body, status);
   const search = (q, actor = dispatcher, status) => get('employee',
-    `/employee/clubs/${clubId}/order-customers?${new URLSearchParams({ q })}`, actor, status);
+    `/employee/club/order-customers?${new URLSearchParams({ q })}`, actor, status);
   const input = () => ({ requestId: randomUUID(), recipientGameAccount: '爱心接收游戏号', requestedGiftTimes: 13 });
   const ids = items => items.map(({ id }) => id);
   await users.updateMany({ _id: { $in: [owner.id, stranger.id] } }, { $set: { nickname } });
@@ -204,7 +203,7 @@ export async function checkDirectCustomers(t, { db, base, api, configure, regist
     await issue(undefined, original.id, 401);
     await issue(owner, original.id, 403);
     await issue(outsider, original.id, 403);
-    await configure('member', clubId, outsider.id, 'active', 'dispatcher');
+    await seedClub('member', outsider.id, 'active', 'dispatcher');
     await issue(outsider, original.id, 404);
     assert.ok(!(await visible(outsider)).includes(original.id));
     const otherDispatcherOrder = await post('employee', employeeRoute, outsider,
@@ -276,5 +275,6 @@ export async function checkDirectCustomers(t, { db, base, api, configure, regist
     assert.deepEqual(new Set(ids((await get('client', '/client/orders', customer)).items)),
       new Set([original.id, followUp.id, otherDispatcherOrder.id]));
     await get('client', `${clientRoute}/${existing.id}`, customer, 404);
+    await seedClub('member', outsider.id, 'inactive', 'member');
   });
 }
