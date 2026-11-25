@@ -14,6 +14,7 @@ function loadWorker(code, origin) {
   const storage = new Map();
   const notifications = new Map();
   const opened = [];
+  let windows = [];
   let online = true;
 
   const fetch = async (request, options) => {
@@ -51,7 +52,7 @@ function loadWorker(code, origin) {
       skipWaiting: () => assert.fail("更新必须等旧窗口关闭"),
       clients: {
         claim: () => assert.fail("不能接管正在打开的旧页面"),
-        matchAll: async () => [],
+        matchAll: async () => windows,
         openWindow: async href => opened.push(href),
       },
       registration: {
@@ -68,6 +69,7 @@ function loadWorker(code, origin) {
     storage,
     notifications,
     opened,
+    setWindows: value => { windows = value; },
     setOnline: value => { online = value; },
     dispatch(name, data = {}) {
       let result;
@@ -244,13 +246,37 @@ for (const { name, port, label } of apps) {
       await worker.dispatch("notificationclick", { notification: [...worker.notifications.values()][0] });
       assert.equal(worker.opened.at(-1), origin + "/club/dispatch?notificationId=" + businessNotice.noticeId);
       const dispatch = {
-        type: "club-dispatch", version: 1, message: "有新派单，点击进入接单区",
+        type: "club-dispatch", version: 1, message: "内部派单说明不应显示在锁屏",
         publicationId: "7".repeat(24), noticeId: "8".repeat(24),
         deviceBinding: "c".repeat(43), expiresAt: Date.now() + 900000,
       };
       await deliver(dispatch);
-      await worker.dispatch("notificationclick", { notification: [...worker.notifications.values()][0] });
-      assert.equal(worker.opened.at(-1), origin + "/claim-board?noticeId=" + dispatch.noticeId);
+      const [notification] = worker.notifications.values();
+      assert.equal(notification.body, "有新派单，点击进入接单区");
+      const target = origin + "/claim-board?noticeId=" + dispatch.noticeId;
+      await worker.dispatch("notificationclick", { notification });
+      assert.equal(worker.opened.at(-1), target);
+      const openedCount = worker.opened.length;
+      let navigated;
+      let focused = 0;
+      worker.setWindows([
+        { url: "https://another.invalid/", navigate: () => assert.fail("不能导航其他来源") },
+        { url: origin + "/", navigate: async href => { navigated = href; return { focus: () => { focused++; } }; } },
+      ]);
+      await worker.dispatch("notificationclick", { notification });
+      assert.equal(navigated, target);
+      assert.equal(focused, 1);
+      assert.equal(worker.opened.length, openedCount);
+      worker.setWindows([{ url: origin + "/", navigate: () => { throw new Error("原窗口已关闭"); } }]);
+      await worker.dispatch("notificationclick", { notification });
+      assert.equal(worker.opened.length, openedCount + 1);
+      cache.set(key, new Response("d".repeat(43)));
+      await worker.dispatch("notificationclick", { notification });
+      assert.equal(worker.opened.length, openedCount + 1, "换号后不打开上一位用户的通知");
+      cache.delete(key);
+      await worker.dispatch("notificationclick", { notification });
+      assert.equal(worker.opened.at(-1), target, "会话缺失时保留目标，以便登录后重新鉴权");
+      assert.equal(worker.opened.length, openedCount + 2);
     }
     assert.equal(worker.notifications.size, 0);
   });

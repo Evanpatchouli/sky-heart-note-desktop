@@ -46,7 +46,8 @@ async function showPush(payload, tag) {
   if (await cache.match(receipt)) return;
   if (!(await self.registration.getNotifications({ tag })).length) {
     await self.registration.showNotification(payload.type === "club-dispatch" ? "Sky Club" : payload.title, {
-      body: payload.message, tag, icon: "/pwa/icon-192.png", renotify: false, data: payload,
+      body: payload.type === "club-dispatch" ? "有新派单，点击进入接单区" : payload.message,
+      tag, icon: "/pwa/icon-192.png", renotify: false, data: payload,
     });
   }
   await cache.put(receipt, new Response(String(expiresAt)));
@@ -78,6 +79,9 @@ self.addEventListener("notificationclick", event => {
   event.notification.close();
   if (!path) return;
   event.waitUntil((async () => {
+    const cache = await caches.open(notificationCache);
+    const binding = await cache.match("/__pwa_notification_session__");
+    if (binding && await binding.text() !== event.notification.data.deviceBinding) return;
     const href = new URL(path, self.location.origin).href;
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const window of windows) {
