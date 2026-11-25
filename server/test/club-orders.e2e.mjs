@@ -17,7 +17,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
   });
   const configure = (...args) => runCommand('dist/src/commands/club.js', ...args);
   const challenges = new Map();
-  const api = async (app, path, { method = 'GET', body, token, status = 200 } = {}) => {
+  const api = async (app, path, { method = 'GET', body, token, status = 200, message } = {}) => {
     const headers = { origin: origin(app) };
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (token) headers.authorization = `Bearer ${token}`;
@@ -32,6 +32,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     } else {
       assert.equal(response.status, status, `${method} ${path}: ${JSON.stringify(payload)}`);
     }
+    if (message) assert.match(payload.message, message);
     if (path.startsWith('/captcha/')) {
       const challenge = response.headers.getSetCookie().find((cookie) => cookie.startsWith('sky_captcha_'));
       assert.ok(challenge);
@@ -133,7 +134,6 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     for (const field of ['customerUserId', 'createdByUserId', 'dispatchStatus', 'customerLinkStatus', 'shares']) {
       await post('client', clientOrders, owner, { ...orderInput(), [field]: stranger.id }, 400);
     }
-    await post('client', '/client/clubs/empty/orders', owner, orderInput(), 409);
     await post('client', '/client/clubs/missing/orders', owner, orderInput(), 404);
     assert.equal(await orders.countDocuments({ source: 'client_order' }), 0);
     const input = orderInput();
@@ -719,5 +719,99 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     await revoke('CLUB_COMMISSION_MANAGE');
     await adminGet(ruleRoute, 403);
     await adminGet(historyRoute, 403);
+  });
+
+  await t.test('待分配订单按俱乐部职务处理，与客户取消原子互斥', async () => {
+    const customerRoute = '/client/clubs/empty/orders';
+    const staffRoute = '/employee/clubs/empty/orders';
+    const queue = staffRoute + '/pending-assignment';
+    const candidates = '/employee/clubs/empty/assignment-candidates';
+    const assignRoute = (id) => `${staffRoute}/${id}/assign-dispatcher`;
+    const cancelRoute = (id) => `${customerRoute}/${id}/cancel-before-assignment`;
+    await member('empty', dispatcher, 'active', 'member');
+    await member('empty', executor, 'active', 'member');
+    await member('empty', adminEmployee, 'active', 'member');
+    await configure('grant', 'empty', adminEmployee.id, 'CLUB_MEMBERS_MANAGE');
+    await configure('position', 'empty', dispatcher.id, 'leader');
+    await configure('position', 'empty', executor.id, 'deputy');
+    assert.deepEqual((await get('client', '/client/clubs/empty/order-options', owner)).dispatchers, []);
+
+    const input = { ...orderInput(31), deliveryPeriodPreference: 'split', doubleGiftTimes: 6 };
+    const cancelInput = { ...orderInput(17), deliveryPeriodPreference: 'double' };
+    const pending = await post('client', customerRoute, owner, input);
+    const cancellable = await post('client', customerRoute, owner, cancelInput);
+    assert.equal(pending.dispatchStatus, 'pending_assignment');
+    assert.equal(pending.dispatcherUserId, null);
+    assert.equal(pending.dispatcherAssignment, null);
+    assert.equal(pending.estimatedReceivedHearts, 37);
+    assert.equal(pending.publishedAt, null);
+    assert.deepEqual(await post('client', customerRoute, owner, input), pending);
+    await get('employee', queue, adminEmployee, 403);
+    await get('employee', candidates, outsider, 403);
+    await get('employee', `${staffRoute}/${pending.id}/pricing`, executor, 404);
+    await get('client', `${customerRoute}/${pending.id}`, stranger, 404);
+    await post('client', cancelRoute(pending.id), stranger, { requestId: randomUUID() }, 404);
+    const assignment = { requestId: randomUUID(), dispatcherUserId: executor.id };
+    await post('employee', assignRoute(pending.id), adminEmployee, assignment, 403);
+    await post('employee', assignRoute(pending.id), dispatcher, { ...assignment, dispatcherUserId: outsider.id }, 400);
+    assert.deepEqual(new Set((await get('employee', queue, executor)).items.map(({ id }) => id)), new Set([pending.id, cancellable.id]));
+
+    await member('empty', dispatcher, 'active', 'dispatcher');
+    assert.equal((await get('employee', candidates, dispatcher))[0].userId, dispatcher.id);
+    assert.deepEqual(await post('client', customerRoute, owner, input), pending);
+    const assigned = await post('employee', assignRoute(pending.id), dispatcher, assignment);
+    assert.equal(assigned.dispatchStatus, 'pending');
+    assert.equal(assigned.dispatcherAssignment, 'manual');
+    assert.equal(assigned.dispatcherUserId, executor.id);
+    assert.equal(assigned.decidedByUserId, dispatcher.id);
+    assert.ok(Number.isFinite(Date.parse(assigned.decidedAt)));
+    assert.deepEqual(await post('employee', assignRoute(pending.id), dispatcher, assignment), assigned);
+    await api('employee', assignRoute(pending.id), {
+      method: 'POST', token: executor.token, body: assignment, status: 409, message: /已有派单人/,
+    });
+    await post('employee', assignRoute(pending.id), dispatcher, { ...assignment, dispatcherUserId: dispatcher.id }, 409);
+    await post('client', cancelRoute(pending.id), owner, { requestId: randomUUID() }, 409);
+    await get('employee', `${staffRoute}/${pending.id}/pricing`, executor);
+    await get('employee', `${staffRoute}/${pending.id}/pricing`, dispatcher, 404);
+    const replayed = await post('client', customerRoute, owner, input);
+    assert.equal(replayed.id, pending.id);
+    assert.equal(replayed.dispatcherUserId, executor.id);
+    assert.equal(replayed.source, 'client_order');
+    assert.equal((await membership.findOne({ clubId: 'empty', userId: executor.id })).dispatcher, false);
+
+    const cancellation = { requestId: randomUUID() };
+    const cancelled = await post('client', cancelRoute(cancellable.id), owner, cancellation);
+    assert.equal(cancelled.dispatchStatus, 'cancelled');
+    assert.deepEqual(await post('client', cancelRoute(cancellable.id), owner, cancellation), cancelled);
+    await post('client', cancelRoute(cancellable.id), owner, { requestId: randomUUID() }, 409);
+    await api('employee', assignRoute(cancellable.id), {
+      method: 'POST', token: executor.token, body: assignment, status: 409, message: /已由老板取消/,
+    });
+    assert.equal((await post('client', customerRoute, owner, cancelInput)).dispatchStatus, 'cancelled');
+    assert.deepEqual((await get('employee', queue, dispatcher)).items, []);
+
+    await member('empty', dispatcher, 'active', 'member');
+    const competing = await post('client', customerRoute, owner, orderInput(11));
+    const competingAssignment = { requestId: randomUUID(), dispatcherUserId: dispatcher.id };
+    const [placed, withdrawn] = await Promise.all([
+      post('employee', assignRoute(competing.id), executor, competingAssignment, [201, 409]),
+      post('client', cancelRoute(competing.id), owner, cancellation, [201, 409]),
+    ]);
+    assert.equal(Number(!!placed) + Number(!!withdrawn), 1);
+    const last = await orders.findOne({ _id: mongoId(competing.id) });
+    assert.equal(last.pendingAssignmentDecision.kind, placed ? 'assigned' : 'cancelled');
+    assert.equal(last.pendingAssignmentDecision.requestId, placed ? competingAssignment.requestId : cancellation.requestId);
+    assert.equal(last.customerUserId, owner.id);
+    assert.equal(last.createdByUserId, owner.id);
+    assert.equal(last.publishedAt, undefined);
+    assert.equal(last.receipt, undefined);
+    assert.deepEqual(last.shares, []);
+    if (placed) {
+      assert.deepEqual(await post('employee', assignRoute(competing.id), executor, competingAssignment), placed);
+    } else {
+      assert.deepEqual(await post('client', cancelRoute(competing.id), owner, cancellation), withdrawn);
+    }
+    await configure('position', 'empty', executor.id, 'member');
+    await get('employee', queue, executor, 403);
   });
 });

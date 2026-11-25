@@ -19,11 +19,22 @@ pnpm --dir server build
 pnpm --dir server exec node dist/src/commands/club.js club sky-hearts "送心俱乐部"
 pnpm --dir server exec node dist/src/commands/club.js member sky-hearts 00A1 active dispatcher
 pnpm --dir server exec node dist/src/commands/club.js member sky-hearts 00B2 active member
+pnpm --dir server exec node dist/src/commands/club.js position sky-hearts 00B2 leader
 ```
 
 Docker 部署在仓库根目录使用 `docker compose exec server node dist/src/commands/club.js`，后接相同参数。重复使用同一俱乐部标识和四位账号会更新既有成员记录。用 `inactive` 停用成员会撤销团员侧订单访问并清空该成员在本俱乐部的管理权限，同时保留历史归属。重新启用成员后需逐项重新授权。`dispatcher` 标记用于客户下单的派单候选。有效成员均可发起自己的直接派单草稿。
 
-正式归属规则由 P1-24 验收。老板主动指定与系统随机指定均限本俱乐部有效且带“派单”标记的团员。无合格候选时，创建待分配客户订单，由本俱乐部团长或副团长手动分配给任一有效团员，候选列表将有效且带“派单”标记者置顶。手动分配只记本单归属并保留成员原标记，仍由本单派单人主动派发。老板可在实际分配前取消本人的待分配订单。并发取消与手动分配只允许一项生效，重试返回本次操作的已保存结果，建单重试取回原单且不重新选人。各分支保留客户归属和“客户端下单”来源，确定派单人后记录归属方式。[正式归属规则](club-business.md#订单来源)
+部署人员用 `position <俱乐部标识> <四位用户ID> <leader|deputy|member>` 设置团长、副团长或普通团员。既有成员未设置时按普通团员处理，停用成员会清除领导职务。俱乐部职务与派单标记、管理端及财务权限分别配置。
+
+老板主动指定与系统随机指定均限本俱乐部有效且带“派单”标记的团员。无候选时创建待分配订单，之后新增候选不会改变原订单。团长或副团长从团员端「派单准备 → 待分配订单」选择任一有团员端准入的本俱乐部有效成员，带“派单”标记者优先显示。手工分配只确定本单派单人。分配前老板可在本人订单详情取消。
+
+取消与分配同时提交时只有一项生效。建单重试取回原单，不重新选人。取消及分配重试取回原决定，即使订单已进入下一阶段。在当前标签页未收到分配回执时，「待分配订单」保留「重试本次分配」入口。订单记录客户端来源、客户、原建单请求和归属方式，手工决定另外记录操作人、时间与请求标识。分配后仍由当单派单人在「派单准备」核款并主动派发。[正式归属规则](club-business.md#订单来源)
+
+## 客户端下单入口
+
+团员在「派单准备」选择俱乐部后，可以复制「客户端下单链接」，例如 `https://client.example.com/order?club=sky-hearts`。链接使用服务端配置的 `CLIENT_ORIGIN`。老板登录后填写接收游戏账号、赠送次数，可另填期望交付时段与预计实收爱心颗数。提交后可查看订单详情，该详情也提供「向此俱乐部下单」。在当前标签页刷新后，「下单」沿用当前账号上次打开的俱乐部。单俱乐部部署可在 Vite 环境配置 `VITE_CLIENT_ORDER_CLUB_ID`。
+
+没有合格候选时，老板可以提交待分配订单。网络结果不明时，客户端在当前浏览器标签页按客户账号与俱乐部保留原请求，点击「重试本次提交」可取回已创建的订单。
 
 ## 管理端俱乐部授权
 
@@ -51,17 +62,22 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 | `POST` | `/api/employee/clubs/:clubId/orders` | 有效团员新建直接派单草稿，选择已有用户或填写新老板昵称。创建人与本单派单人均为当前团员。 |
 | `POST` | `/api/employee/clubs/:clubId/orders/:orderId/customer-activation` | 原建档订单的当单派单人生成客户端一次性激活链接，返回 `activationUrl` 和毫秒时间戳 `expiresAt`。 |
 | `POST` | `/api/user/activate-dispatch-customer` | 客户端来源提交 JSON `{ token, username, password }`，为链接对应的原客户账号设置首次登录凭据。 |
-| `POST` | `/api/client/clubs/:clubId/orders` | 登录客户提交本人订单。可填 `dispatcherUserId` 指定本俱乐部有派单标记且可进入团员端的有效成员，省略则在该范围内随机选人。订单创建时为待派发。 |
+| `POST` | `/api/client/clubs/:clubId/orders` | 登录客户按赠送次数提交本人订单。可填 `dispatcherUserId` 指定合格派单人，省略时随机选人。无候选时创建待分配订单。 |
+| `POST` | `/api/client/clubs/:clubId/orders/:orderId/cancel-before-assignment` | 客户提交 `{ requestId }` 取消本人的待分配订单。 |
+| `GET` | `/api/employee/clubs/:clubId/orders/pending-assignment` | 团长或副团长分页读取本俱乐部待分配订单。 |
+| `GET` | `/api/employee/clubs/:clubId/assignment-candidates` | 团长或副团长读取本俱乐部有效团员的 `{ userId, nickname, dispatcher }`，带派单标记者排在前面。 |
+| `POST` | `/api/employee/clubs/:clubId/orders/:orderId/assign-dispatcher` | 团长或副团长提交 `{ requestId, dispatcherUserId }` 为本俱乐部的待分配订单确定派单人。 |
 | `GET` | `/api/{employee\|client}/clubs/:clubId/orders` | 客户端查本人已核实归属的订单。团员端查本人负责派单、或已派发且本人承接的订单。 |
 | `GET` | `/api/{employee\|client}/clubs/:clubId/orders/:orderId` | 按列表相同的归属范围查询详情。 |
 | `GET` | `/api/client/orders` | 跨俱乐部查询归属本人的订单，使用相同的筛选和分页参数。 |
-| `GET` | `/api/employee/clubs` | 读取当前团员的有效成员俱乐部。 |
+| `GET` | `/api/client/clubs/:clubId/order-options` | 登录客户查看俱乐部名称、可选派单人的昵称和四位 ID。 |
+| `GET` | `/api/employee/clubs` | 读取当前团员的有效成员俱乐部、客户端下单链接及待分配操作权限。 |
 | `GET` | `/api/admin/clubs/:clubId/orders` | 按俱乐部授权监管该俱乐部所有订单，返回业务状态、客户归属及份额分配。 |
 | `GET` | `/api/admin/clubs/:clubId/orders/:orderId` | 在同一监管范围内查询指定订单。 |
 | `GET` | `/api/admin/clubs/:clubId/members` | 查询指定俱乐部成员的昵称、四位 ID、成员状态和派单标记。 |
 | `PATCH` | `/api/admin/clubs/:clubId/members/:userId/dispatcher` | 用 `{"dispatcher": true}` 或 `{"dispatcher": false}` 更新有效成员的派单标记。 |
 
-下单需要相应端的访问令牌和 JSON 请求体。两个下单入口共用 `requestId`、`recipientGameAccount`、`requestedGiftTimes`，可另填 `estimatedReceivedHearts`。历史 `requestedHearts` 允许同一俱乐部、来源、创建人和标识原样重试已保存的请求。新单一律使用赠送次数。每次新建生成一个 UUID v4，请求重试时沿用相同的 `requestId` 与内容。相同提交标识配不同内容返回 HTTP 409。随机候选为空时返回 HTTP 409，订单未创建。显式指定当前候选范围之外的账号返回 HTTP 400。
+下单需要相应端的访问令牌和 JSON 请求体。两个下单入口共用 `requestId`、`recipientGameAccount`、`requestedGiftTimes`，可另填 `estimatedReceivedHearts`。历史 `requestedHearts` 允许同一俱乐部、来源、创建人和标识原样重试已保存的请求。新单一律使用赠送次数。新建、取消和分配各使用 UUID v4，请求重试时沿用相同的 `requestId` 与内容。相同标识配不同内容或争抢已处理的订单返回 HTTP 409。显式指定候选范围之外的账号返回 HTTP 400。随机候选为空时订单的 `dispatchStatus` 为 `pending_assignment`，派单人和归属方式返回 `null`。取消后为 `cancelled`。手动分配后为 `pending`，归属方式为 `manual`。
 
 以下请求体可用于客户端普通送心单。直接派单也使用三个共用必填字段。
 
@@ -110,4 +126,4 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 后台规则更新后，可通过 `PATCH /api/employee/clubs/:clubId/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
 
-实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。承接及绑定个人送心号随对应任务接入，待分配、手动分配与分配前取消按 P1-24 验收。[正式归属规则](club-business.md#订单来源)
+实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。承接及绑定个人送心号随对应任务接入。

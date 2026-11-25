@@ -12,9 +12,10 @@ import { employeeRequest } from "#/service/request";
 import NewDirectDraft from "./new-direct-draft";
 import CustomerActivation from "./customer-activation";
 import GiftDispatchPricing from "./gift-dispatch-pricing";
+import PendingAssignment from "./pending-assignment";
 import type { DeliveryPeriodPreference } from "@webapp-template/common";
 
-type Club = { id: string; name: string };
+type Club = { id: string; name: string; orderUrl: string; canAssignPendingOrders?: boolean };
 type Order = {
   id: string;
   source: keyof typeof sources;
@@ -74,14 +75,17 @@ export default function ClubDispatch() {
           : selected ? <>
             <label>俱乐部 <Select aria-label="俱乐部" value={selected.id} onChange={clubId => setParams({ clubId })}
               options={clubs.map(club => ({ value: club.id, label: club.name }))} style={{ minWidth: 140 }} /></label>
-            <ClubOrders key={selected.id} clubId={selected.id} />
+            <Typography.Text copyable={{ text: selected.orderUrl, tooltips: ["复制客户端下单链接", "已复制"] }}>
+              <Typography.Link href={selected.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
+            </Typography.Text>
+            <ClubOrders key={selected.id} clubId={selected.id} canAssign={selected.canAssignPendingOrders} />
           </> : <Empty description="暂无可访问的俱乐部" />}
       </Flex>
     </main>
   </>;
 }
 
-function ClubOrders({ clubId }: { clubId: string }) {
+function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean }) {
   const route = `clubs/${clubId}/orders`;
   const [page, setPage] = useState<Page>();
   const [after, setAfter] = useState<string>();
@@ -110,6 +114,11 @@ function ClubOrders({ clubId }: { clubId: string }) {
   }
 
   return <>
+    {canAssign ? <PendingAssignment clubId={clubId} onAssigned={id => {
+      setSelectedId(id);
+      setAfter(undefined);
+      setAttempt(value => value + 1);
+    }} /> : null}
     <Card size="small" title="我负责派发的订单" extra={<Button onClick={() => setCreating(true)}>新建直接派单草稿</Button>}>
       {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
         : page ? page.items.length ? <Select aria-label="我负责派发的订单" style={{ width: "100%" }} value={order?.id} onChange={setSelectedId}

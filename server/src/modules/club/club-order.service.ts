@@ -16,6 +16,7 @@ import { ClubCustomerService } from './club-customer.service';
 import { UserDispatchActivationService } from '../user-module/user-dispatch-activation.service';
 import { ClubDirectoryService } from './club-directory.service';
 import type {
+  AssignDispatcherDto,
   ClubOrderQuery,
   CreateClientOrderDto,
   CreateDirectOrderDto,
@@ -29,7 +30,12 @@ import type {
   UpdateOrderPricingDto,
 } from './club-pricing.dto';
 import type { StoredOrderReceipt } from './club-pricing.schema';
-import { ClubOrder } from './club-order.schema';
+import { ClubOrder, type PendingAssignmentDecision } from './club-order.schema';
+
+const clientOrderScope = {
+  source: 'client_order',
+  customerLinkStatus: 'verified',
+} as const;
 
 const incompleteCustomerLink = {
   newCustomerNickname: { $exists: true },
@@ -57,8 +63,8 @@ function orderSummary(order: ClubOrder) {
           doubleGiftTimes: order.heartDelivery.doubleGiftTimes,
         }),
     deliveryPeriodPreference: order.heartDelivery.deliveryPeriodPreference,
-    dispatcherUserId: order.dispatcherUserId,
-    dispatcherAssignment: order.dispatcherAssignment,
+    dispatcherUserId: order.dispatcherUserId ?? null,
+    dispatcherAssignment: order.dispatcherAssignment ?? null,
     dispatchStatus: order.dispatchStatus,
     publishedAt: order.publishedAt ?? null,
     createdAt: order.createdAt,
@@ -71,6 +77,18 @@ function orderOwnership(order: ClubOrder) {
     customerUserId: order.customerUserId ?? null,
     customerLinkStatus: order.customerLinkStatus,
     customerLabel: order.customerLabel ?? null,
+  };
+}
+
+function assignmentResult(order: ClubOrder, decision: PendingAssignmentDecision) {
+  return {
+    id: order._id.toHexString(),
+    clubId: order.clubId,
+    dispatchStatus: decision.kind === 'assigned' ? 'pending' : 'cancelled',
+    dispatcherUserId: decision.dispatcherUserId ?? null,
+    dispatcherAssignment: decision.kind === 'assigned' ? 'manual' : null,
+    decidedByUserId: decision.actorUserId,
+    decidedAt: decision.decidedAt,
   };
 }
 
@@ -117,13 +135,14 @@ function dispatchPreparation(order: ClubOrder, rule: CommissionRule | null) {
   };
 }
 
-function customerOrderView(order: ClubOrder) {
+function customerOrderView(order: ClubOrder, names: Map<string, string>) {
   const pricing = order.dispatchPricing ?? order.pricing;
   const segments = pricing?.segments;
   const giftSegments = pricing?.giftSegments;
   const quote = order.receipt?.quote ?? calculateCustomerQuote(pricing);
   return {
     ...orderSummary(order),
+    dispatcherNickname: order.dispatcherUserId ? names.get(order.dispatcherUserId) ?? null : null,
     ...(pricing?.priceUnit === 'gift_times' ? { giftSegments } : segments ? { segments } : {}),
     ...(quote ? { quote } : {}),
     ...(order.receipt ? { receipt: {
@@ -146,6 +165,9 @@ function adminOrderView(order: ClubOrder) {
   return {
     ...orderSummary(order),
     ...orderOwnership(order),
+    ...(order.pendingAssignmentDecision
+      ? { assignmentDecision: assignmentResult(order, order.pendingAssignmentDecision) }
+      : {}),
     shares: order.shares.map(shareSummary),
   };
 }
@@ -244,9 +266,93 @@ export class ClubOrderService implements OnModuleInit {
     input: CreateClientOrderDto,
   ) {
     await this.directory.requireClub(clubId);
-    return orderSummary(
-      await this.create(clubId, userId, { source: 'client_order', input }),
+    const order = await this.create(clubId, userId, { source: 'client_order', input });
+    const names = await this.directory.memberNicknames(order.dispatcherUserId ? [order.dispatcherUserId] : []);
+    return {
+      ...orderSummary(order),
+      dispatcherNickname: order.dispatcherUserId ? names.get(order.dispatcherUserId) ?? null : null,
+    };
+  }
+
+  async listPendingAssignmentOrders(
+    clubId: string,
+    actorUserId: string,
+    { after, limit }: ClubOrderQuery,
+  ) {
+    await this.directory.requireAssignmentLeader(clubId, actorUserId);
+    const { orders, nextCursor } = await this.list(
+      { ...clientOrderScope, clubId, dispatchStatus: 'pending_assignment' },
+      { after, limit },
     );
+    return { items: orders.map(orderSummary), nextCursor };
+  }
+
+  async assignPendingOrder(
+    clubId: string,
+    actorUserId: string,
+    orderId: string,
+    { requestId, dispatcherUserId }: AssignDispatcherDto,
+  ) {
+    await this.directory.requireAssignmentLeader(clubId, actorUserId);
+    return this.decidePendingAssignment(
+      orderId,
+      { ...clientOrderScope, clubId },
+      { kind: 'assigned', actorUserId, requestId, dispatcherUserId, decidedAt: new Date() },
+    );
+  }
+
+  async cancelPendingOrder(clubId: string, userId: string, orderId: string, requestId: string) {
+    await this.directory.requireClub(clubId);
+    return this.decidePendingAssignment(
+      orderId,
+      { ...clientOrderScope, clubId, customerUserId: userId },
+      { kind: 'cancelled', actorUserId: userId, requestId, decidedAt: new Date() },
+    );
+  }
+
+  private async decidePendingAssignment(
+    orderId: string,
+    scope: QueryFilter<ClubOrder>,
+    decision: PendingAssignmentDecision,
+  ) {
+    const order = await this.get(orderId, scope);
+    if (order.dispatchStatus !== 'pending_assignment') return this.replayAssignment(order, decision);
+
+    const { kind, dispatcherUserId } = decision;
+    if (dispatcherUserId) await this.directory.requireAssignmentCandidate(order.clubId, dispatcherUserId);
+    const updated = await this.orders.findOneAndUpdate(
+      { ...scope, _id: orderId, dispatchStatus: 'pending_assignment' },
+      {
+        $set: {
+          pendingAssignmentDecision: decision,
+          dispatchStatus: kind === 'assigned' ? 'pending' : 'cancelled',
+          ...(kind === 'assigned' ? { dispatcherUserId, dispatcherAssignment: 'manual' } : {}),
+        },
+      },
+      { returnDocument: 'after', runValidators: true },
+    ).lean();
+    return updated
+      ? assignmentResult(updated, decision)
+      : this.replayAssignment(await this.get(orderId, scope), decision);
+  }
+
+  private replayAssignment(order: ClubOrder, decision: PendingAssignmentDecision) {
+    const saved = order.pendingAssignmentDecision;
+    if (saved?.kind === decision.kind && saved.requestId === decision.requestId &&
+        saved.actorUserId === decision.actorUserId && saved.dispatcherUserId === decision.dispatcherUserId) {
+      return assignmentResult(order, saved);
+    }
+    if (order.dispatchStatus === 'cancelled') {
+      throw new ConflictException(decision.kind === 'assigned'
+        ? '订单已由老板取消，分配未生效'
+        : '订单已取消');
+    }
+    if (order.dispatcherUserId) {
+      throw new ConflictException(decision.kind === 'assigned'
+        ? '订单已有派单人，本次分配未生效'
+        : '订单已分配，无法取消');
+    }
+    throw new ConflictException('订单当前不可分配或取消');
   }
 
   async listCustomerOrders(
@@ -267,18 +373,21 @@ export class ClubOrderService implements OnModuleInit {
       { ...(clubId ? { clubId } : {}), customerUserId: userId, customerLinkStatus: 'verified' },
       query,
     );
-    return { items: orders.map(customerOrderView), nextCursor };
+    const names = await this.directory.memberNicknames([
+      ...new Set(orders.flatMap(({ dispatcherUserId }) => dispatcherUserId ? [dispatcherUserId] : [])),
+    ]);
+    return { items: orders.map(order => customerOrderView(order, names)), nextCursor };
   }
 
   async getCustomerOrder(clubId: string, userId: string, orderId: string) {
     await this.directory.requireClub(clubId);
-    return customerOrderView(
-      await this.get(orderId, {
-        clubId,
-        customerUserId: userId,
-        customerLinkStatus: 'verified',
-      }),
-    );
+    const order = await this.get(orderId, {
+      clubId,
+      customerUserId: userId,
+      customerLinkStatus: 'verified',
+    });
+    const names = await this.directory.memberNicknames(order.dispatcherUserId ? [order.dispatcherUserId] : []);
+    return customerOrderView(order, names);
   }
 
   async listEmployeeOrders(
@@ -703,10 +812,23 @@ export class ClubOrderService implements OnModuleInit {
       await this.customers.requireExisting(submission.input.existingCustomerUserId);
     }
 
+    let dispatcherUserId: string | undefined = userId;
+    if (submission.source === 'client_order') {
+      try {
+        dispatcherUserId = await this.resolveDispatcher(clubId, submission.input.dispatcherUserId);
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          // A concurrent request can save the original assignment while eligibility changes.
+          const saved = await this.orders.findOne(key).lean();
+          if (saved) return this.checkReplay(saved, submission);
+        }
+        throw error;
+      }
+    }
+
     const ownership =
       submission.source === 'direct_dispatch'
         ? {
-            dispatcherUserId: userId,
             dispatcherAssignment: 'creator',
             dispatchStatus: 'draft',
             customerLinkStatus: submission.input.existingCustomerUserId ? 'verified' : 'pending_verification',
@@ -716,14 +838,11 @@ export class ClubOrderService implements OnModuleInit {
             newCustomerNickname: submission.input.newCustomerNickname,
           }
         : {
-            dispatcherUserId: await this.resolveDispatcher(
-              clubId,
-              submission.input.dispatcherUserId,
-            ),
-            dispatcherAssignment: submission.input.dispatcherUserId
-              ? 'customer_selected'
-              : 'random',
-            dispatchStatus: 'pending',
+            requestedDispatcherUserId: submission.input.dispatcherUserId,
+            ...(dispatcherUserId ? {
+              dispatcherAssignment: submission.input.dispatcherUserId ? 'customer_selected' : 'random',
+              dispatchStatus: 'pending',
+            } : { dispatchStatus: 'pending_assignment' }),
             customerUserId: userId,
             customerLinkStatus: 'verified',
           };
@@ -732,6 +851,7 @@ export class ClubOrderService implements OnModuleInit {
       return await this.orders.create({
         ...key,
         ...ownership,
+        dispatcherUserId,
         businessType: 'heart_delivery',
         recipientGameAccount: input.recipientGameAccount,
         heartDelivery: {
@@ -760,7 +880,7 @@ export class ClubOrderService implements OnModuleInit {
     if (!candidates.length) {
       if (requestedUserId)
         throw new BadRequestException('指定账号不在本俱乐部可选派单人范围内');
-      throw new ConflictException('本俱乐部当前没有可选派单人，订单未创建');
+      return undefined;
     }
     return candidates[requestedUserId ? 0 : randomInt(candidates.length)];
   }
@@ -774,9 +894,9 @@ export class ClubOrderService implements OnModuleInit {
         ? order.customerLabel === submission.input.customerLabel &&
           order.selectedCustomerUserId === submission.input.existingCustomerUserId &&
           order.newCustomerNickname === submission.input.newCustomerNickname
-        : (order.dispatcherAssignment === 'customer_selected'
-            ? order.dispatcherUserId
-            : undefined) === submission.input.dispatcherUserId;
+        : (order.requestedDispatcherUserId ??
+            (order.dispatcherAssignment === 'customer_selected' ? order.dispatcherUserId : undefined)) ===
+          submission.input.dispatcherUserId;
     if (
       !matchesSourceFields ||
       order.recipientGameAccount !== input.recipientGameAccount ||

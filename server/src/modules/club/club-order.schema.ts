@@ -71,6 +71,24 @@ export class ClubOrderShare {
   executionGameAccounts: ExecutionGameAccount[];
 }
 
+@Schema({ _id: false })
+export class PendingAssignmentDecision {
+  @Prop({ type: String, enum: ['assigned', 'cancelled'], required: true })
+  kind: 'assigned' | 'cancelled';
+
+  @Prop({ type: String, required: true })
+  requestId: string;
+
+  @Prop({ type: String, required: true, match: USER_ID_PATTERN })
+  actorUserId: string;
+
+  @Prop({ type: Date, required: true })
+  decidedAt: Date;
+
+  @Prop({ type: String, match: USER_ID_PATTERN })
+  dispatcherUserId?: string;
+}
+
 @Schema({ collection: 'club_orders', timestamps: true, versionKey: false })
 export class ClubOrder {
   _id: Types.ObjectId;
@@ -128,22 +146,27 @@ export class ClubOrder {
   @Prop({ type: String, required: true, trim: true, maxlength: 120 })
   recipientGameAccount: string;
 
-  @Prop({ type: String, required: true, match: USER_ID_PATTERN })
-  dispatcherUserId: string;
+  @Prop({ type: String, match: USER_ID_PATTERN })
+  dispatcherUserId?: string;
+
+  @Prop({ type: String, match: USER_ID_PATTERN, immutable: true })
+  requestedDispatcherUserId?: string;
 
   @Prop({
     type: String,
-    enum: ['creator', 'customer_selected', 'random'],
-    required: true,
+    enum: ['creator', 'customer_selected', 'random', 'manual'],
   })
-  dispatcherAssignment: 'creator' | 'customer_selected' | 'random';
+  dispatcherAssignment?: 'creator' | 'customer_selected' | 'random' | 'manual';
 
   @Prop({
     type: String,
-    enum: ['draft', 'pending', 'published'],
+    enum: ['draft', 'pending_assignment', 'pending', 'published', 'cancelled'],
     required: true,
   })
-  dispatchStatus: 'draft' | 'pending' | 'published';
+  dispatchStatus: 'draft' | 'pending_assignment' | 'pending' | 'published' | 'cancelled';
+
+  @Prop({ type: SchemaFactory.createForClass(PendingAssignmentDecision) })
+  pendingAssignmentDecision?: PendingAssignmentDecision;
 
   @Prop({ type: Date })
   publishedAt?: Date;
@@ -193,6 +216,10 @@ ClubOrderSchema.index({
   _id: -1,
 });
 ClubOrderSchema.index({ clubId: 1, dispatcherUserId: 1, _id: -1 });
+ClubOrderSchema.index(
+  { clubId: 1, dispatchStatus: 1, source: 1, _id: -1 },
+  { partialFilterExpression: { dispatchStatus: 'pending_assignment', source: 'client_order' } },
+);
 ClubOrderSchema.index({ customerUserId: 1, customerLinkStatus: 1, _id: -1 });
 ClubOrderSchema.index({
   clubId: 1,

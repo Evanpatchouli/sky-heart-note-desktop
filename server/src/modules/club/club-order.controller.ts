@@ -10,14 +10,16 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import type { SessionUser } from '../../auth/app-access';
+import { appOrigins, type SessionUser } from '../../auth/app-access';
 import { AppAccess, AuthUser } from '../../auth/auth.decorator';
 import Resp from '../../common/models/Resp';
 import {
+  AssignDispatcherDto,
   ClubOrderQuery,
   CreateClientOrderDto,
   CreateDirectOrderDto,
   OrderCustomerQuery,
+  OrderRequestDto,
   EmployeeClubOrderQuery,
 } from './club-order.dto';
 import { ClubDirectoryService } from './club-directory.service';
@@ -47,7 +49,18 @@ export class EmployeeClubController {
 
   @Get()
   async list(@AuthUser() user: SessionUser) {
-    return Resp.success(await this.directory.listEmployeeClubs(user.id));
+    const clubs = await this.directory.listEmployeeClubs(user.id);
+    const clientOrigin = appOrigins().client;
+    return Resp.success(clubs.map((club) => {
+      const orderUrl = new URL('/order', clientOrigin);
+      orderUrl.searchParams.set('club', club.id);
+      return { ...club, orderUrl: orderUrl.href };
+    }));
+  }
+
+  @Get(':clubId/assignment-candidates')
+  async assignmentCandidates(@AuthUser() user: SessionUser, @Param('clubId') clubId: string) {
+    return Resp.success(await this.directory.listAssignmentCandidates(clubId, user.id));
   }
 
   @Get(':clubId/order-customers')
@@ -67,6 +80,25 @@ export class EmployeeClubController {
 @Controller('employee/clubs/:clubId/orders')
 export class EmployeeClubOrderController {
   constructor(private readonly orders: ClubOrderService) {}
+
+  @Get('pending-assignment')
+  async listPendingAssignment(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Query() query: ClubOrderQuery,
+  ) {
+    return Resp.success(await this.orders.listPendingAssignmentOrders(clubId, user.id, query));
+  }
+
+  @Post(':orderId/assign-dispatcher')
+  async assignDispatcher(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: AssignDispatcherDto,
+  ) {
+    return Resp.success(await this.orders.assignPendingOrder(clubId, user.id, orderId, input));
+  }
 
   @Post(':orderId/customer-activation')
   @Header('Cache-Control', 'no-store')
@@ -183,6 +215,16 @@ export class EmployeeClubOrderController {
 export class ClientClubOrderController {
   constructor(private readonly orders: ClubOrderService) {}
 
+  @Post(':orderId/cancel-before-assignment')
+  async cancelPendingOrder(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: OrderRequestDto,
+  ) {
+    return Resp.success(await this.orders.cancelPendingOrder(clubId, user.id, orderId, input.requestId));
+  }
+
   @Post()
   async create(
     @AuthUser() user: SessionUser,
@@ -214,6 +256,17 @@ export class ClientClubOrderController {
     return Resp.success(
       await this.orders.getCustomerOrder(clubId, user.id, orderId),
     );
+  }
+}
+
+@AppAccess('client')
+@Controller('client/clubs')
+export class ClientClubController {
+  constructor(private readonly directory: ClubDirectoryService) {}
+
+  @Get(':clubId/order-options')
+  async orderOptions(@Param('clubId') clubId: string) {
+    return Resp.success(await this.directory.getClientOrderOptions(clubId));
   }
 }
 

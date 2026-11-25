@@ -14,13 +14,20 @@ import {
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, type DeliveryPeriodPreference } from '@webapp-template/common';
 import { ORDER_SOURCES, type OrderSource } from './club-order.schema';
 
-class CreateOrderDto {
+export class OrderRequestDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.toLowerCase() : value,
   )
   @IsUUID('4')
   requestId: string;
+}
 
+export class AssignDispatcherDto extends OrderRequestDto {
+  @Matches(USER_ID_PATTERN)
+  dispatcherUserId: string;
+}
+
+class CreateOrderDto extends OrderRequestDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @Length(1, 120)

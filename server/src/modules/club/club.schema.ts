@@ -5,6 +5,9 @@ import { CLUB_PERMISSIONS, type ClubPermission } from './club-permissions';
 import { CommissionRuleSchema } from './club-pricing.schema';
 
 export const CLUB_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
+export const CLUB_LEADERSHIP_POSITIONS = ['leader', 'deputy'] as const;
+export const CLUB_MEMBER_POSITIONS = ['member', ...CLUB_LEADERSHIP_POSITIONS] as const;
+export type ClubMemberPosition = (typeof CLUB_MEMBER_POSITIONS)[number];
 
 @Schema({ collection: 'clubs', timestamps: true, versionKey: false })
 export class Club {
@@ -43,6 +46,9 @@ export class ClubMember {
 
   @Prop({ type: Boolean, required: true })
   dispatcher: boolean;
+
+  @Prop({ type: String, enum: CLUB_MEMBER_POSITIONS })
+  position?: ClubMemberPosition;
 
   @Prop({ type: [String], enum: CLUB_PERMISSIONS, default: [] })
   permissions: ClubPermission[];

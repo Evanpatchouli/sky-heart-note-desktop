@@ -22,7 +22,10 @@ import {
   type ClubPermission,
 } from './club-permissions';
 import type { UpdateCommissionRuleDto } from './club-pricing.dto';
-import { Club, ClubMember, CLUB_ID_PATTERN } from './club.schema';
+import {
+  Club, ClubMember, CLUB_ID_PATTERN, CLUB_LEADERSHIP_POSITIONS,
+  CLUB_MEMBER_POSITIONS, type ClubMemberPosition,
+} from './club.schema';
 
 @Injectable()
 export class ClubDirectoryService implements OnModuleInit {
@@ -40,8 +43,19 @@ export class ClubDirectoryService implements OnModuleInit {
   async requireClub(clubId: string) {
     if (!CLUB_ID_PATTERN.test(clubId))
       throw new BadRequestException('俱乐部标识格式无效');
-    if (!(await this.clubs.exists({ _id: clubId })))
-      throw new NotFoundException('俱乐部不存在');
+    const club = await this.clubs.findById(clubId).select({ name: 1 }).lean();
+    if (!club) throw new NotFoundException('俱乐部不存在');
+    return club;
+  }
+
+  async getClientOrderOptions(clubId: string) {
+    const club = await this.requireClub(clubId);
+    const userIds = (await this.eligibleDispatchers(clubId)).sort();
+    const nicknames = await this.memberNicknames(userIds);
+    return {
+      clubName: club.name,
+      dispatchers: userIds.map((userId) => ({ userId, nickname: nicknames.get(userId) ?? null })),
+    };
   }
 
   async requireMember(clubId: string, userId: string) {
@@ -74,16 +88,52 @@ export class ClubDirectoryService implements OnModuleInit {
   }
 
   async listEmployeeClubs(userId: string) {
-    const clubIds = await this.members.distinct('clubId', {
-      userId,
-      active: true,
-    });
+    const memberships = await this.members
+      .find({ userId, active: true })
+      .select({ clubId: 1, position: 1 })
+      .lean();
+    const leadershipClubs = new Set(memberships
+      .filter(({ position }) => position === 'leader' || position === 'deputy')
+      .map(({ clubId }) => clubId));
     const clubs = await this.clubs
-      .find({ _id: { $in: clubIds } })
+      .find({ _id: { $in: memberships.map(({ clubId }) => clubId) } })
       .select({ name: 1 })
       .sort({ _id: 1 })
       .lean();
-    return clubs.map(({ _id, name }) => ({ id: _id, name }));
+    return clubs.map(({ _id, name }) => ({
+      id: _id, name,
+      ...(leadershipClubs.has(_id) ? { canAssignPendingOrders: true } : {}),
+    }));
+  }
+
+  async requireAssignmentLeader(clubId: string, userId: string) {
+    await this.requireClub(clubId);
+    if (!(await this.members.exists({
+      clubId, userId, active: true, position: { $in: CLUB_LEADERSHIP_POSITIONS },
+    }))) {
+      throw new ForbiddenException('仅本俱乐部团长或副团长可处理待分配订单');
+    }
+  }
+
+  async listAssignmentCandidates(clubId: string, actorUserId: string) {
+    await this.requireAssignmentLeader(clubId, actorUserId);
+    const members = await this.members.find({ clubId, active: true })
+      .select({ userId: 1, dispatcher: 1, _id: 0 })
+      .sort({ dispatcher: -1, userId: 1 })
+      .lean();
+    const ids = await this.enabledAppUserIds('employee', members.map(({ userId }) => userId));
+    const eligible = new Set(ids);
+    const nicknames = await this.memberNicknames(ids);
+    return members.filter(({ userId }) => eligible.has(userId)).map(({ userId, dispatcher }) => ({
+      userId, dispatcher, nickname: nicknames.get(userId) ?? null,
+    }));
+  }
+
+  async requireAssignmentCandidate(clubId: string, userId: string) {
+    if (!(await this.members.exists({ clubId, userId, active: true })) ||
+        !(await this.enabledAppUserIds('employee', [userId])).length) {
+      throw new BadRequestException('请选择本俱乐部有效且可进入团员端的团员');
+    }
   }
 
   async readCommissionRule(clubId: string) {
@@ -235,9 +285,26 @@ export class ClubDirectoryService implements OnModuleInit {
       throw new NotFoundException('俱乐部成员不存在');
     await this.members.updateOne(
       key,
-      { $set: { active, dispatcher, ...(active ? {} : { permissions: [] }) } },
+      { $set: { active, dispatcher, ...(active ? {} : { permissions: [], position: 'member' }) } },
       { upsert: active, runValidators: true },
     );
+  }
+
+  async setMemberPosition(clubId: string, userId: string, position: ClubMemberPosition) {
+    await this.requireClub(clubId);
+    this.requireUserId(userId);
+    if (!CLUB_MEMBER_POSITIONS.includes(position)) {
+      throw new BadRequestException('无效的俱乐部成员职务');
+    }
+    if (position !== 'member' && !(await this.enabledAppUserIds('employee', [userId])).length) {
+      throw new BadRequestException('任职对象须是拥有团员端准入权限的有效平台账号');
+    }
+    const { matchedCount } = await this.members.updateOne(
+      { clubId, userId, active: true },
+      { $set: { position } },
+      { runValidators: true },
+    );
+    if (!matchedCount) throw new NotFoundException('本俱乐部有效成员不存在');
   }
 
   async setAdminPermission(
@@ -283,7 +350,7 @@ export class ClubDirectoryService implements OnModuleInit {
       throw new BadRequestException('请输入四位用户 ID');
   }
 
-  private async memberNicknames(userIds: string[]) {
+  async memberNicknames(userIds: string[]) {
     const users = await this.users
       .find({ _id: { $in: userIds } })
       .select({ _id: 1, nickname: 1 })

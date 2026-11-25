@@ -7,6 +7,7 @@ import { AdminClubController } from './admin-club.controller';
 import { ClubCustomerService } from './club-customer.service';
 import { ClubDirectoryService } from './club-directory.service';
 import {
+  ClientClubController,
   ClientClubOrderController,
   ClientOwnOrdersController,
   EmployeeClubController,
@@ -31,6 +32,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     AdminClubController,
     EmployeeClubController,
     EmployeeClubOrderController,
+    ClientClubController,
     ClientClubOrderController,
     ClientOwnOrdersController,
   ],

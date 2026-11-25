@@ -9,6 +9,7 @@ import {
   CLUB_PERMISSIONS,
   isClubPermission,
 } from '../modules/club/club-permissions';
+import { CLUB_MEMBER_POSITIONS } from '../modules/club/club.schema';
 
 const mongo = AppConfig.DataBase.Mongo;
 
@@ -35,11 +36,14 @@ async function run(args: string[]) {
     (command === 'grant' || command === 'revoke') &&
     args.length === 4 &&
     isClubPermission(status);
-  if (!saveClub && !saveMember && !changePermission) {
+  const position = CLUB_MEMBER_POSITIONS.find((item) => item === status);
+  const changePosition = command === 'position' && args.length === 4 && position;
+  if (!saveClub && !saveMember && !changePermission && !changePosition) {
     throw new Error(
       [
         '用法：club <俱乐部标识> <名称>',
         '      member <俱乐部标识> <四位用户ID> <active|inactive> <dispatcher|member>',
+        `      position <俱乐部标识> <四位用户ID> <${CLUB_MEMBER_POSITIONS.join('|')}>`,
         `      <grant|revoke> <俱乐部标识> <四位用户ID> <${CLUB_PERMISSIONS.join('|')}>`,
       ].join('\n'),
     );
@@ -59,6 +63,8 @@ async function run(args: string[]) {
         status === 'active',
         mark === 'dispatcher',
       );
+    else if (changePosition)
+      await directory.setMemberPosition(clubId, value, changePosition);
     else if (changePermission)
       await directory.setAdminPermission(
         clubId,
