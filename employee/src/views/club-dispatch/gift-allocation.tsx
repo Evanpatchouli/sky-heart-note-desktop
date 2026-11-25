@@ -286,7 +286,7 @@ export function PublishedGiftAllocation({ route, revision, onChanged }: { route:
               return <Card key={share.id} size="small" style={{ marginBlock: 8 }}>
                 <p>{labels.get(share.userId) ?? share.userId} · 当前承接 {share.netGiftTimes} 次
                   {" · 已送 "}{share.deliveredGiftTimes ?? 0} 次 · 未送 {Math.max(0, outstanding)} 次
-                  {share.transferredGiftTimes ? ` · 原领 ${share.giftTimes} 次 · 已改派 ${share.transferredGiftTimes} 次` : ""}</p>
+                  {share.transferredGiftTimes ? ` · 原领 ${share.giftTimes} 次 · 已转出 ${share.transferredGiftTimes} 次` : ""}</p>
                 <p>接单实收爱心 {share.actualReceivedHearts === undefined ? "未记录" : `${share.actualReceivedHearts} 颗`}</p>
                 <GiftSchedule schedule={share.schedule} />
                 {share.originalSchedule && <details><summary>原领取日程</summary><GiftSchedule schedule={share.originalSchedule} /></details>}

@@ -256,7 +256,7 @@ function Orders({ clubId, orderId, onClearOrder }: { clubId: string; orderId?: s
             })}
             {segment.shares.map(share => <div key={share.id} style={{ marginBlock: 8 }}>
               <Tag color="green">我的承接</Tag>{share.netGiftTimes} 次
-              {share.transferredGiftTimes ? ` · 原领 ${share.giftTimes} 次 · 已改派 ${share.transferredGiftTimes} 次` : ""}
+              {share.transferredGiftTimes ? ` · 原领 ${share.giftTimes} 次 · 已转出 ${share.transferredGiftTimes} 次` : ""}
               <div>接单实收爱心 {share.actualReceivedHearts === undefined ? "未记录" : `${share.actualReceivedHearts} 颗`}</div>
               <GiftSchedule schedule={share.schedule} />
               {share.originalSchedule && <details><summary>原领取日程</summary><GiftSchedule schedule={share.originalSchedule} /></details>}

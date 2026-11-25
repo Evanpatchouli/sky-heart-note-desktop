@@ -39,7 +39,7 @@ export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress
       </dd>
     </dl>
     {progress.periods.length > 0 && <>
-      <p>仅改变到账倍率的价差 ¥{formatCentsAsYuan(progress.periodOnlyDifferenceCents)}。每次单价沿用原段约定。</p>
+      <p>仅改变到账倍率的价差 ¥{formatCentsAsYuan(progress.periodOnlyDifferenceCents)}。实际履约按对应段的单价核对。</p>
       <PeriodProgress rows={progress.periods} />
     </>}
     {progress.pendingPromotionalGiftTimes ? <p>促销赠送有 {progress.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p>
@@ -48,7 +48,7 @@ export function GiftOrderProgress({ progress }: { progress: CustomerGiftProgress
       {progress.segments.map(segment => <li key={segment.segmentIndex}>
         第 {segment.segmentIndex + 1} 段 · {periods[segment.period]} · {segment.promotionalGiftTimes ? "促销赠送" : "约定"} {segment.agreedGiftTimes} 次 · {segment.dailyGiftTimes} 次/日
         {!segment.promotionalGiftTimes && ` · ¥${formatCentsAsYuan(segment.unitPriceCents)}/次`}
-        <br />已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次 · 原段预计到账 {giftCount(segment.estimatedReceivedHearts)}
+        <br />已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次 · 本段预计到账 {giftCount(segment.estimatedReceivedHearts)}
         <br />按实际时段预计 {giftCount(segment.estimatedDeliveredHearts)} · 日报到账 {giftCount(segment.actualReceivedHearts)}
         {segment.claimObservedReceivedHearts.length > 0 ? <><br />接单时观察 {segment.claimObservedReceivedHearts.map(giftCount).join("、")}</> : null}
         {segment.window ? <><br />执行 {segment.window.startDate} 至 {segment.window.endDate}</> : null}

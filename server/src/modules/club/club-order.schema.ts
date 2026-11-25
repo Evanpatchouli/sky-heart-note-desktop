@@ -4,6 +4,7 @@ import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/c
 import type { DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { SchemaTypes, Types } from 'mongoose';
 import type { GiftDispatchState } from './club-gift-allocation';
+import type { StoredGiftPriceAdjustment } from './club-gift-price-basis';
 import {
   CommissionReviewSchema,
   DispatchPricingSchema,
@@ -204,6 +205,12 @@ export class ClubOrder {
 
   @Prop({ type: SchemaTypes.Mixed })
   giftDispatch?: GiftDispatchState;
+
+  @Prop({ type: [SchemaTypes.Mixed], default: undefined })
+  giftPriceAdjustments?: StoredGiftPriceAdjustment[];
+
+  @Prop({ type: String, enum: ['awaiting_decision', 'awaiting_supplement', 'continuing', 'stopped', 'needs_requote', 'superseded'] })
+  giftPriceAdjustmentState?: StoredGiftPriceAdjustment['state'];
 
   @Prop({ type: String })
   giftPublicationScheduleFingerprint?: string;

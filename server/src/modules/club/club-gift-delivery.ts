@@ -77,9 +77,14 @@ export function allPaidGiftsDelivered(
   timesByShare: Map<string, bigint>,
 ) {
   const dispatchByIndex = new Map(order.giftDispatch?.segments.map(segment => [segment.segmentIndex, segment]));
-  return paidSegmentIndices.every(index => {
+  const paidScope = new Set(paidSegmentIndices);
+  for (const adjustment of order.giftPriceAdjustments ?? []) {
+    if (adjustment.newQuoteSegment && paidScope.has(adjustment.preview.quoteSegment - 1))
+      paidScope.add(adjustment.newQuoteSegment - 1);
+  }
+  return [...paidScope].every(index => {
     const quote = quotes[index];
-    if (!quote?.paidGiftTimes) return false;
+    if (!quote || quote.promotionalGiftTimes) return false;
     const covered = (dispatchByIndex.get(index)?.shares ?? []).reduce((sum, share) => {
       const observed = timesByShare.get(share.id) ?? 0n;
       const assigned = BigInt(share.giftTimes - (share.transferredGiftTimes ?? 0));
@@ -219,6 +224,22 @@ export function giftFactsByShare(facts: GiftDayFact[]) {
     byShare.set(id, rows);
   }
   return byShare;
+}
+
+export function deliveredGiftTimesBySegment(order: ClubOrder, facts: GiftDayFact[]) {
+  const byShare = new Map<string, bigint>();
+  for (const fact of eligiblePromotionalFacts(order, facts)) {
+    addGiftTimesByShare(byShare, fact._id.shareId.toHexString(),
+      fact.eligibleGiftTimes ?? BigInt(fact.giftTimes.toString()));
+  }
+  return new Map(order.giftDispatch?.segments.map(segment => [
+    segment.segmentIndex,
+    segment.shares.reduce((delivered, share) => {
+      const count = byShare.get(share.id) ?? 0n;
+      const capacity = BigInt(share.giftTimes - (share.transferredGiftTimes ?? 0));
+      return delivered + Number(count > capacity ? capacity : count);
+    }, 0),
+  ]));
 }
 
 const actualPeriods: GiftReportPeriod[] = ['normal', 'double', 'unconfirmed'];

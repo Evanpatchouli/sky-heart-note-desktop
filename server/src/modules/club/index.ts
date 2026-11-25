@@ -3,6 +3,8 @@ import { ClubDeliveryController } from './club-delivery.controller';
 import { DailyReport, DailyReportSchema } from './club-delivery.schema';
 import { ClubGiftDeliveryService } from './club-gift-delivery.service';
 import { ClubGiftSupervision } from './club-gift-supervision';
+import { ClientGiftPriceAdjustmentController, EmployeeGiftPriceAdjustmentController } from './club-gift-price-adjustment.controller';
+import { ClubGiftPriceAdjustmentService } from './club-gift-price-adjustment.service';
 import { ClientContinuationController, EmployeeContinuationController } from './club-continuation.controller';
 import { ClubContinuationService } from './club-continuation.service';
 import { Module } from '@nestjs/common';
@@ -48,6 +50,8 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ]),
   ],
   controllers: [
+    ClientGiftPriceAdjustmentController,
+    EmployeeGiftPriceAdjustmentController,
     ClientContinuationController,
     EmployeeContinuationController,
     AdminClubController,
@@ -61,7 +65,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubOrderController,
     ClientOwnOrdersController,
   ],
-  providers: [ClubPromotionService, ClubContinuationService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
+  providers: [ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService],
   exports: [ClubDirectoryService, ClubOrderService],
 })
 export class ClubModule {}

@@ -17,6 +17,7 @@ export const writableGiftDispatch = {
   dispatchWithdrawnAt: null,
   termination: null,
   'priceAdjustment.state': { $in: [null, 'continuing'] },
+  giftPriceAdjustmentState: { $in: [null, 'continuing', 'superseded'] },
   closedAt: null,
 };
 
@@ -26,7 +27,14 @@ export function acceptsGiftExecution(order: ClubOrder & {
   priceAdjustment?: { state: string };
 }) {
   return order.closedAt == null && order.dispatchWithdrawnAt == null && order.termination == null &&
-    (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing');
+    (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing') &&
+    (order.giftPriceAdjustmentState == null || order.giftPriceAdjustmentState === 'continuing' ||
+      order.giftPriceAdjustmentState === 'superseded');
+}
+
+export function canProposeGiftPrice(order: ClubOrder) {
+  return acceptsGiftExecution(order) || (order.giftPriceAdjustmentState === 'needs_requote' &&
+    acceptsGiftExecution({ ...order, giftPriceAdjustmentState: undefined }));
 }
 
 export async function saveGiftDispatch(

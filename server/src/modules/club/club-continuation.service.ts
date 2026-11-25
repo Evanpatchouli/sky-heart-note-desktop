@@ -5,6 +5,7 @@ import { isObjectIdOrHexString, Model, type QueryFilter } from 'mongoose';
 import { ClubDirectoryService } from './club-directory.service';
 import { activeGiftSegments, requireGiftWindowCapacity } from './club-gift-allocation';
 import { writableGiftDispatch } from './club-gift-execution.service';
+import { giftPriceAmendmentView } from './club-gift-price-basis';
 import { canContinueGiftOrder } from './club-gift-supervision';
 import { ClubOrder } from './club-order.schema';
 import type { AddContinuationQuoteDto, ContinuationActionDto, ContinuationWindowDto, RecordContinuationReceiptDto, RequestContinuationDto } from './club-pricing.dto';
@@ -163,10 +164,17 @@ export class ClubContinuationService {
       if (!quote.window || !quote.acceptance || quote.receipt || input.receivedAmountCents !== quote.amountCents)
         throw new ConflictException('须由老板确认报价并登记足额实收后才能激活续段');
       const active = activeGiftSegments(order);
-      const paid = (order.continuationQuotes ?? []).reduce(
+      const paid = giftPriceAmendmentView(order).priceAdjustment?.cumulativeReceivedCents ?? (order.continuationQuotes ?? []).reduce(
         (sum, item) => sum + (item.receipt?.receivedAmountCents ?? 0), order.receipt?.receivedAmountCents ?? 0,
       );
-      const capacity = active.map(segment => ({ ...segment, paidGiftTimes: giftSegmentTimes(segment) }));
+      // Repricing preserves the original schedule and segment numbers. Only the
+      // surviving capacity participates in the new receipt's aggregate limit.
+      const capacity = active.flatMap(segment => {
+        const paidGiftTimes = giftSegmentTimes(segment);
+        return paidGiftTimes ? [{
+          ...segment, paidGiftTimes, dailyGiftTimes: Math.min(segment.dailyGiftTimes, paidGiftTimes),
+        }] : [];
+      });
       if (!calculateGiftQuote([...capacity, quote.segment]) || !Number.isSafeInteger(paid + input.receivedAmountCents))
         throw new BadRequestException('续段后的整单赠送次数或收款金额超出范围');
       const receipt = {
@@ -205,6 +213,7 @@ export class ClubContinuationService {
         dispatcherUserId: order.dispatcherUserId ?? null, customerUserId: order.customerUserId ?? null,
         customerLinkStatus: order.customerLinkStatus,
         continuationRevision: order.continuationRevision ?? { $in: [null, 0] },
+        fulfillmentRevision: order.fulfillmentRevision ?? { $in: [null, 0] },
       }, {
         $set: operation.update, $inc: { continuationRevision: 1 },
       }, { runValidators: true, writeConcern: { w: 'majority', j: true } });

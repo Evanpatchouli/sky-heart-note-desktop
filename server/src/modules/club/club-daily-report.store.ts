@@ -101,13 +101,14 @@ export class ClubDailyReportStore implements OnModuleInit {
     };
   }
 
-  async stage(order: ClubOrder, scope: QueryFilter<ClubOrder>, report: DailyReport) {
+  async stage(order: ClubOrder, scope: QueryFilter<ClubOrder>, report: DailyReport,
+    priceAdjustment?: Pick<ClubOrder, 'giftPriceAdjustments' | 'giftPriceAdjustmentState'>) {
     const { modifiedCount } = await this.orders.updateOne({
       ...scope,
       _id: order._id,
       fulfillmentRevision: order.fulfillmentRevision ?? { $in: [null, 0] },
       pendingDailyReport: null,
-    }, { $set: { pendingDailyReport: report }, $inc: { fulfillmentRevision: 1 } }, durable);
+    }, { $set: { pendingDailyReport: report, ...priceAdjustment }, $inc: { fulfillmentRevision: 1 } }, durable);
     if (!modifiedCount) return false;
     await this.flushPendingReport({ _id: order._id, pendingDailyReport: report });
     return true;

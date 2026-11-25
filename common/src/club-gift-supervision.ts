@@ -1,6 +1,7 @@
 import type { GiftWindow } from './club-gift-dispatch';
 import type { GiftPerformance } from './club-gift-delivery';
 import type { GiftPriceSegment } from './club-pricing';
+import type { GiftPriceAdjustment } from './club-gift-price-adjustment';
 
 type ReportCount = number | string;
 
@@ -36,6 +37,8 @@ export interface CustomerGiftProgress extends GiftSupervisionTotals {
   closedAt: string | null;
   canRequestContinuation: boolean;
   periodOnlyDifferenceCents: 0;
+  priceAdjustment?: GiftPriceAdjustment;
+  priceAdjustmentHistory?: GiftPriceAdjustment[];
 }
 
 export function isGiftOrderProgress(value: object | null | undefined): value is CustomerGiftProgress {

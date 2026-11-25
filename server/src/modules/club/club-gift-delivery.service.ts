@@ -115,12 +115,61 @@ export class ClubGiftDeliveryService {
         throw new BadRequestException('单份日报的实际到账合计超出整数范围');
       const id = new Types.ObjectId();
       const businessDate = correction ? previous!.businessDate : input.businessDate;
+      const submittedAt = new Date();
+      let priceAdjustment: Pick<ClubOrder, 'giftPriceAdjustments' | 'giftPriceAdjustmentState'> | undefined;
       const previousByShare = new Map<string, { times: bigint; scope?: number[] }>();
       for (const line of previous?.lines ?? []) {
         const id = (line.shareId ?? shareId).toHexString();
         const existing = previousByShare.get(id);
         previousByShare.set(id, { times: (existing?.times ?? 0n) + BigInt(line.giftTimes),
           scope: existing?.scope ?? line.promotionPaidSegmentIndices });
+      }
+      const amendments = order.giftPriceAdjustments ?? [];
+      if (amendments.length) {
+        const current = amendments.at(-1)!;
+        const held = current.state === 'awaiting_decision' || current.state === 'awaiting_supplement' ||
+          current.state === 'needs_requote' || current.state === 'stopped';
+        const holdDate = new Date(Date.parse(current.holdStartedAt ?? current.submittedAt) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        if (held && input.kind === 'supplement' && businessDate > holdDate)
+          throw new ConflictException('改价暂停或已停送时，只能补报暂停前的实际履约');
+        const submitted = new Map<string, bigint>();
+        for (const line of lines) addGiftTimesByShare(submitted, line.shareId!.toHexString(), BigInt(line.giftTimes));
+        const changedShares = [...new Set([...submitted.keys(), ...previousByShare.keys()])].filter(id =>
+          (submitted.get(id) ?? 0n) !== (previousByShare.get(id)?.times ?? 0n));
+        for (const id of changedShares) {
+          const replacement = amendments.find(item => item.newQuoteSegment === linkedShares.get(id)! + 1);
+          if (!replacement || (submitted.get(id) ?? 0n) <= (previousByShare.get(id)?.times ?? 0n)) continue;
+          if (replacement.earliestBusinessDate && businessDate < replacement.earliestBusinessDate)
+            throw new ConflictException('该日报属于改价前的履约，请使用当时适用的计价段');
+          if ([...previousByShare].some(([share, row]) => linkedShares.get(share)! < replacement.newQuoteSegment! - 1 &&
+              (submitted.get(share) ?? 0n) < row.times))
+            throw new ConflictException('同日可追加改价续送明细，原计价段已有实绩须保留');
+        }
+        const paidShares = changedShares.filter(id => quotes[linkedShares.get(id)!]?.paidGiftTimes);
+        if (held && paidShares.length) {
+          const totals = new Map<string, bigint>();
+          for (const fact of await giftDayFacts(this.reports.collection, order))
+            addGiftTimesByShare(totals, fact._id.shareId.toHexString(), BigInt(fact.giftTimes.toString()));
+          const changed = paidShares.some(id => {
+            const segment = order.giftDispatch!.segments.find(item => item.segmentIndex === linkedShares.get(id))!;
+            const share = segment.shares.find(item => item.id === id)!;
+            const limit = BigInt(share.giftTimes - (share.transferredGiftTimes ?? 0));
+            const before = totals.get(id) ?? 0n;
+            const after = before - (previousByShare.get(id)?.times ?? 0n) + (submitted.get(id) ?? 0n);
+            return (before > limit ? limit : before) !== (after > limit ? limit : after);
+          });
+          if (changed) {
+            const state = current.state === 'stopped' ? 'stopped' : 'needs_requote';
+            const updated = {
+              ...current, state, revision: current.revision + 1,
+              latestFactChange: { reportId: id.toHexString(), version: (previous?.version ?? 0) + 1, recordedAt: submittedAt.toISOString() },
+            } satisfies typeof current;
+            priceAdjustment = {
+              giftPriceAdjustments: [...amendments.slice(0, -1), updated],
+              giftPriceAdjustmentState: state,
+            };
+          }
+        }
       }
       const promotionalLines = lines.filter(line => quotes[line.quoteSegment! - 1].promotionalGiftTimes);
       if (promotionalLines.some(line => line.giftTimes)) {
@@ -158,15 +207,19 @@ export class ClubGiftDeliveryService {
         memberNickname: previous ? previous.memberNickname : account.memberNickname,
         recipientGameAccount: previous?.recipientGameAccount ?? account.recipientGameAccount,
         businessDate,
-        submittedAt: new Date(), kind: input.kind, version: (previous?.version ?? 0) + 1,
+        submittedAt, kind: input.kind, version: (previous?.version ?? 0) + 1,
         originalId: previous?.originalId ?? id, requestHash, reason: input.reason,
         lines, receivedHearts: lines.some(line => line.receivedHearts === null) ? null : hearts,
       };
+      // A rejected duplicate must never invalidate the quote along with a report that was not admitted.
+      if (priceAdjustment && !correction && await this.reports.exists({
+        orderId: order._id, userId, accountId, businessDate, version: 1,
+      })) throw new ConflictException('该送心号在这一天已有日报，请查看原记录或更正');
       if (!await this.store.stage(order, {
         ...(input.kind === 'daily' ? writableGiftDispatch : publishedGiftOrder),
         closedAt: null, clubId, 'giftDispatch.segments.shares.userId': userId,
         ...(promotionalLines.length ? { continuationRevision: order.continuationRevision ?? { $in: [null, 0] } } : {}),
-      }, report)) {
+      }, report, priceAdjustment)) {
         await wait(5 + Math.random() * 20);
         continue;
       }

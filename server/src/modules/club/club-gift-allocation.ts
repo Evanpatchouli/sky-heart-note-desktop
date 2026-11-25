@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { giftFulfillmentSegments, giftSegmentTimes } from '@webapp-template/common';
+import { giftSegmentTimes } from '@webapp-template/common';
 import type {
   GiftClaimResult, GiftDayAllocation, GiftExecutionAccount, GiftDispatchSegment, GiftOffer, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow,
 } from '@webapp-template/common';
 import { Types } from 'mongoose';
 import type { ClubOrder } from './club-order.schema';
+import { giftPriceSegments } from './club-gift-price-basis';
 
 const dayMilliseconds = 86_400_000;
 const maximumWindowDays = 3660;
@@ -72,11 +73,7 @@ export function requireGiftWindowCapacity(window: GiftWindow, times: number, dai
 }
 
 export function activeGiftSegments(order: ClubOrder): GiftPriceSegment[] {
-  const initial = giftFulfillmentSegments(order.dispatchPricing?.giftSegments ?? [], order.dispatchPricing?.promotions);
-  const active = (order.continuationQuotes ?? [])
-    .filter(quote => quote.receipt && quote.segmentIndex !== undefined)
-    .sort((a, b) => a.segmentIndex! - b.segmentIndex!);
-  return [...initial, ...active.map(quote => quote.segment)];
+  return giftPriceSegments(order).map(({ segment }) => segment);
 }
 
 export function giftSchedule(days: GiftDayAllocation[]) {
@@ -302,4 +299,58 @@ export function transferGiftDays(
     dailyGiftTimes: Math.max(...days.map(day => day.dailyGiftTimes)),
     transferredFromShareId: share.id, accepted: false,
   };
+}
+
+export function moveRepricedGifts(
+  state: GiftDispatchState, sourceIndex: number, sourceQuote: GiftPriceSegment, destinationIndex: number,
+  moving: number, sentByShare: ReadonlyMap<string, ReadonlyMap<string, number>>,
+) {
+  const source = state.segments.find(segment => segment.segmentIndex === sourceIndex);
+  if (!source) return;
+  const destination: StoredGiftSegment = {
+    ...source, segmentIndex: destinationIndex, offers: [], shares: [],
+  };
+  // Unreserved obligations carry over without allocating them to a new member.
+  let reservedToMove = Math.max(0, moving - inventory(source, sourceQuote).remaining);
+  for (const offer of source.offers) {
+    if (!reservedToMove || offer.accepted) continue;
+    const amounts: DayAmounts = new Map();
+    addDays(amounts, offer.days);
+    const moved = take(new Map([...amounts].reverse()), Number.MAX_SAFE_INTEGER, reservedToMove);
+    const giftTimes = total(moved);
+    const days = compress(moved);
+    if (!giftTimes) continue;
+    for (const [day, count] of moved) amounts.set(day, amounts.get(day)! - count);
+    const { transferredFromShareId: _transferred, ...original } = offer;
+    destination.offers.push({
+      ...original, id: new Types.ObjectId().toHexString(), giftTimes, days,
+      startDate: days[0].startDate, endDate: days.at(-1)!.endDate,
+      dailyGiftTimes: Math.max(...days.map(day => day.dailyGiftTimes)),
+    });
+    offer.giftTimes -= giftTimes;
+    offer.days = compress(amounts);
+    if (offer.days.length) {
+      offer.startDate = offer.days[0].startDate;
+      offer.endDate = offer.days.at(-1)!.endDate;
+      offer.dailyGiftTimes = Math.max(...offer.days.map(day => day.dailyGiftTimes));
+    }
+    reservedToMove -= giftTimes;
+  }
+  source.offers = source.offers.filter(offer => offer.giftTimes > 0);
+  for (const share of [...source.shares].reverse()) {
+    if (!reservedToMove) break;
+    const sent = sentByShare.get(share.id) ?? new Map<string, number>();
+    const outstanding = share.giftTimes - (share.transferredGiftTimes ?? 0) - [...sent.values()].reduce((sum, count) => sum + count, 0);
+    const giftTimes = Math.min(reservedToMove, outstanding);
+    if (giftTimes <= 0) continue;
+    const moved = transferGiftDays(share, sent, share.userId, giftTimes);
+    const amounts = directedGiftDays(moved);
+    const { shareId } = awardGiftShare(destination, share.kind, share.userId, amounts, moved.dailyGiftTimes);
+    for (const account of state.executionAccounts ?? []) {
+      if (account.shareIds.includes(share.id)) account.shareIds.push(shareId!);
+    }
+    reservedToMove -= giftTimes;
+  }
+  if (reservedToMove) throw new ConflictException('剩余份额已变化，请刷新后核对');
+  state.segments.push(destination);
 }

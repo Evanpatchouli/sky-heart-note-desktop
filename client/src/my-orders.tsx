@@ -4,6 +4,7 @@ import { authRequest, invalidateSession, RequestError, useAuthSession } from "@w
 
 import { ContinuationFacts, CustomerContinuation, giftCount, GiftOrderProgress, totalGiftPayments } from "./order-gift-progress";
 import { CancelPendingOrder } from "./cancel-pending-order";
+import { OrderGiftPriceAdjustment } from "./order-gift-price-adjustment";
 import { clubOrderPath, detailHref, dispatchLabel, orderDispatcher, orderHref, sourceLabel, useClientRead, type OrderSummary } from "./order-api";
 
 const periods = { normal: "普通期", double: "双倍期" };
@@ -99,6 +100,7 @@ export function OrderDetail({ clubId, orderId }: { clubId: string; orderId: stri
   const { data: order, error, loading, reload } = useClientRead<Order>(
     `${clubOrderPath(clubId)}/${orderId}`, "订单加载失败",
   );
+  const progress = isGiftOrderProgress(order?.deliveryProgress) ? order.deliveryProgress : undefined;
   return <section className="client-orders__panel">
     <h1>订单详情</h1>
     <div className="client-orders__actions">
@@ -111,6 +113,8 @@ export function OrderDetail({ clubId, orderId }: { clubId: string; orderId: stri
         <h2>{order.recipientGameAccount}</h2>
         <p>{sourceLabel[order.source]} · <strong>{dispatchLabel[order.dispatchStatus]}</strong></p>
         <OrderFacts order={order} manageContinuation />
+        {progress?.priceAdjustment && <OrderGiftPriceAdjustment key={progress.priceAdjustment.id}
+          route={`${clubOrderPath(clubId)}/${orderId}`} value={progress.priceAdjustment} history={progress.priceAdjustmentHistory} reload={reload} />}
         <CustomerContinuation route={`${clubOrderPath(clubId)}/${orderId}`}
           canRequest={isGiftOrderProgress(order.deliveryProgress) && order.deliveryProgress.canRequestContinuation}
           requests={order.continuationRequests} quotes={order.continuationQuotes} reload={reload} />

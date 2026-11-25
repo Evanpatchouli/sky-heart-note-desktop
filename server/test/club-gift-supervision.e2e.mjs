@@ -85,6 +85,204 @@ test('按次监督、老板的三类实收观察、未结原单续段和历史�
   const giftProgress = async order => (await read(order)).deliveryProgress;
   const claim = (order, fields, actor = member) =>
     ep(order.claimPath, actor, { requestId: randomUUID(), segmentIndex: 0, kind: 'public', ...fields });
+  await t.test('已付款的两个来源均按剩余次数改价，实补后续送，拒补按原实收实退', async () => {
+    const segment = { period: 'double', paidGiftTimes: 100, dailyGiftTimes: 10, unitPriceCents: 50 };
+    const window = { startDate: '2026-11-12', endDate: '2026-11-21' };
+    for (const [actor, name] of [[member, '改价送心甲'], [substitute, '改价送心乙']])
+      await ep('/employee/songxinhao', actor, { name });
+    const branches = [
+      ['direct_dispatch', 'accept', 'normal'],
+      ['client_order', 'decline', 'double'],
+    ];
+    for (const [source, decision, targetPeriod] of branches) {
+      const order = await publish(source, segment, window);
+      const { path } = order;
+      const reportPath = (share, account) => `${path}/shares/${share}/execution-accounts/${account}/daily-reports`;
+      const workers = [];
+      for (const [actor, days] of [[member, 10], [substitute, 9]]) {
+        const { shareId } = await claim(order, { dailyGiftTimes: 5 }, actor);
+        const [personal] = await ep('/employee/songxinhao/linkable', actor);
+        const account = await ep(`${path}/shares/${shareId}/execution-accounts`, actor, { personalAccountId: personal.id });
+        let lastReport;
+        for (let index = 0; index < days; index++) {
+          const sameDayAsRepriced = decision === 'accept' && actor === substitute && index === days - 1;
+          lastReport = await ep(reportPath(shareId, account.id), actor, {
+            requestId: randomUUID(), kind: 'daily', businessDate: sameDayAsRepriced ? window.endDate : `2026-11-${12 + index}`,
+            lines: [{ period: 'double', giftTimes: 5, receivedHearts: 10 }],
+          });
+        }
+        workers.push({ actor, shareId, account: account.id, lastReport });
+      }
+      const previewPath = path + '/fulfillment/price-preview';
+      const proposalPath = path + '/price-adjustment';
+      const decisionPath = order.customerPath + '/price-adjustment/decision';
+      const planned = { quoteSegment: 1, giftTimes: 5, targetPeriod, targetUnitPriceCents: 60 };
+      const zero = await ep(previewPath, operator, { ...planned, targetPeriod: 'normal', targetUnitPriceCents: 50 });
+      assert.equal(zero.differenceCents, 0);
+      assert.equal(zero.adjustmentReview.unavailable, 'no_price_change');
+      const lower = await ep(previewPath, operator, { ...planned, targetUnitPriceCents: 40 });
+      assert.equal(lower.differenceCents, -50);
+      assert.equal(lower.adjustmentReview.unavailable, 'lower_price');
+      await ep(previewPath, member, planned, 'POST', 404);
+      await ep(previewPath, operator, { ...planned, giftTimes: 6 }, 'POST', 409);
+      const preview = await ep(previewPath, operator, planned);
+      assert.deepEqual([
+        preview.originalQuoteCents, preview.cumulativeReceivedCents, preview.deliveredGiftTimes, preview.remainingGiftTimes,
+        preview.actualReceivedHearts, preview.originalUnitPriceCents, preview.proposedTotalCents, preview.differenceCents, preview.refundIfDeclinedCents,
+      ], [5000, 5000, 95, 5, 190, 50, 5050, 50, 250]);
+      const proposal = { ...planned, requestId: randomUUID(), expectedVersion: preview.adjustmentReview.version, reason: '协商剩余五次的单价' };
+      await ep(proposalPath, operator, { ...proposal, reason: '  ' }, 'POST', 400);
+      await ep(proposalPath, operator, { ...proposal, expectedVersion: '0'.repeat(64) }, 'POST', 409);
+      const proposed = await ep(proposalPath, operator, proposal);
+      assert.deepEqual(await ep(proposalPath, operator, proposal), proposed);
+      const last = workers[1];
+      const remaining = {
+        requestId: randomUUID(), kind: 'daily', businessDate: window.endDate,
+        lines: [{ period: targetPeriod, giftTimes: 5, receivedHearts: 5 }],
+      };
+      const reportRemaining = (share, status = 201) => ep(reportPath(share, last.account), last.actor, remaining, 'POST', status);
+      await reportRemaining(last.shareId, 409);
+      await ep(path + '/gift-dispatch/reassign', operator, {
+        requestId: randomUUID(), shareId: last.shareId, userId: member.id, giftTimes: 1,
+      }, 'POST', 404);
+      const respond = { requestId: randomUUID(), adjustmentId: proposed.id, expectedRevision: proposed.revision, decision };
+      await cp(decisionPath, outsider, respond, 'POST', 404);
+      const actual = await cp(decisionPath, owner, respond);
+      assert.equal(actual.decision.source, 'customer');
+      assert.equal(actual.supplementReceivedCents, 0);
+      assert.equal(actual.netReceivedCents, 5000);
+      assert.deepEqual(await cp(decisionPath, owner, respond), actual);
+      await cp(decisionPath, owner, { ...respond, requestId: randomUUID(), decision: decision === 'accept' ? 'decline' : 'accept' }, 'POST', 409);
+      await reportRemaining(last.shareId, 409);
+      const payment = {
+        requestId: randomUUID(), adjustmentId: proposed.id, expectedRevision: actual.revision,
+        occurredAt: new Date().toISOString(), kind: decision === 'accept' ? 'supplement' : 'refund',
+        amountCents: decision === 'accept' ? 50 : 250,
+      };
+      assert.equal(actual.state, decision === 'accept' ? 'awaiting_supplement' : 'stopped');
+      assert.equal(actual.refundDueCents, decision === 'accept' ? 0 : 250);
+      assert.equal(actual.refundedCents, 0);
+      await ep(proposalPath + '/payments', operator, { ...payment, amountCents: payment.amountCents + 1 }, 'POST', 409);
+      let paid;
+      if (decision === 'accept') {
+        const replayed = await Promise.all([ep(proposalPath + '/payments', operator, payment), ep(proposalPath + '/payments', operator, payment)]);
+        [paid] = replayed;
+        assert.deepEqual(replayed[1], paid);
+      } else {
+        const first = await ep(proposalPath + '/payments', operator, { ...payment, amountCents: 100 });
+        assert.equal(first.refundedCents, 100);
+        const again = { ...payment, requestId: randomUUID(), expectedRevision: first.revision, amountCents: 100 };
+        await ep(proposalPath + '/payments', operator, again, 'POST', 409);
+        Object.assign(payment, { requestId: randomUUID(), expectedRevision: first.revision, amountCents: 150 });
+        paid = await ep(proposalPath + '/payments', operator, payment);
+      }
+      assert.deepEqual(await ep(proposalPath + '/payments', operator, payment), paid);
+      await ep(proposalPath + '/payments', operator, { ...payment, requestId: randomUUID(), expectedRevision: paid.revision }, 'POST', 409);
+      if (decision === 'accept') {
+        assert.equal(paid.newQuoteSegment, 2);
+        assert.equal(paid.supplementReceivedCents, 50);
+        const beforeReport = await ep(path + '/fulfillment', operator);
+        assert.deepEqual([beforeReport.agreedGiftTimes, beforeReport.deliveredGiftTimes, beforeReport.heartAmountCents], [100, 95, 4750]);
+        const moved = beforeReport.segments[1].members.find(item => item.userId === last.actor.id).shares[0];
+        const correction = {
+          requestId: randomUUID(), expectedVersion: 1, reason: '补记实际补款后同日续送的五次',
+          lines: [{ shareId: moved.shareId, quoteSegment: 2, ...remaining.lines[0] }],
+        };
+        const correctionPath = `${path}/daily-reports/${last.lastReport.originalId}/corrections`;
+        await ep(correctionPath, last.actor, correction, 'POST', 409);
+        await ep(correctionPath, last.actor, { ...correction, lines: [
+          { shareId: last.shareId, quoteSegment: 1, period: 'double', giftTimes: 5, receivedHearts: 10 },
+          ...correction.lines,
+        ] });
+      } else {
+        assert.equal(paid.refundedCents, 250);
+        await reportRemaining(last.shareId, 409);
+      }
+      const current = await ep(path + '/fulfillment', operator);
+      const { customerServiceCents, dispatchFeeCents, clubFeeCents, memberFeeCents } = current.promotionBasis;
+      const ownerView = await read(order);
+      assert.equal(ownerView.quote.totalAmountCents, 5000);
+      assert.equal(ownerView.receipt.receivedAmountCents, 5000);
+      assert.equal(ownerView.deliveryProgress.agreedGiftTimes, 100);
+      assert.equal(ownerView.deliveryProgress.priceAdjustment.netReceivedCents, paid.netReceivedCents);
+      assert.equal('promotionBasis' in ownerView.deliveryProgress, false);
+      assert.deepEqual([current.deliveredGiftTimes, current.actualReceivedHearts, customerServiceCents, dispatchFeeCents, clubFeeCents, memberFeeCents],
+        decision === 'accept' ? [100, 195, 5050, 500, 500, 4050] : [95, 190, 4750, 475, 475, 3800]);
+    }
+  });
+  await t.test('晚到的实际履约即时生效，过期改价重新核对，停送退款保留实际退回凭据', async () => {
+    const daysAgo = days => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const order = await publish('client_order', { period: 'normal', paidGiftTimes: 3, dailyGiftTimes: 1, unitPriceCents: 50 },
+      { startDate: daysAgo(3), endDate: daysAgo(1) });
+    const { shareId } = await claim(order, { dailyGiftTimes: 1 });
+    const [personal] = await ep('/employee/songxinhao/linkable', member);
+    const accounts = `${order.path}/shares/${shareId}/execution-accounts`;
+    const account = await ep(accounts, member, { personalAccountId: personal.id });
+    const reports = `${accounts}/${account.id}/daily-reports`;
+    const amendments = order.path + '/price-adjustment';
+    const responsePath = order.customerPath + '/price-adjustment/decision';
+    const action = current => ({ requestId: randomUUID(), adjustmentId: current.id, expectedRevision: current.revision });
+    const original = await ep(reports, member, {
+      requestId: randomUUID(), kind: 'daily', businessDate: daysAgo(3),
+      lines: [{ giftTimes: 1, receivedHearts: 1 }],
+    });
+    async function proposal(giftTimes) {
+      const shift = { quoteSegment: 1, giftTimes, targetPeriod: 'double', targetUnitPriceCents: 60 };
+      const preview = await ep(order.path + '/fulfillment/price-preview', operator, shift);
+      return { ...shift, expectedVersion: preview.adjustmentReview.version, requestId: randomUUID(), reason: '剩余送心次数改价' };
+    }
+    const firstInput = await proposal(2);
+    const first = await ep(amendments, operator, firstInput);
+    await ep(reports, member, {
+      requestId: randomUUID(), kind: 'supplement', businessDate: daysAgo(3), reason: '同日已有原日报',
+      lines: [{ giftTimes: 1, receivedHearts: 1 }],
+    }, 'POST', 409);
+    assert.equal((await giftProgress(order)).priceAdjustment.state, 'awaiting_decision');
+    const correct = (expectedVersion, giftTimes) => ep(order.path + '/daily-reports/' + original.originalId + '/corrections', member, {
+      requestId: randomUUID(), expectedVersion, reason: '核对原来当天的实际次数', lines: [{ giftTimes, receivedHearts: giftTimes }],
+    });
+    await correct(1, 0);
+    const corrected = await giftProgress(order);
+    assert.deepEqual([corrected.deliveredGiftTimes, corrected.remainingGiftTimes, corrected.priceAdjustment.state], [0, 3, 'needs_requote']);
+    assert.equal(corrected.priceAdjustment.id, first.id);
+    assert.equal((await ep(amendments, operator, firstInput)).state, 'needs_requote');
+    await cp(responsePath, owner, { ...action(first), decision: 'accept' }, 'POST', 409);
+    await ep(reports, member, { requestId: randomUUID(), kind: 'daily', businessDate: daysAgo(2),
+      lines: [{ giftTimes: 1, receivedHearts: 1 }] }, 'POST', 409);
+    const second = await ep(amendments, operator, await proposal(3));
+    const accept = { ...action(second), decision: 'accept' };
+    const accepted = await cp(responsePath, owner, accept);
+    await correct(2, 1);
+    const stale = (await giftProgress(order)).priceAdjustment;
+    assert.equal(stale.state, 'needs_requote');
+    assert.equal(stale.decision.value, 'accept');
+    assert.equal((await cp(responsePath, owner, accept)).decision.value, 'accept');
+    await ep(amendments + '/payments', operator, { ...action(accepted), kind: 'supplement', amountCents: 30,
+      occurredAt: new Date().toISOString() }, 'POST', 409);
+    const recovery = action(stale);
+    assert.equal((await ep(amendments + '/resume', operator, recovery)).state, 'superseded');
+    assert.equal((await giftProgress(order)).canRequestContinuation, true);
+    assert.equal((await ep(amendments + '/resume', operator, recovery)).state, 'superseded');
+    const updated = await ep(amendments, operator, await proposal(2));
+    const declined = await cp(responsePath, owner, { ...action(updated), decision: 'decline' });
+    assert.equal(declined.refundDueCents, 100);
+    const refund = { ...action(declined), kind: 'refund', amountCents: 70, occurredAt: new Date().toISOString() };
+    const recorded = await ep(amendments + '/payments', operator, refund);
+    assert.equal(recorded.payments[0].refundDueAtRecordingCents, 100);
+    await ep(reports, member, {
+      requestId: randomUUID(), kind: 'supplement', businessDate: daysAgo(2), reason: '确认停送前的实际赠送',
+      lines: [{ giftTimes: 1, receivedHearts: 1 }],
+    });
+    const after = await giftProgress(order);
+    assert.equal(after.fulfillmentStatus, 'stopped');
+    assert.equal(after.deliveredGiftTimes, 2);
+    assert.deepEqual([after.priceAdjustment.originalReceivedCents, after.priceAdjustment.refundDueCents,
+      after.priceAdjustment.refundedCents, after.priceAdjustment.netReceivedCents], [150, 50, 70, 80]);
+    assert.deepEqual((await ep(amendments + '/payments', operator, refund)).payments, recorded.payments);
+    await ep(amendments + '/payments', operator, {
+      ...action(after.priceAdjustment), kind: 'refund', amountCents: 1, occurredAt: new Date().toISOString(),
+    }, 'POST', 409);
+  });
   const order = await publish('direct_dispatch', { period: 'double', paidGiftTimes: 8, dailyGiftTimes: 2, unitPriceCents: 50 },
     { startDate: date[0], endDate: date[3] });
   const continuationOrder = await publish('client_order', { period: 'normal', paidGiftTimes: 2, dailyGiftTimes: 2, unitPriceCents: 50 },

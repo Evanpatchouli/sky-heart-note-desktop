@@ -4,6 +4,7 @@ import { formatCentsAsYuan, type GiftDispatchSupervision, type GiftSupervisionDa
 import { RequestError } from "@webapp-template/common/web-auth";
 import { GiftPeriodFacts, giftHearts as hearts, giftMoney, giftPeriodLabels as periodLabels } from "#/components/GiftPeriodFacts";
 import { employeeRequest } from "#/service/request";
+import { GiftPriceAdjustmentPanel } from "./gift-price-adjustment";
 
 const dayLabels: Record<GiftSupervisionDay["status"], string> = {
   not_checked: "尚未核对",
@@ -51,7 +52,10 @@ export function GiftSupervisionCard({ route, through, revision, onRefresh, onSho
       <Typography.Text>截至已结束业务日 {through}</Typography.Text><Button type="link" onClick={onShowCurrent}>查看当前</Button>
     </Flex> : <p>在异常队列选择已结束业务日后，可核对漏报、少送和窗口到期情况。</p>}
     {error ? <Alert type="error" showIcon title={error} /> : !data ? <Spin aria-label="加载履约监督" />
-      : data.priceUnit === "gift_times" ? <GiftSupervisionFacts progress={data} />
+      : data.priceUnit === "gift_times" ? <>
+        {!through && <GiftPriceAdjustmentPanel route={route} progress={data} reload={onRefresh} />}
+        <GiftSupervisionFacts progress={data} />
+      </>
         : <><p>历史按颗 · 实际到账 {data.observedHearts} 颗 · 已履约 {data.creditedHearts} 颗 · 剩余 {data.remainingHearts} 颗
           {" · "}{data.closedAt ? "已确认结单" : "尚未结单"}</p>
           {data.agreedDeadline && <p>约定截止 {data.agreedDeadline}</p>}
@@ -73,7 +77,7 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
     {progress.pendingPromotionalGiftTimes ? <p>促销赠送有 {progress.pendingPromotionalGiftTimes} 次待核对付费履约记录。</p> : null}
     {!compact && <>
       <p>建单预计到账 {hearts(progress.estimatedReceivedHearts)} · 按实际时段预计到账 {hearts(progress.estimatedDeliveredHearts)}</p>
-      <p>按已送次数核对爱心款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。每次单价沿用原段约定。</p>
+      <p>按已送次数核对爱心款 {giftMoney(progress.heartAmountCents)} · 仅改变到账倍率的价差 {giftMoney(progress.periodOnlyDifferenceCents)}。实际履约按适用段的单价核对。</p>
       <GiftPeriodFacts performance={progress} />
     </>}
     {!compact && <p>{fulfillment[progress.fulfillmentStatus]} · {progress.closedAt ? "派单人已确认结单" : "尚未结单"}</p>}
@@ -84,14 +88,14 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
       <p>{segment.window ? `执行 ${segment.window.startDate} 至 ${segment.window.endDate}` : "执行窗口待配置"}
         {" · "}已送 {segment.deliveredGiftTimes} 次 · 剩余 {segment.remainingGiftTimes} 次</p>
       {!compact && <>
-        <p>原段预计到账 {hearts(segment.estimatedReceivedHearts)} · 日报到账 {hearts(segment.actualReceivedHearts)}
+        <p>本段预计到账 {hearts(segment.estimatedReceivedHearts)} · 日报到账 {hearts(segment.actualReceivedHearts)}
           {" · "}已送爱心款依据 {giftMoney(segment.heartAmountCents)}</p>
         <GiftPeriodFacts performance={segment} />
       </>}
       {segment.overdueUnclaimedGiftTimes > 0 && <p>已过期未承接 {segment.overdueUnclaimedGiftTimes} 次</p>}
       {segment.members.map(member => <details key={member.userId} open={compact || undefined}>
         <summary>{member.nickname ? `${member.nickname}（${member.userId}）` : member.userId}
-          {" · "}原领 {member.originallyClaimedGiftTimes} 次 · 已改派 {member.transferredGiftTimes} 次 · 净份额 {member.agreedGiftTimes} 次
+          {" · "}原领 {member.originallyClaimedGiftTimes} 次 · 已转出 {member.transferredGiftTimes} 次 · 净份额 {member.agreedGiftTimes} 次
           {" · "}已送 {member.deliveredGiftTimes} 次 · 剩余 {member.remainingGiftTimes} 次
           {member.overdueGiftTimes ? ` · 已过期未补 ${member.overdueGiftTimes} 次` : ""}</summary>
         {!compact && <>
@@ -100,10 +104,10 @@ export function GiftSupervisionFacts({ progress, compact = false }: { progress: 
           <GiftDays days={member.days} />
         </>}
         {member.shares.map(share => <details key={share.shareId} open={compact || undefined}>
-          <summary>份额 {share.shareId} · {share.window ? `${share.window.startDate} 至 ${share.window.endDate}` : "全部改派"}
+          <summary>份额 {share.shareId} · {share.window ? `${share.window.startDate} 至 ${share.window.endDate}` : "份额已转出"}
             {" · "}净份额 {share.agreedGiftTimes} 次 · 已送 {share.deliveredGiftTimes} 次
             {share.overdueGiftTimes ? ` · 已过期未补 ${share.overdueGiftTimes} 次` : ""}</summary>
-          {share.transferredGiftTimes > 0 && <p>原窗口 {share.originalWindow.startDate} 至 {share.originalWindow.endDate} · 已改派 {share.transferredGiftTimes} 次</p>}
+          {share.transferredGiftTimes > 0 && <p>原窗口 {share.originalWindow.startDate} 至 {share.originalWindow.endDate} · 已转出 {share.transferredGiftTimes} 次</p>}
           {!compact && <>
             <p>接单时观察 {hearts(share.claimObservedReceivedHearts)}</p>
             <GiftPeriodFacts performance={share} />
