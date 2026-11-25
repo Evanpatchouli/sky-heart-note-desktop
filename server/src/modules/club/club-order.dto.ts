@@ -11,7 +11,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
-import { USER_ID_PATTERN } from '@webapp-template/common';
+import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, type DeliveryPeriodPreference } from '@webapp-template/common';
 import { ORDER_SOURCES, type OrderSource } from './club-order.schema';
 
 class CreateOrderDto {
@@ -43,6 +43,16 @@ class CreateOrderDto {
   @Min(1)
   @Max(Number.MAX_SAFE_INTEGER)
   estimatedReceivedHearts?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(DELIVERY_PERIOD_PREFERENCES)
+  deliveryPeriodPreference?: DeliveryPeriodPreference;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  doubleGiftTimes?: number;
 }
 
 export class CreateDirectOrderDto extends CreateOrderDto {

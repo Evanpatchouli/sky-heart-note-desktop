@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, type CommissionRule, type ContinuationQuote, type OrderPricing } from '@webapp-template/common';
+import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, type CommissionRule, type ContinuationQuote, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
@@ -28,7 +28,7 @@ import type {
   ReviewDispatchCommissionDto,
   UpdateOrderPricingDto,
 } from './club-pricing.dto';
-import type { StoredGiftQuote, StoredOrderReceipt } from './club-pricing.schema';
+import type { StoredOrderReceipt } from './club-pricing.schema';
 import { ClubOrder } from './club-order.schema';
 
 const incompleteCustomerLink = {
@@ -54,7 +54,9 @@ function orderSummary(order: ClubOrder) {
       : {
           requestedGiftTimes: order.heartDelivery.requestedGiftTimes,
           estimatedReceivedHearts: order.heartDelivery.estimatedReceivedHearts,
+          doubleGiftTimes: order.heartDelivery.doubleGiftTimes,
         }),
+    deliveryPeriodPreference: order.heartDelivery.deliveryPeriodPreference,
     dispatcherUserId: order.dispatcherUserId,
     dispatcherAssignment: order.dispatcherAssignment,
     dispatchStatus: order.dispatchStatus,
@@ -72,18 +74,24 @@ function orderOwnership(order: ClubOrder) {
   };
 }
 
-function calculateCustomerQuote(pricing?: OrderPricing): StoredGiftQuote | null {
-  if (pricing?.priceUnit !== 'gift_times' || !pricing.giftSegments) return null;
-  const amounts = calculateGiftQuote(pricing.giftSegments);
-  return amounts && {
-    revision: pricing.revision,
-    priceUnit: pricing.priceUnit,
-    giftSegments: pricing.giftSegments,
-    segments: pricing.segments,
-    unlock: pricing.unlock ?? NO_UNLOCK,
-    heartsAmountCents: amounts.amountCents,
-    unlockAmountCents: 0,
-    totalAmountCents: amounts.amountCents,
+function calculateCustomerQuote(pricing?: OrderPricing): CustomerQuote | null {
+  if (!pricing) return null;
+  const { revision, priceUnit, giftSegments, segments } = pricing;
+  if (priceUnit !== 'gift_times') {
+    const { unlock, discountedHeartsAmountCents } = pricing;
+    if (!unlock) return null;
+    const amounts = calculateQuoteAmounts(segments, unlock, discountedHeartsAmountCents);
+    return amounts && { revision, segments, unlock, ...amounts };
+  }
+  const amounts = giftSegments && calculateGiftQuote(giftSegments);
+  if (!amounts) return null;
+  const unlock = pricing.unlock ?? NO_UNLOCK;
+  const unlockAmountCents = unlock.quantity * unlock.unitPriceCents;
+  const totalAmountCents = amounts.amountCents + unlockAmountCents;
+  if (!Number.isSafeInteger(totalAmountCents)) return null;
+  return {
+    revision, priceUnit, giftSegments, segments, unlock,
+    heartsAmountCents: amounts.amountCents, unlockAmountCents, totalAmountCents,
   };
 }
 
@@ -383,10 +391,12 @@ export class ClubOrderService implements OnModuleInit {
       priceUnit: 'gift_times' as const,
       dispatchFeeCents: input.dispatchFeeCents,
       segments: [],
-      unlock: NO_UNLOCK,
+      unlock: input.unlock ?? order.pricing?.unlock ?? NO_UNLOCK,
       giftSegments: input.giftSegments,
       revision: input.expectedRevision + 1,
     };
+    if (!calculateCustomerQuote(pricing))
+      throw new BadRequestException('报价金额超出可记录范围');
     const { matchedCount } = await this.orders.updateOne(
       {
         ...scope,
@@ -413,7 +423,7 @@ export class ClubOrderService implements OnModuleInit {
     if (order.receipt) return this.replayOrderReceipt(order.receipt, input, receivedAt);
 
     const quote = calculateCustomerQuote(order.pricing);
-    if (order.dispatchStatus === 'published' || quote?.revision !== input.pricingRevision)
+    if (order.dispatchStatus === 'published' || quote?.priceUnit !== 'gift_times' || quote.revision !== input.pricingRevision)
       throw new ConflictException('请重新加载并核对最新报价后登记实收');
     const receipt: StoredOrderReceipt = {
       requestId: input.requestId,
@@ -487,7 +497,7 @@ export class ClubOrderService implements OnModuleInit {
     const { requestId, pricingRevision, ruleVersion, commissionReviewRevision } = input;
     const { pricing, receipt, commissionReview } = order;
     if (pricing?.priceUnit !== 'gift_times' || pricing.revision !== pricingRevision ||
-        receipt?.quote.revision !== pricingRevision) {
+        receipt?.quote.priceUnit !== 'gift_times' || receipt.quote.revision !== pricingRevision) {
       throw new ConflictException('订单报价未准备或已更新，请重新确认');
     }
     if (paymentStatus(receipt) !== 'paid_in_full')
@@ -678,6 +688,16 @@ export class ClubOrderService implements OnModuleInit {
     if (input.requestedHearts !== undefined || input.requestedGiftTimes === undefined) {
       throw new BadRequestException('新订单须按赠送次数提交');
     }
+    const { requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes } = input;
+    if (doubleGiftTimes !== undefined &&
+        (deliveryPeriodPreference !== 'split' || doubleGiftTimes >= requestedGiftTimes)) {
+      throw new BadRequestException('分段时的双倍期赠送次数须少于总次数');
+    }
+    const estimatedReceivedHearts = input.estimatedReceivedHearts ??
+      estimateReceivedHearts(requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes);
+    if (estimatedReceivedHearts === undefined && (deliveryPeriodPreference === 'double' || doubleGiftTimes !== undefined)) {
+      throw new BadRequestException('预计实收爱心颗数超出可记录范围');
+    }
 
     if (submission.source === 'direct_dispatch' && submission.input.existingCustomerUserId) {
       await this.customers.requireExisting(submission.input.existingCustomerUserId);
@@ -715,8 +735,13 @@ export class ClubOrderService implements OnModuleInit {
         businessType: 'heart_delivery',
         recipientGameAccount: input.recipientGameAccount,
         heartDelivery: {
-          requestedGiftTimes: input.requestedGiftTimes,
-          estimatedReceivedHearts: input.estimatedReceivedHearts,
+          requestedGiftTimes,
+          estimatedReceivedHearts,
+          ...(input.estimatedReceivedHearts === undefined && estimatedReceivedHearts !== undefined
+            ? { estimatedReceivedHeartsDerived: true }
+            : {}),
+          deliveryPeriodPreference,
+          doubleGiftTimes,
         },
       });
     } catch (error) {
@@ -742,6 +767,8 @@ export class ClubOrderService implements OnModuleInit {
 
   private checkReplay(order: ClubOrder, submission: Submission) {
     const { input } = submission;
+    const { heartDelivery } = order;
+    const originalEstimate = heartDelivery.estimatedReceivedHeartsDerived ? undefined : heartDelivery.estimatedReceivedHearts;
     const matchesSourceFields =
       submission.source === 'direct_dispatch'
         ? order.customerLabel === submission.input.customerLabel &&
@@ -753,9 +780,11 @@ export class ClubOrderService implements OnModuleInit {
     if (
       !matchesSourceFields ||
       order.recipientGameAccount !== input.recipientGameAccount ||
-      order.heartDelivery.requestedHearts !== input.requestedHearts ||
-      order.heartDelivery.requestedGiftTimes !== input.requestedGiftTimes ||
-      order.heartDelivery.estimatedReceivedHearts !== input.estimatedReceivedHearts
+      heartDelivery.requestedHearts !== input.requestedHearts ||
+      heartDelivery.requestedGiftTimes !== input.requestedGiftTimes ||
+      heartDelivery.deliveryPeriodPreference !== input.deliveryPeriodPreference ||
+      heartDelivery.doubleGiftTimes !== input.doubleGiftTimes ||
+      originalEstimate !== input.estimatedReceivedHearts
     ) {
       throw new ConflictException('相同提交标识已用于创建内容不同的订单');
     }

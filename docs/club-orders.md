@@ -70,9 +70,11 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
   "requestId": "a9fc2895-ff11-494a-9be7-5b3e5847b2ca",
   "recipientGameAccount": "接收爱心的游戏账号",
   "requestedGiftTimes": 100,
-  "estimatedReceivedHearts": 100
+  "deliveryPeriodPreference": "normal"
 }
 ```
+
+两个建单入口都可填 `deliveryPeriodPreference`，取 `normal`、`double` 或 `split`。若未填写 `estimatedReceivedHearts`，普通期按赠送次数记预计颗数，双倍期按两倍记。混合时段可另填 `doubleGiftTimes`，为小于订购总次数的正整数，系统按总次数加双倍期次数估算。时段未填或混合数量未确认时可保留未知。建单预计一经保存，后续报价和登记实收沿用原值。
 
 团员在「派单准备」点击「新建直接派单草稿」，选择「已有用户」并用昵称和四位 ID 核对搜索结果，或选择「新老板」填写 1 至 100 字昵称。请求传 `"existingCustomerUserId": "00A1"` 或 `"newCustomerNickname": "青禾"`。已选账号须处于启用状态且拥有客户端准入角色。新老板获得平台分配的独立四位 ID 与普通客户角色，同名时仍建独立账号。成功响应的 `customerUserId` 表示老板归属，`recipientGameAccount` 记录接收爱心的游戏账号。
 
@@ -88,6 +90,8 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 派单人能查单内已建立的份额和客户平台归属状态。承接人可见履约用的接收游戏账号、本人份额及该份额的执行游戏账号。同单兼任派单和承接时，可同时查看派单信息和本人份额的执行账号。执行账号具有独立标识，名称是订单内显示快照。客户可查看订单来源、业务类型、接收游戏账号、数量和派发状态。直接派单须核实平台客户归属后才进入客户查单范围。
 
+客户端「我的订单」可展开本人订单，核对建单预计实收爱心、各段单价与数量、爱心款、预估解锁款、报价合计和登记的实收金额与时间。直接派单和客户端下单使用同一报价及收款流程。
+
 ## 固定金额抽成与派单准备
 
 管理端通过 `GET /api/admin/clubs/:clubId/commission-rule` 查当前规则，通过相同路径的 `PATCH` 更新。派单人通过 `GET /api/employee/clubs/:clubId/orders/:orderId/pricing` 查报价和规则，通过相同路径的 `PATCH` 保存报价。
@@ -96,10 +100,14 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 按次报价的 `priceUnit` 为 `gift_times`。每段含 `period`（`normal` 或 `double`）、`paidGiftTimes`（付费赠送次数）、`dailyGiftTimes`（日量）和 `unitPriceCents`（每次服务单价）。各段付费次数合计等于原订购次数。按付费次数乘每次单价计算报价。建单预计实收颗数单列，普通期和双倍期的同量同价订单具有相同爱心款。
 
+报价请求可带 `unlock`，其中 `quantity` 为预估解锁数，`unitPriceCents` 为每次解锁费。首次未填时默认为零，编辑时省略沿用当前值。报价返回 `heartsAmountCents`、`unlockAmountCents` 和 `totalAmountCents`。解锁款为预估解锁数乘每次解锁费，总额为爱心款加解锁款。金额超出安全整数分范围时返回 HTTP 400。
+
 首次正式派发时冻结每次派抽、每次团抽和规则版本。派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/continuation-quotes` 追加独立报价。请求包含 UUID v4 `requestId` 和一个与报价段同结构的 `segment`。响应含续段爱心款和从首段快照读取的 `commission`。续段保存为待核款报价，重试同一标识及内容取回原报价。客户仅可查看本人订单及其报价；抽成仅在获授权的业务入口返回。
 
 历史订单保留 `requestedHearts`、原报价和已派发快照。历史报价没有按次标记时，报价按原颗数和每颗单价展示。历史抽成按快照的 `basis` 和版本展示，即使同一笔旧单使用按次抽成，也继续按颗展示原报价。
 
-派单人在「派单准备」保存报价后可登记本人实收。使用 `POST /api/employee/clubs/:clubId/orders/:orderId/receipts`，提交 `pricingRevision`、正整数分 `receivedAmountCents`、带时区的 `receivedAt` 和 UUID v4 `requestId`，原报价随实收登记固定。当前记录爱心款；完整解锁报价及收款字段由 P1-06 验收。后台规则更新后，可通过 `PATCH /api/employee/clubs/:clubId/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
+派单人在「派单准备」保存报价后可登记本人实收。使用 `POST /api/employee/clubs/:clubId/orders/:orderId/receipts`，提交 `pricingRevision`、正整数分 `receivedAmountCents`、带时区的 `receivedAt` 和 UUID v4 `requestId`。服务记录收款人、经办人、两次时间和完整原报价。同一标识与内容可原样重试。报价修改与实收登记同时提交时，只有先写入的请求生效，另一个返回 HTTP 409。实收有差额时保留登记和原报价，订单继续待核款。
+
+后台规则更新后，可通过 `PATCH /api/employee/clubs/:clubId/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
 
 实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。承接及绑定个人送心号随对应任务接入，待分配、手动分配与分配前取消按 P1-24 验收。[正式归属规则](club-business.md#订单来源)

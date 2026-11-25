@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { formatCentsAsYuan, type ContinuationQuote, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
+import { deliveryPeriodPreferenceLabel, formatCentsAsYuan, type ContinuationQuote, type CustomerQuote, type DeliveryPeriodPreference, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
 import { authRequest, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 
 const sources = { direct_dispatch: "直接派单", client_order: "客户端下单" };
 const statuses = { draft: "待派发", pending: "待派单", published: "已派发" };
+const periods = { normal: "普通期", double: "双倍期" };
 type Order = {
   id: string;
   clubId: string;
@@ -14,9 +15,11 @@ type Order = {
   requestedHearts?: number;
   requestedGiftTimes?: number;
   estimatedReceivedHearts?: number;
+  deliveryPeriodPreference?: DeliveryPeriodPreference;
+  doubleGiftTimes?: number;
   segments?: PriceSegment[];
   giftSegments?: GiftPriceSegment[];
-  quote?: { totalAmountCents: number };
+  quote?: CustomerQuote;
   receipt?: { receivedAmountCents: number; receivedAt: string };
   continuationQuotes?: ContinuationQuote[];
 };
@@ -70,10 +73,26 @@ export default function MyOrders() {
           <summary>{order.recipientGameAccount} · {sources[order.source]} · {statuses[order.dispatchStatus]}</summary>
           <p>订单号 {order.id}</p>
           <p>俱乐部 {order.clubId} · 派单人 {order.dispatcherUserId} · 订购 {order.requestedGiftTimes !== undefined ? `${order.requestedGiftTimes} 次` : `${order.requestedHearts} 颗`}</p>
-          {order.estimatedReceivedHearts === undefined ? null : <p>预计实收 {order.estimatedReceivedHearts} 颗</p>}
-          {order.segments?.map((segment, index) => <p key={index}>{segment.hearts} 颗 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/颗</p>)}
-          {order.giftSegments?.map((segment, index) => <p key={index}>{segment.paidGiftTimes} 次 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次</p>)}
-          {order.quote ? <p>报价合计 ¥{formatCentsAsYuan(order.quote.totalAmountCents)}</p> : null}
+          {order.requestedGiftTimes === undefined ? null : <p>
+            建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "待确认" : `${order.estimatedReceivedHearts} 颗`}
+            {order.deliveryPeriodPreference ? ` · ${deliveryPeriodPreferenceLabel[order.deliveryPeriodPreference]}` : ""}
+            {order.doubleGiftTimes === undefined ? "" : ` · 双倍期 ${order.doubleGiftTimes} 次`}
+          </p>}
+          {(order.quote?.segments ?? order.segments)?.map((segment, index) => <p key={index}>
+            {periods[segment.period]} · {segment.hearts} 颗 × ¥{formatCentsAsYuan(segment.unitPriceCents)}/颗
+            {segment.giftHearts ? ` · 赠心 ${segment.giftHearts} 颗` : ""}
+          </p>)}
+          {(order.quote?.giftSegments ?? order.giftSegments)?.map((segment, index) => <p key={index}>
+            {periods[segment.period]} · {segment.paidGiftTimes} 次 × ¥{formatCentsAsYuan(segment.unitPriceCents)}/次 = ¥{formatCentsAsYuan(segment.paidGiftTimes * segment.unitPriceCents)} · {segment.dailyGiftTimes} 次/日
+          </p>)}
+          {order.quote ? <dl>
+            {order.quote.originalHeartsAmountCents === undefined ? null : <>
+              <dt>折前爱心款</dt><dd>¥{formatCentsAsYuan(order.quote.originalHeartsAmountCents)}</dd>
+            </>}
+            <dt>爱心款</dt><dd>¥{formatCentsAsYuan(order.quote.heartsAmountCents)}</dd>
+            <dt>预估解锁款</dt><dd>{order.quote.unlock.quantity} 次 × ¥{formatCentsAsYuan(order.quote.unlock.unitPriceCents)}/次 = ¥{formatCentsAsYuan(order.quote.unlockAmountCents)}</dd>
+            <dt>报价合计</dt><dd>¥{formatCentsAsYuan(order.quote.totalAmountCents)}</dd>
+          </dl> : null}
           {order.receipt ? <p>已登记实收 ¥{formatCentsAsYuan(order.receipt.receivedAmountCents)} · {new Date(order.receipt.receivedAt).toLocaleString("zh-CN")}</p> : null}
           {order.continuationQuotes?.map(({ requestId, segment, amountCents }) => <p key={requestId}>
             续段 {segment.paidGiftTimes} 次 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次 · 合计 ¥{formatCentsAsYuan(amountCents)} · 待核款

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Form, Input, InputNumber, Modal, Radio, Select } from "antd";
-import { USER_ID_PATTERN } from "@webapp-template/common";
+import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN, deliveryPeriodPreferenceLabel, estimateReceivedHearts, type DeliveryPeriodPreference } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { employeeRequest } from "#/service/request";
 
@@ -9,6 +9,8 @@ type DraftFields = {
   recipientGameAccount: string;
   requestedGiftTimes: number;
   estimatedReceivedHearts?: number;
+  deliveryPeriodPreference?: DeliveryPeriodPreference;
+  doubleGiftTimes?: number;
   customerMode: "existing" | "new";
   customer?: { value: string; label: string };
   newCustomerNickname?: string;
@@ -19,6 +21,8 @@ type DraftRequest = {
   requestedGiftTimes?: number;
   requestedHearts?: number;
   estimatedReceivedHearts?: number;
+  deliveryPeriodPreference?: DeliveryPeriodPreference;
+  doubleGiftTimes?: number;
 } & ({ existingCustomerUserId: string; newCustomerNickname?: never } | { newCustomerNickname: string; existingCustomerUserId?: never });
 type SavedOrder = { id: string; clubId: string; source: string; customerUserId: string; customerLinkStatus: string };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -62,6 +66,10 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
   const [pending, setPending] = useState(() => readPending(storageKey));
   const [form] = Form.useForm<DraftFields>();
   const newCustomer = Form.useWatch("customerMode", form) === "new";
+  const giftTimes = Form.useWatch("requestedGiftTimes", form);
+  const period = Form.useWatch("deliveryPeriodPreference", form);
+  const doubleGiftTimes = Form.useWatch("doubleGiftTimes", form);
+  const suggestedEstimate = estimateReceivedHearts(giftTimes, period, doubleGiftTimes ?? undefined);
   const [search, setSearch] = useState("");
   const [lookup, setLookup] = useState<{ query: string; candidates: CustomerCandidate[]; error?: string }>();
   const [error, setError] = useState("");
@@ -90,11 +98,18 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
 
   function save(values: DraftFields) {
     if (pending || inFlight.current) return;
+    const doubleGiftTimes = values.deliveryPeriodPreference === "split" ? values.doubleGiftTimes ?? undefined : undefined;
+    if (doubleGiftTimes !== undefined && doubleGiftTimes >= values.requestedGiftTimes) {
+      setError("双倍期赠送次数须少于订购总次数。");
+      return;
+    }
     const fields = {
       requestId: crypto.randomUUID(),
       recipientGameAccount: values.recipientGameAccount.trim(),
       requestedGiftTimes: values.requestedGiftTimes,
       estimatedReceivedHearts: values.estimatedReceivedHearts ?? undefined,
+      deliveryPeriodPreference: values.deliveryPeriodPreference,
+      doubleGiftTimes,
     };
     if (values.customerMode === "new" && values.newCustomerNickname?.trim()) {
       void submit({ ...fields, newCustomerNickname: values.newCustomerNickname.trim() });
@@ -148,6 +163,8 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
       recipientGameAccount: pending?.recipientGameAccount,
       requestedGiftTimes: pending?.requestedGiftTimes,
       estimatedReceivedHearts: pending?.estimatedReceivedHearts,
+      deliveryPeriodPreference: pending?.deliveryPeriodPreference,
+      doubleGiftTimes: pending?.doubleGiftTimes,
     }} disabled={Boolean(pending) || submitting} onFinish={save}>
       <Form.Item label="老板" name="customerMode">
         <Radio.Group options={[{ label: "已有用户", value: "existing" }, { label: "新老板", value: "new" }]} />
@@ -166,7 +183,20 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
       <Form.Item label="接收爱心的游戏账号" name="recipientGameAccount" rules={[{ required: true, whitespace: true }]}><Input maxLength={120} /></Form.Item>
       {pending?.requestedHearts !== undefined ? <p>上次提交的订购颗数 · {pending.requestedHearts} 颗</p> : <>
         <Form.Item label="订购赠送次数" name="requestedGiftTimes" rules={[{ required: true, type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}><InputNumber min={1} /></Form.Item>
-        <Form.Item label="预计实收爱心颗数（选填）" name="estimatedReceivedHearts" rules={[{ type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}><InputNumber min={1} /></Form.Item>
+        <Form.Item label="预计交付时段（选填）" name="deliveryPeriodPreference">
+          <Select allowClear placeholder="待确认" options={DELIVERY_PERIOD_PREFERENCES.map(value => ({
+            value, label: deliveryPeriodPreferenceLabel[value],
+          }))} />
+        </Form.Item>
+        {period === "split" ? <Form.Item label="双倍期赠送次数（选填）" name="doubleGiftTimes" preserve={false}
+          rules={[{ type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}>
+          <InputNumber min={1} />
+        </Form.Item> : null}
+        <Form.Item label="建单预计实收爱心颗数（选填）" name="estimatedReceivedHearts"
+          extra={suggestedEstimate === undefined ? "按赠送次数计价。时段或分段次数待确认时，可以留空。" : `留空时按预计时段记录 ${suggestedEstimate} 颗。按赠送次数计价。`}
+          rules={[{ type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}>
+          <InputNumber min={1} />
+        </Form.Item>
       </>}
     </Form>
     {error ? <Alert type="error" showIcon title={error} />

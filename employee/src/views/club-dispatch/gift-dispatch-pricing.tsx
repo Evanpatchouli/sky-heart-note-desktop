@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Select, Spin, Typography } from "antd";
 import {
-  calculateGiftQuote, formatCentsAsYuan, parseYuanAsCents,
-  type CommissionRule, type ContinuationQuote, type DispatchPricing, type GiftPriceSegment, type OrderPricing,
+  calculateGiftQuote, deliveryPeriodPreferenceLabel, formatCentsAsYuan, parseYuanAsCents,
+  type CommissionRule, type ContinuationQuote, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type GiftPriceSegment, type OrderPricing,
 } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { employeeRequest } from "#/service/request";
@@ -10,17 +10,19 @@ import { employeeRequest } from "#/service/request";
 type GiftOrder = {
   requestedGiftTimes: number;
   estimatedReceivedHearts?: number;
+  deliveryPeriodPreference?: DeliveryPeriodPreference;
+  doubleGiftTimes?: number;
 };
 
-type Quote = { revision: number; heartsAmountCents: number; unlockAmountCents: number; totalAmountCents: number };
+type Receipt = { receivedAmountCents: number; receivedAt: string; receivedByUserId: string; recordedByUserId: string };
 type Preparation = {
   dispatchStatus: string;
   dispatchPricing: DispatchPricing | null;
-  pricing: (OrderPricing & { unlock?: { quantity: number; unitPriceCents: number } }) | null;
+  pricing: OrderPricing | null;
   rule: CommissionRule | null;
   continuationQuotes: ContinuationQuote[];
-  quote?: Quote | null;
-  receipt?: { receivedAmountCents: number; receivedAt: string; receivedByUserId: string } | null;
+  quote: CustomerQuote | null;
+  receipt: Receipt | null;
   paymentStatus?: string;
   commissionReview?: { revision: number; ruleVersion: number; dispatchFeeCents: number } | null;
 };
@@ -82,20 +84,35 @@ function SegmentPrice({ segment }: { segment: GiftPriceSegment }) {
   </Typography.Paragraph>;
 }
 
-function QuoteSummary({ quote, allowUnlock }: { quote: Quote; allowUnlock: boolean }) {
+function initialSegments(giftTimes: number, period?: DeliveryPeriodPreference, doubleTimes?: number) {
+  const segment = (times: number, deliveryPeriod?: GiftPriceSegment["period"]) => ({
+    period: deliveryPeriod, paidGiftTimes: times, dailyGiftTimes: times, unitPrice: "",
+  });
+  if (period === "split" && doubleTimes !== undefined) {
+    return [segment(doubleTimes, "double"), segment(giftTimes - doubleTimes, "normal")];
+  }
+  return [segment(giftTimes, period === "split" ? undefined : period)];
+}
+
+function QuoteSummary({ quote }: { quote: CustomerQuote }) {
   return <Typography.Paragraph style={{ marginTop: 8 }}>
-    {allowUnlock ? <>爱心款 {money(quote.heartsAmountCents)} · 解锁款 {money(quote.unlockAmountCents)} · </> : null}
-    报价合计 {money(quote.totalAmountCents)}
+    爱心款 {money(quote.heartsAmountCents)} · 预估解锁款 {quote.unlock.quantity} 次 × {money(quote.unlock.unitPriceCents)}/次 = {money(quote.unlockAmountCents)} · 报价合计 {money(quote.totalAmountCents)}
   </Typography.Paragraph>;
 }
 
-export default function GiftDispatchPricing({ route, order, onPublished, allowUnlock = false }: {
+function ReceiptDetails({ receipt }: { receipt: Receipt }) {
+  return <Typography.Paragraph>
+    已登记实收 {money(receipt.receivedAmountCents)} · {new Date(receipt.receivedAt).toLocaleString("zh-CN")} · 收款人 {receipt.receivedByUserId} · 经办人 {receipt.recordedByUserId}
+  </Typography.Paragraph>;
+}
+
+export default function GiftDispatchPricing({ route, order, onPublished }: {
   route: string;
   order: GiftOrder;
   onPublished?: () => void;
-  allowUnlock?: boolean;
 }) {
   const { id: userId, token } = useAuthSession();
+  const { requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes } = order;
   const continuationKey = `sky-heart.employee.continuation.v1:${userId}:${route}`;
   const [form] = Form.useForm<PriceFields>();
   const [continuation] = Form.useForm<SegmentFields>();
@@ -124,7 +141,7 @@ export default function GiftDispatchPricing({ route, order, onPublished, allowUn
       form.setFieldsValue({
         dispatchFee: data.pricing ? formatCentsAsYuan(data.commissionReview?.dispatchFeeCents ?? data.pricing.dispatchFeeCents) : "",
         segments: data.pricing?.giftSegments?.map(segment => ({ ...segment, unitPrice: formatCentsAsYuan(segment.unitPriceCents) }))
-          ?? [{ period: "normal", paidGiftTimes: order.requestedGiftTimes, dailyGiftTimes: order.requestedGiftTimes, unitPrice: "" }],
+          ?? initialSegments(requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes),
         unlockQuantity: data.pricing?.unlock?.quantity,
         unlockPrice: data.pricing?.unlock ? formatCentsAsYuan(data.pricing.unlock.unitPriceCents) : undefined,
       });
@@ -132,7 +149,7 @@ export default function GiftDispatchPricing({ route, order, onPublished, allowUn
       if (!controller.signal.aborted) setLoadError(requestError(err));
     });
     return () => controller.abort();
-  }, [attempt, continuationKey, form, order.requestedGiftTimes, route]);
+  }, [attempt, continuationKey, form, requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes, route]);
 
   async function write(path: string, method: "POST" | "PATCH", payload: object, onSuccess?: () => void, idempotent = false) {
     if (inFlight.current || getAppToken("employee") !== token) return;
@@ -166,21 +183,22 @@ export default function GiftDispatchPricing({ route, order, onPublished, allowUn
   const ruleReady = rule?.basis === "gift_times";
   const commissionVersion = commissionReview?.ruleVersion ?? pricing?.ruleVersion;
   const isPublished = preparation?.dispatchStatus === "published";
-  const savedGiftQuote = pricing?.giftSegments && calculateGiftQuote(pricing.giftSegments);
-
   function save(fields: PriceFields) {
     const dispatchFeeCents = parseYuanAsCents(fields.dispatchFee);
     const giftSegments = fields.segments.map(decodeSegment);
     const amounts = calculateGiftQuote(giftSegments);
-    const unitPriceCents = parseYuanAsCents(fields.unlockPrice ?? "0");
+    const quantity = fields.unlockQuantity ?? 0;
+    const unitPriceCents = parseYuanAsCents(fields.unlockPrice || "0");
     if (!ruleReady || !rule || dispatchFeeCents === null || unitPriceCents === null ||
-        !amounts || amounts.paidGiftTimes !== order.requestedGiftTimes) {
+        !Number.isSafeInteger(quantity) || quantity < 0 ||
+        !amounts || amounts.paidGiftTimes !== requestedGiftTimes ||
+        !Number.isSafeInteger(amounts.amountCents + quantity * unitPriceCents)) {
       setError("请核对各段付费次数、日量、单价、派抽及解锁费用。");
       return;
     }
     void write("/pricing", "PATCH", {
       ruleVersion: rule.version, expectedRevision: pricing?.revision ?? 0, dispatchFeeCents, giftSegments,
-      ...(allowUnlock ? { unlock: { quantity: fields.unlockQuantity ?? 0, unitPriceCents } } : {}),
+      unlock: { quantity, unitPriceCents },
     });
   }
 
@@ -221,17 +239,16 @@ export default function GiftDispatchPricing({ route, order, onPublished, allowUn
 
   return <Card size="small" title="报价与派发规则">
     <Typography.Paragraph>
-      订购 {order.requestedGiftTimes} 次{order.estimatedReceivedHearts === undefined ? "" : " · 预计实收 " + order.estimatedReceivedHearts + " 颗"}
+      订购赠送 {requestedGiftTimes} 次 · 建单预计实收爱心 {order.estimatedReceivedHearts === undefined ? "待确认" : `${order.estimatedReceivedHearts} 颗`}
+      {deliveryPeriodPreference ? ` · ${deliveryPeriodPreferenceLabel[deliveryPeriodPreference]}` : ""}
     </Typography.Paragraph>
     {loadError ? <Alert type="error" showIcon title={loadError} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
       : !preparation ? <Spin aria-label="加载报价" />
       : isPublished && frozen ? <>
         <Typography.Paragraph>首段规则 V{frozen.version} · 派抽 {money(frozen.dispatchFeeCents)}/次 · 团抽 {money(frozen.clubFeeCents)}/次</Typography.Paragraph>
         {(frozen.giftSegments ?? []).map((segment, index) => <SegmentPrice key={index} segment={segment} />)}
-        {quote ? <QuoteSummary quote={quote} allowUnlock={allowUnlock} /> : null}
-        {receipt ? <Typography.Paragraph>
-          已登记实收 {money(receipt.receivedAmountCents)} · {new Date(receipt.receivedAt).toLocaleString("zh-CN")} · 收款人 {receipt.receivedByUserId}
-        </Typography.Paragraph> : null}
+        {quote ? <QuoteSummary quote={quote} /> : null}
+        {receipt ? <ReceiptDetails receipt={receipt} /> : null}
         <Typography.Title level={5}>追加计价段报价</Typography.Title>
         {preparation.continuationQuotes.map(item => <div key={item.requestId}>
           <SegmentPrice segment={item.segment} />
@@ -256,21 +273,20 @@ export default function GiftDispatchPricing({ route, order, onPublished, allowUn
             </Flex>)}
             <Button onClick={() => add({ period: "normal" })}>增加报价段</Button>
           </>}</Form.List>
-          {allowUnlock ? <Flex gap="small" wrap>
+          <Flex gap="small" wrap>
             <Form.Item name="unlockQuantity" label="预估解锁数"><InputNumber min={0} max={Number.MAX_SAFE_INTEGER} precision={0} /></Form.Item>
             <Form.Item name="unlockPrice" label="单次解锁费（元）"><Input inputMode="decimal" /></Form.Item>
-          </Flex> : null}
+          </Flex>
           <Button type="primary" htmlType="submit" loading={busy} style={{ marginTop: 8 }}>保存报价</Button>
         </Form> : <>
-          <Typography.Paragraph>已登记实收 {money(receipt.receivedAmountCents)}</Typography.Paragraph>
+          {quote?.giftSegments?.map((segment, index) => <SegmentPrice key={index} segment={segment} />)}
+          <ReceiptDetails receipt={receipt} />
           <Form form={form} layout="vertical" onFinish={review} onValuesChange={() => setDirty(true)}>
             <Form.Item name="dispatchFee" label="复核每次派抽（元/次）"><Input inputMode="decimal" /></Form.Item>
             <Button htmlType="submit" loading={busy}>保存派抽复核</Button>
           </Form>
         </>}
-        {quote ? <QuoteSummary quote={quote} allowUnlock={allowUnlock} /> : savedGiftQuote ? <Typography.Paragraph style={{ marginTop: 8 }}>
-          已保存爱心款报价 {money(savedGiftQuote.amountCents)}
-        </Typography.Paragraph> : null}
+        {quote ? <QuoteSummary quote={quote} /> : null}
         {onPublished && quote && !receipt && !dirty ? <Form key={quote.revision} layout="vertical" onFinish={({ amount, receivedAt }: { amount: string; receivedAt: string }) => {
           const receivedAmountCents = parseYuanAsCents(amount);
           const time = new Date(receivedAt);
@@ -278,7 +294,7 @@ export default function GiftDispatchPricing({ route, order, onPublished, allowUn
           void write("/receipts", "POST", { pricingRevision: quote.revision, receivedAmountCents, receivedAt: time.toISOString() }, undefined, true);
         }}>
           <Flex gap="small" wrap>
-            <Form.Item name="amount" label="实收金额（元）" initialValue={formatCentsAsYuan(quote.totalAmountCents)} rules={[{ required: true }]}><Input inputMode="decimal" /></Form.Item>
+            <Form.Item name="amount" label="实收金额（元）" rules={[{ required: true }]}><Input inputMode="decimal" /></Form.Item>
             <Form.Item name="receivedAt" label="实收时间" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item>
           </Flex>
           <Button htmlType="submit" loading={busy}>登记实收</Button>

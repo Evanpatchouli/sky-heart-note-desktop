@@ -61,8 +61,11 @@ class PriceSegment {
   @Prop({ type: String, enum: PRICING_PERIODS, required: true })
   period: PricingPeriod;
 
-  @Prop({ ...wholeNumber, min: 1 })
+  @Prop({ ...wholeNumber, min: 0 })
   hearts: number;
+
+  @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
+  giftHearts?: number;
 
   @Prop({ ...wholeNumber, min: 1 })
   unitPriceCents: number;
@@ -104,6 +107,9 @@ class OrderPricing {
   @Prop({ type: UnlockPricingSchema })
   unlock?: UnlockPricing;
 
+  @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
+  discountedHeartsAmountCents?: number;
+
   @Prop({ ...wholeNumber, min: 1 })
   revision: number;
 }
@@ -118,15 +124,15 @@ class DispatchPricing extends OrderPricing {
 }
 
 @Schema({ _id: false })
-export class StoredGiftQuote {
+class CustomerQuote {
   @Prop({ ...wholeNumber, min: 1 })
   revision: number;
 
-  @Prop({ type: String, enum: ['gift_times'], required: true })
-  priceUnit: 'gift_times';
+  @Prop({ type: String, enum: ['gift_times'] })
+  priceUnit?: 'gift_times';
 
-  @Prop({ type: [GiftPriceSegmentSchema], required: true })
-  giftSegments: GiftPriceSegment[];
+  @Prop(giftPriceSegments)
+  giftSegments?: GiftPriceSegment[];
 
   @Prop({ type: [PriceSegmentSchema], required: true })
   segments: PriceSegment[];
@@ -134,8 +140,11 @@ export class StoredGiftQuote {
   @Prop({ type: UnlockPricingSchema, required: true })
   unlock: UnlockPricing;
 
-  @Prop({ ...wholeNumber, min: 1 })
+  @Prop({ ...wholeNumber, min: 0 })
   heartsAmountCents: number;
+
+  @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
+  originalHeartsAmountCents?: number;
 
   @Prop({ ...wholeNumber, min: 0 })
   unlockAmountCents: number;
@@ -164,8 +173,8 @@ export class StoredOrderReceipt {
   @Prop({ ...wholeNumber, min: 1 })
   receivedAmountCents: number;
 
-  @Prop({ type: SchemaFactory.createForClass(StoredGiftQuote), required: true })
-  quote: StoredGiftQuote;
+  @Prop({ type: SchemaFactory.createForClass(CustomerQuote), required: true })
+  quote: CustomerQuote;
 }
 
 @Schema({ _id: false })

@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { USER_ID_PATTERN } from '@webapp-template/common';
-import type { ContinuationQuote, DispatchPricing, OrderPricing } from '@webapp-template/common';
+import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
+import type { ContinuationQuote, DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { Types } from 'mongoose';
 import {
   CommissionReviewSchema,
@@ -30,6 +30,15 @@ class HeartDelivery {
 
   @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
   estimatedReceivedHearts?: number;
+
+  @Prop({ type: Boolean })
+  estimatedReceivedHeartsDerived?: boolean;
+
+  @Prop({ type: String, enum: DELIVERY_PERIOD_PREFERENCES })
+  deliveryPeriodPreference?: DeliveryPeriodPreference;
+
+  @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
+  doubleGiftTimes?: number;
 }
 
 @Schema()

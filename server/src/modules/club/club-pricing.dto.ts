@@ -65,6 +65,18 @@ export class AddContinuationQuoteDto {
   segment: GiftPriceSegmentDto;
 }
 
+class UnlockPricingDto {
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  quantity: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  unitPriceCents: number;
+}
+
 export class UpdateOrderPricingDto {
   @IsInt()
   @Min(1)
@@ -90,6 +102,12 @@ export class UpdateOrderPricingDto {
   @ValidateNested({ each: true })
   @Type(() => GiftPriceSegmentDto)
   giftSegments: GiftPriceSegmentDto[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => UnlockPricingDto)
+  unlock?: UnlockPricingDto;
 }
 
 export class RecordOrderReceiptDto {

@@ -420,7 +420,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     await adminGet(mainOrders, administrator, 403);
   });
 
-  await t.test('按次抽成和首段快照通过真实 Mongo 保存，续段继承原规则', async () => {
+  await t.test('按次抽成和首段快照通过真实 Mongo 保存，续段继承原规则', async (t) => {
     const ruleRoute = '/admin/clubs/main/commission-rule';
     const historyRoute = '/admin/clubs/main/dispatch-pricing';
     const patch = (app, route, actor, body, status) => api(app, route, { method: 'PATCH', token: actor.token, body, status });
@@ -460,6 +460,95 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     const versionOne = { basis: 'gift_times', clubFeeCents: 5, version: 1 };
     assert.deepEqual(raced.filter(Boolean), [versionOne]);
     assert.deepEqual(await adminGet(ruleRoute), versionOne);
+
+    await t.test('两种订单来源按次分段报价，预估解锁单列，原实收与报价可核对', async () => {
+      const unlock = { quantity: 10, unitPriceCents: 10 };
+      const mixedSegments = [
+        { period: 'double', paidGiftTimes: 60, dailyGiftTimes: 6, unitPriceCents: 50 },
+        { period: 'normal', paidGiftTimes: 40, dailyGiftTimes: 4, unitPriceCents: 65 },
+      ];
+      for (const { app, deliveryPeriodPreference, doubleGiftTimes, expected, segments, heartsAmountCents } of [
+        { app: 'employee', deliveryPeriodPreference: 'normal', expected: 100, segments: giftSegments, heartsAmountCents: 5000 },
+        { app: 'client', deliveryPeriodPreference: 'double', expected: 200, segments: doubleSegments, heartsAmountCents: 5000 },
+        { app: 'employee', deliveryPeriodPreference: 'split', doubleGiftTimes: 60, expected: 160, segments: mixedSegments, heartsAmountCents: 5600 },
+      ]) {
+        const isDirect = app === 'employee';
+        const createRoute = isDirect ? employeeOrders : clientOrders;
+        const customerRoute = (id) => `${clientOrders}/${id}`;
+        const creator = isDirect ? dispatcher : owner;
+        const input = {
+          ...orderInput(), deliveryPeriodPreference, doubleGiftTimes,
+          ...(isDirect ? { existingCustomerUserId: owner.id } : { dispatcherUserId: dispatcher.id }),
+        };
+        const order = await post(app, createRoute, creator, input);
+        assert.deepEqual(await post(app, createRoute, creator, input), order);
+        assert.equal(order.requestedGiftTimes, 100);
+        assert.equal(order.estimatedReceivedHearts, expected);
+        assert.equal((await orders.findOne({ _id: mongoId(order.id) })).heartDelivery.estimatedReceivedHearts, expected);
+        await post(app, createRoute, creator, { ...input, estimatedReceivedHearts: expected }, 409);
+
+        const pricingInput = { ...draftInput, giftSegments: segments, unlock };
+        const prepared = await savePrice(order, pricingInput);
+        const customerQuote = await get('client', customerRoute(order.id), owner);
+        assert.equal(customerQuote.estimatedReceivedHearts, expected);
+        assert.deepEqual(customerQuote.quote, prepared.quote);
+        const totalAmountCents = heartsAmountCents + 100;
+        assert.deepEqual(prepared.quote, {
+          revision: 1, priceUnit: 'gift_times', giftSegments: segments, segments: [],
+          unlock, heartsAmountCents, unlockAmountCents: 100, totalAmountCents,
+        });
+
+        const receiptsRoute = route(order) + '/receipts';
+        const receiptInput = {
+          requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: totalAmountCents,
+          receivedAt: '2026-11-24T11:40:00Z',
+        };
+        await post('employee', receiptsRoute, executor, receiptInput, 404);
+        const [edit, receipt] = await Promise.all([
+          savePrice(order, { ...pricingInput, expectedRevision: 1 }, [200, 409]),
+          post('employee', receiptsRoute, dispatcher, receiptInput, [201, 409]),
+        ]);
+        assert.notEqual(Boolean(edit), Boolean(receipt));
+        if (edit) receiptInput.pricingRevision = 2;
+        const paid = await post('employee', receiptsRoute, dispatcher, receiptInput);
+        assert.deepEqual(await post('employee', receiptsRoute, dispatcher, receiptInput), paid);
+        assert.equal(paid.paymentStatus, 'paid_in_full');
+        assert.equal(paid.receipt.receivedByUserId, dispatcher.id);
+        assert.equal(paid.receipt.recordedByUserId, dispatcher.id);
+        assert.ok(Number.isFinite(Date.parse(paid.receipt.recordedAt)));
+        assert.deepEqual(paid.receipt.quote, edit?.quote ?? prepared.quote);
+        await savePrice(order, { ...pricingInput, expectedRevision: receiptInput.pricingRevision, unlock: { ...unlock, quantity: 2 } }, 409);
+        const persisted = await orders.findOne({ _id: mongoId(order.id) });
+        assert.deepEqual(persisted.receipt.quote, paid.receipt.quote);
+        const customer = await get('client', customerRoute(order.id), owner);
+        assert.equal(customer.estimatedReceivedHearts, expected);
+        assert.deepEqual(customer.quote, paid.receipt.quote);
+        assert.deepEqual(customer.receipt, { receivedAmountCents: totalAmountCents, receivedAt: '2026-11-24T11:40:00.000Z' });
+        assert.equal(customer.pricing, undefined);
+        assert.equal(customer.dispatchPricing, undefined);
+        await get('client', customerRoute(order.id), stranger, 404);
+        const published = await post('employee', route(order) + '/publish', dispatcher, {
+          requestId: randomUUID(), pricingRevision: receiptInput.pricingRevision, ruleVersion: 1, commissionReviewRevision: 0,
+        });
+        assert.equal(published.dispatchStatus, 'published');
+        assert.deepEqual((await get('client', customerRoute(order.id), owner)).quote, paid.receipt.quote);
+      }
+      const input = { ...orderInput(), dispatcherUserId: dispatcher.id, deliveryPeriodPreference: 'split' };
+      const unknown = await post('client', clientOrders, owner, input);
+      assert.equal(unknown.estimatedReceivedHearts, undefined);
+      assert.equal((await post('client', clientOrders, owner, { ...input, requestId: randomUUID(), estimatedReceivedHearts: 163, doubleGiftTimes: 60 })).estimatedReceivedHearts, 163);
+      await post('client', clientOrders, owner, { ...input, requestId: randomUUID(), doubleGiftTimes: 100 }, 400);
+      await post('client', clientOrders, owner, { ...input, requestId: randomUUID(), requestedGiftTimes: Number.MAX_SAFE_INTEGER, deliveryPeriodPreference: 'double' }, 400);
+      await savePrice(unknown, { ...draftInput, unlock: { quantity: Number.MAX_SAFE_INTEGER, unitPriceCents: 1 } }, 400);
+      await savePrice(unknown, { ...draftInput, unlock });
+      const shortage = await post('employee', route(unknown) + '/receipts', dispatcher, {
+        requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: 5000, receivedAt: '2026-11-24T11:40:00Z',
+      });
+      assert.equal(shortage.paymentStatus, 'underpaid');
+      await post('employee', route(unknown) + '/publish', dispatcher, {
+        requestId: randomUUID(), pricingRevision: 1, ruleVersion: 1, commissionReviewRevision: 0,
+      }, 409);
+    });
 
     await patch('employee', pricingRoute(draft), executor, draftInput, 404);
     await patch('employee', pricingRoute(draft), outsider, draftInput, 403);
@@ -590,7 +679,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     for (const [index, basis] of ['received_hearts', 'gift_times'].entries()) {
       const historicalInput = { ...legacyInput, requestId: randomUUID() };
       const price = { basis, version: index + 2, revision: 1, dispatchFeeCents: 2, clubFeeCents: 4,
-        segments: [{ period: 'double', hearts: 175, unitPriceCents: 21 }] };
+        segments: [{ period: 'double', hearts: 175, unitPriceCents: 21 }], unlock: { quantity: 2, unitPriceCents: 10 } };
       const now = new Date();
       const inserted = await orders.insertOne({
         requestId: historicalInput.requestId, source: 'client_order', clubId: 'main', businessType: 'heart_delivery',
@@ -607,6 +696,11 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
       assert.equal(retained.requestedGiftTimes, undefined);
       await post('client', clientOrders, owner, { ...historicalInput, requestedHearts: 170 }, 409);
       assert.deepEqual((await get('employee', pricingRoute(legacy), dispatcher)).dispatchPricing, price);
+      const { quote } = await get('client', `${clientOrders}/${legacy.id}`, owner);
+      assert.equal(quote.priceUnit, undefined);
+      assert.deepEqual(quote.segments, price.segments);
+      assert.equal(quote.heartsAmountCents, 3675);
+      assert.equal(quote.totalAmountCents, 3695);
       await extend(legacy, continuation, 409);
     }
 

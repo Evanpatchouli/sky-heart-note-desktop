@@ -12,6 +12,7 @@ import { employeeRequest } from "#/service/request";
 import NewDirectDraft from "./new-direct-draft";
 import CustomerActivation from "./customer-activation";
 import GiftDispatchPricing from "./gift-dispatch-pricing";
+import type { DeliveryPeriodPreference } from "@webapp-template/common";
 
 type Club = { id: string; name: string };
 type Order = {
@@ -24,7 +25,7 @@ type Order = {
   recipientGameAccount: string;
 } & (
   | { requestedHearts: number; requestedGiftTimes?: never; estimatedReceivedHearts?: never }
-  | { requestedHearts?: never; requestedGiftTimes: number; estimatedReceivedHearts?: number }
+  | { requestedHearts?: never; requestedGiftTimes: number; estimatedReceivedHearts?: number; deliveryPeriodPreference?: DeliveryPeriodPreference; doubleGiftTimes?: number }
 );
 type HistoricalOrder = Extract<Order, { requestedHearts: number }>;
 type Preparation = {
