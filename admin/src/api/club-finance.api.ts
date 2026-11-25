@@ -16,9 +16,9 @@ export async function publishClubPenalty(input: PublishClubPenalty) {
   return response.getData();
 }
 
-export async function getClubBalance() {
-  const response: Resp<ClubBalance> = await request.get("/balance");
+export async function getClubBalance(memberId?: string) {
+  const response: Resp<ClubBalance> = await request.get(memberId ? `/balance/members/${encodeURIComponent(memberId)}` : "/balance");
   const data = response.getData();
-  if (!data) throw new Error("团费余额加载失败");
+  if (!data) throw new Error("余额加载失败");
   return data;
 }

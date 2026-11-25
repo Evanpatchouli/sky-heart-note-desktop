@@ -298,20 +298,61 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   assert.deepEqual(await admin(history(long.id, largeId)), rebuilt);
 
   await rule(2, 5);
+  const financeRowFor = async (id) => (await admin('/settlements')).items.find(row => row.orderId === id);
+  const personalBalance = actor => employee(actor, '/club/balance');
+  const balances = () => Promise.all([personalBalance(dispatcher), personalBalance(a), personalBalance(b), admin('/balance')]);
+  const closeOrder = (order, input, server) => call('employee', dispatcher, '/employee' + order.path + '/settlement/close',
+    input, 'POST', 201, server);
+  function postedAmounts(balance, order, close) {
+    return balance.entries.filter(row => row.orderId === order.id).map(row => {
+      assert.equal(row.calculationId, close.calculationId);
+      assert.equal(row.occurredAt, close.closedAt);
+      return [row.kind, row.amountCents];
+    }).sort(([left], [right]) => left.localeCompare(right));
+  }
+
+  const openingBalances = await balances();
+  const ordinary = await paidOrder({ dailyGiftTimes: 100, endDate: '2026-11-01', ruleVersion: 3 });
+  const [ordinaryA, ordinaryB] = await Promise.all([claim(a, ordinary, 50), claim(b, ordinary, 50)]);
+  await Promise.all([record(a, ordinaryA, 1, [line(50)]), record(b, ordinaryB, 1, [line(50)])]);
+  const ordinaryReady = await admin(settlement(ordinary.id));
+  assert.equal((await financeRowFor(ordinary.id)).status, 'ready_to_close');
+  assert.deepEqual([ordinaryReady.deliveredGiftTimes, ordinaryReady.pricing.basis, ordinaryReady.segments[0].quote.unitPriceCents,
+    ordinaryReady.pricing.dispatchFeeCents, ordinaryReady.pricing.clubFeeCents], [100, 'gift_times', 50, 5, 5]);
+  assert.equal(ordinaryReady.cash.originalReceivedCents, 5000);
+  assert.equal(ordinaryReady.cash.netReceivedCents, 5000);
+  assert.deepEqual([ordinaryReady.totals.dispatchNetCents, ordinaryReady.totals.clubNetCents,
+    ...ordinaryReady.members.map(member => member.rewardCents), ordinaryReady.totals.differenceCents], [500, 500, 2000, 2000, 0]);
+  assert.deepEqual(await balances(), openingBalances);
+  const ordinaryClose = await closeOrder(ordinary, { requestId: randomUUID(), calculationId: ordinaryReady.finalCalculation.id });
+  assert.equal(ordinaryClose.closedByUserId, dispatcher.id);
+  assert.deepEqual((await financeRowFor(ordinary.id)).close, ordinaryClose);
+  const ordinaryClosed = await admin(settlement(ordinary.id));
+  assert.equal(ordinaryClosed.status, 'closed');
+  assert.deepEqual(ordinaryClosed.close, ordinaryClose);
+  const ordinaryBalances = await balances();
+  assert.deepEqual(ordinaryBalances.map((balance, index) => balance.balanceCents - openingBalances[index].balanceCents), [500, 2000, 2000, 500]);
+  assert.deepEqual(ordinaryBalances.map(balance => postedAmounts(balance, ordinary, ordinaryClose)),
+    [[['dispatch_fee', 500]], [['member_reward', 2000]], [['member_reward', 2000]], [['club_fee', 500]]]);
+
   await admin('/promotions', { expectedVersion: 0, activityName: '九折活动', activityPayableBasisPoints: 9000 }, 'PATCH');
-  const promotional = await paidOrder({
-    dailyGiftTimes: 100, endDate: '2026-11-01', ruleVersion: 3, promotionalGiftTimes: 5, personalDiscountCents: 500,
-  });
-  const promotionalPaid = await claim(a, promotional, 100);
-  const promotionalA = await claim(a, promotional, 2, 1);
-  const promotionalDispatch = await claim(dispatcher, promotional, 3, 1);
-  await record(a, promotionalPaid, 1, [line(100)]);
-  const onlyGiftsLeft = await admin(settlement(promotional.id));
-  assert.equal(onlyGiftsLeft.status, 'in_progress');
-  assert.equal(onlyGiftsLeft.totals.differenceCents, 0);
-  await Promise.all([record(a, promotionalA, 2, [line(2)]), record(dispatcher, promotionalDispatch, 2, [line(3)])]);
-  const promoted = await admin(settlement(promotional.id));
+  async function completePromotion() {
+    const order = await paidOrder({
+      dailyGiftTimes: 100, endDate: '2026-11-01', ruleVersion: 3, promotionalGiftTimes: 5, personalDiscountCents: 500,
+    });
+    const paid = await claim(a, order, 100);
+    const giftA = await claim(a, order, 2, 1);
+    const giftDispatcher = await claim(dispatcher, order, 3, 1);
+    await record(a, paid, 1, [line(100)]);
+    const onlyGiftsLeft = await admin(settlement(order.id));
+    assert.equal(onlyGiftsLeft.status, 'in_progress');
+    assert.equal(onlyGiftsLeft.totals.differenceCents, 0);
+    await Promise.all([record(a, giftA, 2, [line(2)]), record(dispatcher, giftDispatcher, 2, [line(3)])]);
+    return { order, calculation: await admin(settlement(order.id)) };
+  }
+  const { order: promotional, calculation: promoted } = await completePromotion();
   assert.equal(promoted.status, 'ready_to_close');
+  assert.equal(promoted.deliveredGiftTimes, 105);
   assert.deepEqual(money(promoted.totals), [525, 525, 4200, 4000]);
   assert.deepEqual([promoted.totals.personalDiscountCents, promoted.totals.platformDiscountCents, promoted.totals.promotionalGiftCostCents,
     promoted.totals.dispatchNetCents, promoted.totals.clubNetCents, promoted.cash.netReceivedCents], [500, 500, 250, 25, -225, 4000]);
@@ -320,32 +361,49 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   assert.equal(self.member.rewardCents, 120);
   assert.equal(self.dispatch.netCents, 25);
   assert.equal((await employee(a, promotional.path + '/settlement')).member.rewardCents, 4080);
+  const promotionInput = { requestId: randomUUID(), calculationId: promoted.finalCalculation.id };
+  const [promotionClose, duplicateClose] = await Promise.all([closeOrder(promotional, promotionInput), closeOrder(promotional, promotionInput, peer)]);
+  assert.deepEqual(duplicateClose, promotionClose);
+  assert.deepEqual((await financeRowFor(promotional.id)).close, promotionClose);
+  const promotionBalances = await balances();
+  assert.deepEqual(promotionBalances.map((balance, index) => balance.balanceCents - ordinaryBalances[index].balanceCents), [145, 4080, 0, -225]);
+  const [paidDispatcher, paidSender, , clubBalance] = promotionBalances;
+  assert.deepEqual(postedAmounts(paidDispatcher, promotional, promotionClose),
+    [['dispatch_fee', 525], ['member_reward', 120], ['personal_discount', -500]]);
+  assert.deepEqual(postedAmounts(paidSender, promotional, promotionClose), [['member_reward', 4080]]);
+  const financeMember = await admin(`/balance/members/${dispatcher.id}`);
+  assert.deepEqual(postedAmounts(financeMember, promotional, promotionClose),
+    [['dispatch_fee', 525], ['member_reward', 120], ['personal_discount', -500]]);
+  assert.deepEqual(postedAmounts(clubBalance, promotional, promotionClose),
+    [['club_fee', 525], ['platform_discount', -500], ['promotional_gift', -250]]);
+  assert.equal(financeMember.balanceCents, paidDispatcher.balanceCents);
 
+  const { order: extendable, calculation: beforeContinuation } = await completePromotion();
   const continuationId = randomUUID();
   const continuation = '/continuation-quotes/' + continuationId;
   const window = { startDate: '2026-11-03', endDate: '2026-11-03' };
-  await employee(dispatcher, promotional.path + '/continuation-quotes', {
+  await employee(dispatcher, extendable.path + '/continuation-quotes', {
     requestId: continuationId, segment: { period: 'double', paidGiftTimes: 5, dailyGiftTimes: 5, unitPriceCents: 80 }, window,
   });
-  const proposed = await admin(settlement(promotional.id));
-  assert.equal(proposed.finalCalculation.id, promoted.finalCalculation.id);
-  await asCustomer(customer, '/' + promotional.id + continuation + '/acceptance', { requestId: randomUUID() });
-  const accepted = await admin(settlement(promotional.id));
+  const proposed = await admin(settlement(extendable.id));
+  assert.equal(proposed.finalCalculation.id, beforeContinuation.finalCalculation.id);
+  await asCustomer(customer, '/' + extendable.id + continuation + '/acceptance', { requestId: randomUUID() });
+  const accepted = await admin(settlement(extendable.id));
   assert.equal(accepted.status, 'review_required');
   assert.deepEqual(accepted.issues, ['continuation_payment_pending']);
-  await employee(dispatcher, promotional.path + continuation + '/receipt', {
+  await employee(dispatcher, extendable.path + continuation + '/receipt', {
     requestId: randomUUID(), receivedAmountCents: 400, receivedAt: '2026-11-02T08:00:00+08:00',
   });
-  const extended = await admin(settlement(promotional.id));
+  const extended = await admin(settlement(extendable.id));
   assert.equal(extended.status, 'in_progress');
   assert.equal(extended.cash.continuationReceivedCents, 400);
-  assert.equal(extended.receipt.quote.revision, promoted.receipt.quote.revision);
-  await employee(dispatcher, promotional.path + '/gift-dispatch', {
+  assert.equal(extended.receipt.quote.revision, beforeContinuation.receipt.quote.revision);
+  await employee(dispatcher, extendable.path + '/gift-dispatch', {
     requestId: randomUUID(), segments: [{ segmentIndex: 2, ...window, openToClaim: true, directed: [] }],
   });
-  const continuationWork = await claim(a, promotional, 5, 2);
+  const continuationWork = await claim(a, extendable, 5, 2);
   await record(a, continuationWork, 3, [line(5, 10, 'double')]);
-  const continued = await admin(settlement(promotional.id));
+  const continued = await admin(settlement(extendable.id));
   assert.equal(continued.status, 'ready_to_close');
   assert.deepEqual(money(continued.totals), [550, 550, 4550, 4400]);
   assert.equal(continued.actualReceivedHearts, 115);
@@ -367,8 +425,8 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   const stop = await initiateStop(partial);
   const due = await admin(settlement(partial.id));
   assert.equal(due.status, 'review_required');
-  assert.equal(due.cash.refundDueCents, 1000);
-  assert.equal(due.cash.refundRemainingCents, 1000);
+  assert.deepEqual([due.cash.originalReceivedCents, due.cash.refundDueCents, due.cash.refundedCents, due.cash.refundRemainingCents],
+    [5000, 1000, 0, 1000]);
   const partRefunded = await refund(partial, stop, 600, '00');
   const half = await admin(settlement(partial.id));
   assert.deepEqual([half.cash.refundedCents, half.cash.refundRemainingCents, half.cash.netReceivedCents], [600, 400, 4400]);

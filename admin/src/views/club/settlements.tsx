@@ -48,7 +48,7 @@ export default function Settlements() {
       : club === undefined ? <Spin aria-label="加载俱乐部" />
       : !selected ? <Empty description="当前账号未获财务查看权限" /> : <>
         <Typography.Text strong>{selected.name}</Typography.Text>
-        <ClubBalanceCard />
+        <ClubBalanceCard onOpen={showOrder} />
         <SettlementList onOpen={showOrder} />
         <Drawer title="订单结算核算" open={!!orderId} onClose={() => showOrder()} size={md ? 760 : "100%"} destroyOnHidden>
           {orderId ? <SettlementDetail key={`${orderId}/${calculationId ?? ""}`}
@@ -69,8 +69,6 @@ function SettlementList({ onOpen }: { onOpen: (id: string) => void }) {
 
   useEffect(() => {
     let active = true;
-    setPending(true);
-    setError("");
     getSettlements(cursor).then(result => {
       if (!active) return;
       setRows(result.items);
@@ -81,8 +79,15 @@ function SettlementList({ onOpen }: { onOpen: (id: string) => void }) {
     return () => { active = false; };
   }, [cursor, attempt]);
 
+  function loadPage(after?: string) {
+    setPending(true);
+    setError("");
+    setCursor(after);
+    setAttempt(value => value + 1);
+  }
+
   return <Flex vertical gap="small">
-    <Button style={{ alignSelf: "flex-end" }} onClick={() => setAttempt(value => value + 1)} loading={pending}>刷新列表</Button>
+    <Button style={{ alignSelf: "flex-end" }} onClick={() => loadPage(cursor)} loading={pending}>刷新列表</Button>
     {error ? <Alert type="error" showIcon title={error} /> :
       <Table<SettlementOrderRow | GiftSettlementRow> rowKey="orderId" size="small" dataSource={rows} loading={pending}
         pagination={false} locale={{ emptyText: "暂无结算订单" }} columns={[
@@ -96,8 +101,8 @@ function SettlementList({ onOpen }: { onOpen: (id: string) => void }) {
           { title: "操作", width: 80, render: (_, row) => <Button size="small" onClick={() => onOpen(row.orderId)}>核对</Button> },
         ]} />}
     {cursor || next ? <Flex gap="small">
-      <Button disabled={pending || !cursor} onClick={() => setCursor(undefined)}>返回首页</Button>
-      <Button disabled={pending || !next} onClick={() => setCursor(next ?? undefined)}>下一页</Button>
+      <Button disabled={pending || !cursor} onClick={() => loadPage()}>返回首页</Button>
+      <Button disabled={pending || !next} onClick={() => loadPage(next ?? undefined)}>下一页</Button>
     </Flex> : null}
   </Flex>;
 }
@@ -110,8 +115,6 @@ function SettlementDetail({ orderId, calculationId, compact, onChange }: {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
-    setData(undefined);
-    setError("");
     getSettlement(orderId, calculationId).then(result => {
       if (!active) return;
       if (result) setData(result);
@@ -119,7 +122,7 @@ function SettlementDetail({ orderId, calculationId, compact, onChange }: {
     }).catch(reason => { if (active) setError(requestError(reason)); });
     return () => { active = false; };
   }, [orderId, calculationId, attempt]);
-  const refresh = () => setAttempt(value => value + 1);
+  const refresh = () => { setData(undefined); setError(""); setAttempt(value => value + 1); };
   if (error) return <Alert type="error" showIcon title={error} action={<Button onClick={refresh}>重试</Button>} />;
   if (!data) return <Spin aria-label="加载结算核算" />;
   if ("priceUnit" in data) return <GiftSettlementDetail data={data} history={!!calculationId}

@@ -154,6 +154,7 @@ export default function GiftSettlementDetail({ data, history, compact, onChange,
         </Flex>)}
         {termination ? <>
           <Typography.Text>停送 · {datetime(termination.stoppedAt)}{termination.reason ? ` · ${termination.reason}` : ""}</Typography.Text>
+          <Typography.Text>服务款应退 {money(termination.refundDueCents)} · 实退 {money(termination.refundedCents)} · 待退 {money(termination.refundRemainingCents)}</Typography.Text>
           {termination.customerRequestReference ? <Typography.Text>{termination.customerRequestReference}</Typography.Text> : null}
           {termination.refunds.map(payment => <Typography.Text key={payment.requestId}>
             实退 {money(payment.amountCents)} · {datetime(payment.occurredAt)} · {payment.reason}

@@ -43,6 +43,7 @@ test('按次停送、锁价退款和优惠券返还', { timeout: 160_000 }, asyn
   await seedClub('name', '按次退款测试');
   await seedClub('member', dispatcher.id, 'active', 'dispatcher');
   await seedClub('grant', dispatcher.id, 'CLUB_COMMISSION_MANAGE');
+  await seedClub('grant', manager.id, 'CLUB_FINANCE_READ');
   await call('admin', '/admin/club/commission-rule', manager, { expectedVersion: 0, clubFeeCents: 5 }, 'PATCH');
   const e = (path, body, method, status, server) => call('employee', path, dispatcher, body, method, status, server);
   const c = (path, body, status, actor = owner) => call('client', path, actor, body, undefined, status);
@@ -265,12 +266,25 @@ test('按次停送、锁价退款和优惠券返还', { timeout: 160_000 }, asyn
     assert.deepEqual(Object.keys(refusal.decision).sort(), ['decidedAt', 'source', 'value']);
     const view = await dispatcherView(order);
     assert.deepEqual([view.id, view.origin, view.refundDueCents, view.supplementReceivedCents], [refusal.id, 'declined_adjustment', 250, 0]);
+    const financeSettlement = () => call('admin', `/admin/club/orders/${order.id}/settlement`, manager);
+    const pending = await financeSettlement();
+    assert.equal(pending.status, 'review_required');
+    assert.deepEqual([pending.cash.originalReceivedCents, pending.cash.supplementReceivedCents,
+      pending.cash.refundDueCents, pending.cash.refundedCents, pending.cash.refundRemainingCents, pending.cash.netReceivedCents],
+    [5000, 0, 250, 0, 250, 5000]);
     const payment = refundInput(view, 250);
     const legacy = { adjustmentId: payment.terminationId, expectedRevision: payment.expectedRevision,
       kind: 'refund', requestId: payment.requestId, amountCents: payment.amountCents, occurredAt: payment.occurredAt };
     await Promise.all([refund(order, payment), e(order.path + '/price-adjustment/payments', legacy)]);
     const settled = await ownerView(order);
     assert.deepEqual([settled.refundedCents, settled.netReceivedCents, settled.supplementReceivedCents, settled.refunds.length], [250, 4750, 0, 1]);
+    const refunded = await financeSettlement();
+    assert.equal(refunded.status, 'ready_to_close');
+    assert.deepEqual([refunded.deliveredGiftTimes, refunded.cash.originalReceivedCents, refunded.cash.supplementReceivedCents,
+      refunded.cash.refundDueCents, refunded.cash.refundedCents, refunded.cash.refundRemainingCents,
+      refunded.cash.netReceivedCents, refunded.totals.allocatedCents], [95, 5000, 0, 250, 250, 0, 4750, 4750]);
+    assert.deepEqual(refunded.termination.refunds.map(row => [row.requestId, row.recordedByUserId, row.amountCents]),
+      [[payment.requestId, dispatcher.id, 250]]);
     const amended = (await c(order.client)).deliveryProgress.priceAdjustment;
     assert.deepEqual(Object.keys(amended.payments[0]).sort(), ['amountCents', 'kind', 'occurredAt']);
   });

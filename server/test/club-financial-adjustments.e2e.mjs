@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import mongoose from 'mongoose';
 import { startClubSystem } from './club-test-system.mjs';
 
 test('罚款与额外补偿使用各自的凭据和入账时点', { timeout: 90000 }, async (t) => {
@@ -48,16 +47,29 @@ test('罚款与额外补偿使用各自的凭据和入账时点', { timeout: 900
   });
   const order = `/orders/${paid.id}`;
   const adjustments = `${order}/financial-adjustments`;
+  const settlement = `${order}/settlement`;
+  const financeSettlement = () => admin(finance, settlement);
   await employee(dispatcher, `${order}/pricing`, {
     expectedRevision: 0, ruleVersion: 1, dispatchFeeCents: 5,
-    giftSegments: [{ period: 'normal', paidGiftTimes: 100, dailyGiftTimes: 10, unitPriceCents: 50 }],
+    giftSegments: [{ period: 'normal', paidGiftTimes: 100, dailyGiftTimes: 100, unitPriceCents: 50 }],
   }, 'PATCH');
   await employee(dispatcher, `${order}/receipts`, {
     requestId: randomUUID(), pricingRevision: 1, receivedAmountCents: 5000, receivedAt: '2026-11-01T00:00:00+08:00',
   });
   await employee(dispatcher, `${order}/publish`, {
     requestId: randomUUID(), pricingRevision: 1, ruleVersion: 1, commissionReviewRevision: 0,
-    giftDispatchSegments: [{ segmentIndex: 0, startDate: '2026-11-02', endDate: '2026-11-11', openToClaim: true, directed: [] }],
+    giftDispatchSegments: [{ segmentIndex: 0, startDate: '2026-11-02', endDate: '2026-11-02', openToClaim: true, directed: [] }],
+  });
+  await call('employee', member, '/songxinhao', { name: '补偿对账送心号' });
+  const [account] = await call('employee', member, '/songxinhao/linkable');
+  const { shareId } = await employee(member, `/gift-claims/${paid.id}`, {
+    requestId: randomUUID(), kind: 'public', segmentIndex: 0, dailyGiftTimes: 100,
+  });
+  const execution = `${order}/shares/${shareId}/execution-accounts`;
+  const linked = await employee(member, execution, { personalAccountId: account.id });
+  await employee(member, `${execution}/${linked.id}/daily-reports`, {
+    requestId: randomUUID(), kind: 'daily', businessDate: '2026-11-02',
+    lines: [{ period: 'normal', giftTimes: 100, receivedHearts: 100 }],
   });
 
   const submit = (kind, amountCents, reason, memberUserId) => {
@@ -91,6 +103,10 @@ test('罚款与额外补偿使用各自的凭据和入账时点', { timeout: 900
   const first = { requestId: randomUUID(), expectedRevision: 2, amountCents: 300, occurredAt: '2026-11-23T12:00:00+08:00' };
   await employee(dispatcher, refundPath, first, 'POST', 409);
   assert.equal((await decide(deputy, compensation, 'approved')).id, compensation.id);
+  const refundDue = await financeSettlement();
+  assert.equal(refundDue.status, 'review_required');
+  assert.deepEqual([refundDue.cash.compensationRefundDueCents, refundDue.cash.compensationRefundedCents,
+    refundDue.cash.compensationRefundRemainingCents, refundDue.cash.netReceivedCents], [500, 0, 500, 5000]);
   assert.equal((await clubBalance()).balanceCents, 200);
   await employee(deputy, refundPath, first, 'POST', 404);
   await employee(dispatcher, refundPath, { ...first, occurredAt: '2026-10-31T00:00:00+08:00' }, 'POST', 400);
@@ -100,7 +116,7 @@ test('罚款与额外补偿使用各自的凭据和入账时点', { timeout: 900
   assert.equal((await clubBalance()).balanceCents, -100);
   const second = { ...first, requestId: randomUUID(), expectedRevision: 3, amountCents: 200, evidence: '退款凭据' };
   await employee(dispatcher, refundPath, { ...second, amountCents: 201 }, 'POST', 409);
-  const finalRefund = await employee(dispatcher, refundPath, second);
+  const finalRefund = await retry(server => employee(dispatcher, refundPath, second, 'POST', 201, server));
   assert.deepEqual(finalRefund.refunds.map(({ amountCents }) => amountCents), [300, 200]);
   assert.equal(finalRefund.refunds[1].evidence, second.evidence);
   const buyer = await call('client', customer, '/orders/' + paid.id);
@@ -110,21 +126,33 @@ test('罚款与额外补偿使用各自的凭据和入账时点', { timeout: 900
   assert.equal((await clubBalance()).balanceCents, -300);
   assert.equal(await db.collection('club_financial_adjustments').countDocuments(), 4);
 
-  // Supply the read-side settlement contract without simulating a wage payment.
   const pendingAtClose = await submit('member_penalty', 50, '结单后不可审批', member.id);
-  const closedAt = new Date();
-  const objectId = (id) => new mongoose.Types.ObjectId(id);
-  await db.collection('club_orders').updateOne({ _id: objectId(paid.id) }, {
-    $set: { closedAt, settlementPenaltyIds: [objectId(penalty.id)] },
-  });
+  const ready = await financeSettlement();
+  assert.equal(ready.status, 'ready_to_close');
+  assert.deepEqual([ready.cash.compensationRefundDueCents, ready.cash.compensationRefundedCents,
+    ready.cash.compensationRefundRemainingCents, ready.cash.netReceivedCents], [500, 500, 0, 4500]);
+  const closeInput = { requestId: randomUUID(), calculationId: ready.finalCalculation.id };
+  const close = await retry(server => employee(dispatcher, `${settlement}/close`, closeInput, 'POST', 201, server));
   await decide(leader, pendingAtClose, 'approved', 409);
   await admin(administrator, '/penalties', { ...independent, requestId: randomUUID(), orderId: paid.id }, 'POST', 409);
   assert.equal((await decide(deputy, penalty, 'approved')).penaltyPosting, 'posted');
+  const reconciled = await financeSettlement();
+  assert.deepEqual(reconciled.close, close);
+  assert.equal(reconciled.adjustments.find(row => row.id === penalty.id).penaltyPosting, 'posted');
+  assert.deepEqual(reconciled.adjustments.find(row => row.id === compensation.id).refunds, finalRefund.refunds);
+  assert.deepEqual([reconciled.totals.customerCompensationCents, reconciled.totals.memberPenaltyCents,
+    reconciled.totals.clubNetCents, reconciled.totals.differenceCents], [500, 200, 200, 0]);
   const afterClose = await balance(member);
-  assert.equal(afterClose.balanceCents, -200);
-  assert.equal(afterClose.entries[0].occurredAt, closedAt.toISOString());
+  assert.equal(afterClose.balanceCents, 3800);
   assert.deepEqual(afterClose.pendingPenalties, []);
-  assert.equal((await clubBalance()).balanceCents, -100);
+  assert.deepEqual(afterClose.entries.filter(row => row.adjustmentId === penalty.id)
+    .map(row => [row.kind, row.amountCents, row.occurredAt]), [['member_penalty', -200, close.closedAt]]);
+  const team = await clubBalance();
+  assert.equal(team.balanceCents, 400);
+  assert.deepEqual(team.entries.filter(row => row.orderId === paid.id && row.adjustmentId === penalty.id)
+    .map(row => [row.kind, row.amountCents, row.occurredAt]), [['member_penalty', 200, close.closedAt]]);
+  assert.deepEqual(team.entries.filter(row => row.orderId === paid.id && row.adjustmentId === compensation.id)
+    .map(row => row.amountCents).sort((a, b) => a - b), [-300, -200]);
 
   await seedClub('member', dispatcher.id, 'active', 'member');
   const unassigned = await call('client', customer, '/orders', {
