@@ -119,7 +119,7 @@ export interface GiftDispatchPreparation {
   })[];
   acceptingClaims: boolean;
   totals: GiftAllocationTotals;
-  segmentTotals: (GiftAllocationTotals & { segmentIndex: number; configured: boolean })[];
+  segmentTotals: (GiftAllocationTotals & { segmentIndex: number; configured: boolean; window?: GiftWindow })[];
   candidates: { userId: string; nickname: string | null }[];
 }
 

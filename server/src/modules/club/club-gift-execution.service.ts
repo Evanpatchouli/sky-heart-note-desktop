@@ -17,6 +17,7 @@ export const writableGiftDispatch = {
   dispatchWithdrawnAt: null,
   termination: null,
   'priceAdjustment.state': { $in: [null, 'continuing'] },
+  closedAt: null,
 };
 
 export function acceptsGiftExecution(order: ClubOrder & {
@@ -24,7 +25,7 @@ export function acceptsGiftExecution(order: ClubOrder & {
   termination?: unknown;
   priceAdjustment?: { state: string };
 }) {
-  return order.dispatchWithdrawnAt == null && order.termination == null &&
+  return order.closedAt == null && order.dispatchWithdrawnAt == null && order.termination == null &&
     (order.priceAdjustment?.state == null || order.priceAdjustment.state === 'continuing');
 }
 

@@ -1,3 +1,6 @@
+import { ClubGiftSupervision, canContinueGiftOrder, giftExceptionScope } from './club-gift-supervision';
+import { continuationView } from './club-continuation.service';
+import { jsonReportCount } from './club-daily-report-view';
 import {
   BadRequestException,
   ConflictException,
@@ -7,7 +10,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, type CommissionRule, type ContinuationQuote, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
+import { calculateGiftQuote, calculateQuoteAmounts, estimateReceivedHearts, type CommissionRule, type CustomerGiftProgress, type CustomerQuote, type OrderPricing } from '@webapp-template/common';
 import { randomInt } from 'node:crypto';
 import { Model, QueryFilter, Types, isObjectIdOrHexString } from 'mongoose';
 import type { SessionUser } from '../../auth/app-access';
@@ -25,7 +28,6 @@ import type {
   EmployeeClubOrderQuery,
 } from './club-order.dto';
 import type {
-  AddContinuationQuoteDto,
   PublishOrderDto,
   RecordOrderReceiptDto,
   ReviewDispatchCommissionDto,
@@ -128,7 +130,8 @@ function dispatchPreparation(order: ClubOrder, rule: CommissionRule | null) {
     pricing: order.pricing ?? null,
     rule,
     dispatchPricing: order.dispatchPricing ?? null,
-    continuationQuotes: order.continuationQuotes ?? [],
+    ...continuationView(order),
+    canManageContinuation: canContinueGiftOrder(order),
     dispatchStatus: order.dispatchStatus,
     quote,
     receipt: order.receipt ?? null,
@@ -137,7 +140,15 @@ function dispatchPreparation(order: ClubOrder, rule: CommissionRule | null) {
   };
 }
 
-function customerOrderView(order: ClubOrder, names: Map<string, string>) {
+type HistoricalProgress = {
+  priceUnit: 'received_hearts';
+  agreedDeadline: string | null;
+  observedHearts: number | string;
+  creditedHearts: number;
+  remainingHearts: number;
+};
+
+function customerOrderView(order: ClubOrder, names: Map<string, string>, deliveryProgress: CustomerGiftProgress | HistoricalProgress) {
   const pricing = order.dispatchPricing ?? order.pricing;
   const segments = pricing?.segments;
   const giftSegments = pricing?.giftSegments;
@@ -151,7 +162,9 @@ function customerOrderView(order: ClubOrder, names: Map<string, string>) {
       receivedAmountCents: order.receipt.receivedAmountCents,
       receivedAt: order.receipt.receivedAt,
     }, paymentStatus: paymentStatus(order.receipt) } : {}),
-    ...(order.continuationQuotes?.length ? { continuationQuotes: order.continuationQuotes } : {}),
+    ...continuationView(order),
+    deliveryProgress,
+    closedAt: order.closedAt ?? null,
   };
 }
 
@@ -210,6 +223,7 @@ export class ClubOrderService implements OnModuleInit {
     private readonly customers: ClubCustomerService,
     private readonly activation: UserDispatchActivationService,
     private readonly giftDispatch: ClubGiftDispatchService,
+    private readonly giftSupervision: ClubGiftSupervision,
   ) {}
 
   async onModuleInit() {
@@ -381,10 +395,13 @@ export class ClubOrderService implements OnModuleInit {
       { ...(clubId ? { clubId } : {}), customerUserId: userId, customerLinkStatus: 'verified' },
       query,
     );
-    const names = await this.directory.memberNicknames([
-      ...new Set(orders.flatMap(({ dispatcherUserId }) => dispatcherUserId ? [dispatcherUserId] : [])),
+    const [names, progress] = await Promise.all([
+      this.directory.memberNicknames([
+        ...new Set(orders.flatMap(({ dispatcherUserId }) => dispatcherUserId ? [dispatcherUserId] : [])),
+      ]),
+      Promise.all(orders.map(order => this.customerProgress(order))),
     ]);
-    return { items: orders.map(order => customerOrderView(order, names)), nextCursor };
+    return { items: orders.map((order, index) => customerOrderView(order, names, progress[index])), nextCursor };
   }
 
   async getCustomerOrder(clubId: string, userId: string, orderId: string) {
@@ -394,8 +411,80 @@ export class ClubOrderService implements OnModuleInit {
       customerUserId: userId,
       customerLinkStatus: 'verified',
     });
-    const names = await this.directory.memberNicknames(order.dispatcherUserId ? [order.dispatcherUserId] : []);
-    return customerOrderView(order, names);
+    const [names, progress] = await Promise.all([
+      this.directory.memberNicknames(order.dispatcherUserId ? [order.dispatcherUserId] : []),
+      this.customerProgress(order),
+    ]);
+    return customerOrderView(order, names, progress);
+  }
+
+  private async customerProgress(order: ClubOrder) {
+    return await this.giftSupervision.customer(order) ?? (await this.historicalProgress(order)).progress;
+  }
+
+  private async historicalProgress(order: ClubOrder, through?: string) {
+    const quote = order.receipt?.quote ?? order.dispatchPricing ?? order.pricing;
+    const agreed = quote?.segments.length
+      ? quote.segments.reduce((sum, segment) => sum + segment.hearts + (segment.giftHearts ?? 0), 0)
+      : order.heartDelivery.requestedHearts ?? 0;
+    const facts = order.shares.length ? await this.orders.db.collection('club_daily_reports').aggregate<{
+      _id: Types.ObjectId; hearts: Types.Decimal128;
+    }>([
+      { $match: { orderId: order._id, shareId: { $in: order.shares.map(share => share._id) }, priceUnit: null,
+        kind: 'daily', ...(through ? { businessDate: { $lte: through } } : {}) } },
+      { $group: { _id: '$shareId', hearts: { $sum: { $toDecimal: { $toLong: '$receivedHearts' } } } } },
+    ]).toArray() : [];
+    const byShare = new Map(facts.map(row => [row._id.toHexString(), BigInt(row.hearts.toString())]));
+    let observed = 0n;
+    let credited = 0;
+    const shares = order.shares.map(share => {
+      const actual = byShare.get(share._id.toHexString()) ?? 0n;
+      observed += actual;
+      const delivered = actual > BigInt(share.hearts) ? share.hearts : Number(actual);
+      credited += delivered;
+      return { id: share._id.toHexString(), userId: share.userId, promisedHearts: share.hearts,
+        observedHearts: jsonReportCount(actual), remainingHearts: share.hearts - delivered };
+    });
+    credited = Math.min(agreed, credited);
+    const progress: HistoricalProgress = {
+      priceUnit: 'received_hearts', agreedDeadline: order.heartDelivery.agreedDeadline ?? null,
+      observedHearts: jsonReportCount(observed),
+      creditedHearts: credited, remainingHearts: agreed - credited };
+    return { progress, shares };
+  }
+
+  async getDispatchFulfillment(clubId: string, userId: string, orderId: string, through?: string) {
+    await this.directory.requireMember(clubId, userId);
+    const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
+    if (order.heartDelivery.requestedGiftTimes !== undefined)
+      return { ...await this.giftSupervision.dispatch(order, through), ...continuationView(order) };
+    const [{ progress, shares }, names] = await Promise.all([
+      this.historicalProgress(order, through),
+      this.directory.memberNicknames([...new Set(order.shares.map(share => share.userId))]),
+    ]);
+    return {
+      ...progress, closedAt: order.closedAt ?? null,
+      shares: shares.map(share => ({ ...share, nickname: names.get(share.userId) ?? null })),
+    };
+  }
+
+  async listFulfillmentExceptions(clubId: string, userId: string, query: ClubOrderQuery & { through: string }) {
+    await this.directory.requireMember(clubId, userId);
+    const { through, source, limit = 15 } = query;
+    const scope = { clubId, dispatcherUserId: userId, ...giftExceptionScope(through) };
+    const items: { order: ReturnType<typeof orderSummary>; fulfillment: NonNullable<Awaited<ReturnType<ClubGiftSupervision['exceptions']>>> }[] = [];
+    let after = query.after;
+    do {
+      const { orders, nextCursor } = await this.list(scope, { source, after, limit: 25 });
+      const exceptions = await Promise.all(orders.map(order => this.giftSupervision.exceptions(order, through)));
+      for (const [index, fulfillment] of exceptions.entries()) {
+        if (!fulfillment) continue;
+        if (items.length === limit) return { items, nextCursor: items.at(-1)!.order.id };
+        items.push({ order: orderSummary(orders[index]), fulfillment });
+      }
+      after = nextCursor ?? undefined;
+    } while (after);
+    return { items, nextCursor: null };
   }
 
   async listEmployeeOrders(
@@ -434,49 +523,6 @@ export class ClubOrderService implements OnModuleInit {
     const order = await this.get(orderId, { clubId, dispatcherUserId: userId });
     const rule = order.dispatchStatus === 'published' ? null : await this.directory.readCommissionRule(clubId);
     return dispatchPreparation(order, rule);
-  }
-
-  async addContinuationQuote(
-    clubId: string,
-    userId: string,
-    orderId: string,
-    { requestId, segment }: AddContinuationQuoteDto,
-  ) {
-    await this.directory.requireMember(clubId, userId);
-    const scope = { clubId, dispatcherUserId: userId };
-    const order = await this.get(orderId, scope);
-    const pricing = order.dispatchPricing;
-    if (order.dispatchStatus !== 'published' || pricing?.priceUnit !== 'gift_times') {
-      throw new ConflictException('仅已派发的按次订单可追加报价');
-    }
-
-    const amounts = calculateGiftQuote([segment]);
-    if (!amounts) throw new BadRequestException('请核对续段的赠送次数、日量和单价');
-    const quote: ContinuationQuote = { requestId, segment, amountCents: amounts.amountCents };
-    const { version, basis, clubFeeCents, dispatchFeeCents } = pricing;
-    const commission = { version, basis, clubFeeCents, dispatchFeeCents };
-    const { matchedCount } = await this.orders.updateOne(
-      {
-        ...scope,
-        _id: order._id,
-        dispatchStatus: 'published',
-        'dispatchPricing.priceUnit': 'gift_times',
-        'continuationQuotes.requestId': { $ne: requestId },
-      },
-      { $push: { continuationQuotes: quote } },
-      { runValidators: true },
-    );
-    if (matchedCount) return { ...quote, commission };
-
-    const latest = await this.get(orderId, scope);
-    const saved = latest.continuationQuotes?.find(item => item.requestId === requestId);
-    if (
-      saved?.segment.period !== segment.period ||
-      saved.segment.paidGiftTimes !== segment.paidGiftTimes ||
-      saved.segment.dailyGiftTimes !== segment.dailyGiftTimes ||
-      saved.segment.unitPriceCents !== segment.unitPriceCents
-    ) throw new ConflictException('相同提交标识已用于不同的续段报价，或订单状态已更新');
-    return { ...saved, commission };
   }
 
   async updateDispatchPricing(

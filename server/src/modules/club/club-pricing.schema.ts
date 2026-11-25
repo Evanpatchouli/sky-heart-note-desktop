@@ -31,7 +31,65 @@ const giftPriceSegments = {
 };
 
 @Schema({ _id: false })
-class ContinuationQuote {
+class ContinuationWindow {
+  @Prop({ type: String, required: true })
+  startDate: string;
+
+  @Prop({ type: String, required: true })
+  endDate: string;
+}
+
+const continuationWindowSchema = SchemaFactory.createForClass(ContinuationWindow);
+
+@Schema({ _id: false })
+export class StoredContinuationRequest extends ContinuationWindow {
+  @Prop({ type: String, required: true })
+  requestId: string;
+
+  @Prop({ type: String, enum: PRICING_PERIODS, required: true })
+  period: PricingPeriod;
+
+  @Prop({ ...wholeNumber, min: 1 })
+  paidGiftTimes: number;
+
+  @Prop({ ...wholeNumber, min: 1 })
+  dailyGiftTimes: number;
+
+  @Prop({ type: Date, required: true })
+  requestedAt: Date;
+}
+
+export const ContinuationRequestSchema = SchemaFactory.createForClass(StoredContinuationRequest);
+
+@Schema({ _id: false })
+class ContinuationAcceptance {
+  @Prop({ type: String, required: true })
+  requestId: string;
+
+  @Prop({ type: Date, required: true })
+  acceptedAt: Date;
+}
+
+@Schema({ _id: false })
+class ContinuationReceipt {
+  @Prop({ type: String, required: true })
+  requestId: string;
+
+  @Prop({ ...wholeNumber, min: 1 })
+  receivedAmountCents: number;
+
+  @Prop({ type: Date, required: true })
+  receivedAt: Date;
+
+  @Prop({ type: Date, required: true })
+  recordedAt: Date;
+
+  @Prop({ type: String, match: USER_ID_PATTERN, required: true })
+  recordedByUserId: string;
+}
+
+@Schema({ _id: false })
+export class StoredContinuationQuote {
   @Prop({ type: String, required: true })
   requestId: string;
 
@@ -40,9 +98,27 @@ class ContinuationQuote {
 
   @Prop({ ...wholeNumber, min: 1 })
   amountCents: number;
+
+  @Prop({ type: String })
+  customerRequestId?: string;
+
+  @Prop({ type: continuationWindowSchema })
+  window?: ContinuationWindow;
+
+  @Prop({ type: Boolean })
+  windowAddedAfterQuote?: boolean;
+
+  @Prop({ type: SchemaFactory.createForClass(ContinuationAcceptance) })
+  acceptance?: ContinuationAcceptance;
+
+  @Prop({ type: SchemaFactory.createForClass(ContinuationReceipt) })
+  receipt?: ContinuationReceipt;
+
+  @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
+  segmentIndex?: number;
 }
 
-export const ContinuationQuoteSchema = SchemaFactory.createForClass(ContinuationQuote);
+export const ContinuationQuoteSchema = SchemaFactory.createForClass(StoredContinuationQuote);
 
 @Schema({ _id: false })
 class CommissionRule {

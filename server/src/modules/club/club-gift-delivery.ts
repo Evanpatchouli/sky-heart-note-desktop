@@ -3,6 +3,7 @@ import { Types, type Collection, type PipelineStage } from 'mongoose';
 import { jsonReportCount } from './club-daily-report-view';
 import type { ClubOrder } from './club-order.schema';
 import { acceptsGiftExecution } from './club-gift-execution.service';
+import { activeGiftSegments } from './club-gift-allocation';
 
 export type GiftDayFact = {
   _id: { shareId: Types.ObjectId; businessDate: string };
@@ -17,6 +18,7 @@ export function giftDayFacts(
   order: ClubOrder,
   shareId?: Types.ObjectId,
   userId?: string,
+  through?: string,
 ) {
   const decimal = (value: string) => ({ $toDecimal: { $toLong: value } });
   const shareIds = shareId ? [shareId] : (order.giftDispatch?.segments ?? [])
@@ -24,7 +26,7 @@ export function giftDayFacts(
   if (!shareIds.length) return Promise.resolve([]);
   const pipeline: PipelineStage[] = [
     { $match: {
-      orderId: order._id, ...(userId ? { userId } : {}),
+      orderId: order._id, ...(userId ? { userId } : {}), ...(through ? { businessDate: { $lte: through } } : {}),
       $or: [
         { priceUnit: 'gift_times' },
         { priceUnit: null, $or: [{ shareId: { $in: shareIds } }, { 'lines.shareId': { $in: shareIds } }] },
@@ -87,6 +89,7 @@ export function giftProgress(order: ClubOrder, userId: string, facts: GiftDayFac
     byShare.set(id, counts);
   }
   const pricing = order.dispatchPricing!;
+  const quotes = activeGiftSegments(order);
   const mine = emptyCounts();
   const shares: GiftShareProgress[] = [];
   let deliveredGiftTimes = 0;
@@ -95,7 +98,7 @@ export function giftProgress(order: ClubOrder, userId: string, facts: GiftDayFac
   let estimatedDeliveredHearts = 0n;
   let grossCents = 0n;
   for (const { segmentIndex, shares: assignments } of order.giftDispatch?.segments ?? []) {
-    const quote = pricing.giftSegments?.[segmentIndex];
+    const quote = quotes[segmentIndex];
     if (!quote) continue;
     for (const share of assignments) {
       const counts = byShare.get(share.id) ?? emptyCounts();
@@ -112,7 +115,7 @@ export function giftProgress(order: ClubOrder, userId: string, facts: GiftDayFac
       shares.push({ shareId: share.id, segmentIndex, ...quantities(counts, delivered, remaining) });
     }
   }
-  const orderGiftTimes = pricing.giftSegments?.reduce((sum, quote) => sum + quote.paidGiftTimes, 0) ?? 0;
+  const orderGiftTimes = quotes.reduce((sum, quote) => sum + quote.paidGiftTimes, 0);
   const dispatchFeeCents = BigInt(deliveredGiftTimes) * BigInt(pricing.dispatchFeeCents);
   const clubFeeCents = BigInt(deliveredGiftTimes) * BigInt(pricing.clubFeeCents);
   const memberCents = grossCents - dispatchFeeCents - clubFeeCents;
@@ -127,6 +130,7 @@ export function giftProgress(order: ClubOrder, userId: string, facts: GiftDayFac
     estimatedReceivedHearts: order.heartDelivery.estimatedReceivedHearts ?? null,
     estimatedDeliveredHearts: jsonReportCount(estimatedDeliveredHearts),
     canSubmitDaily: acceptsGiftExecution(order),
+    canCorrectReports: order.closedAt == null,
     compensationIssue,
     pendingCompensation: compensationIssue ? null : {
       giftTimes: deliveredGiftTimes, grossCents: Number(grossCents),

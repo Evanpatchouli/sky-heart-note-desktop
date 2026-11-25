@@ -3,6 +3,7 @@ import type {
   GiftClaimResult, GiftDayAllocation, GiftExecutionAccount, GiftDispatchSegment, GiftOffer, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow,
 } from '@webapp-template/common';
 import { Types } from 'mongoose';
+import type { ClubOrder } from './club-order.schema';
 
 const dayMilliseconds = 86_400_000;
 const maximumWindowDays = 3660;
@@ -65,6 +66,26 @@ function dayRange({ startDate, endDate }: GiftWindow) {
   if (end < start || end - start >= maximumWindowDays)
     throw new BadRequestException('执行窗口需按先后填写，最多 3660 天');
   return { start, end };
+}
+
+export function requireGiftWindowCapacity(window: GiftWindow, times: number, daily: number) {
+  const { start, end } = dayRange(window);
+  if (Math.ceil(times / daily) > end - start + 1)
+    throw new BadRequestException('执行窗口不足以完成此段付费赠送次数');
+}
+
+export function activeGiftSegments(order: ClubOrder): GiftPriceSegment[] {
+  const initial = order.dispatchPricing?.giftSegments ?? [];
+  const active = (order.continuationQuotes ?? [])
+    .filter(quote => quote.receipt && quote.segmentIndex !== undefined)
+    .sort((a, b) => a.segmentIndex! - b.segmentIndex!);
+  return [...initial, ...active.map(quote => quote.segment)];
+}
+
+export function giftSchedule(days: GiftDayAllocation[]) {
+  const amounts: DayAmounts = new Map();
+  addDays(amounts, days);
+  return new Map([...amounts].map(([day, count]) => [dateAt(day), count]));
 }
 
 function addDays(amounts: DayAmounts, days: GiftDayRun[]) {
@@ -139,8 +160,7 @@ export function buildGiftSegments(
     if (!quote) throw new BadRequestException('请选择已付计价段');
     const segment: StoredGiftSegment = { segmentIndex, openToClaim, startDate, endDate, offers: [], shares: [] };
     const window = dayRange(segment);
-    if (Math.ceil(quote.paidGiftTimes / quote.dailyGiftTimes) > window.end - window.start + 1)
-      throw new BadRequestException('执行窗口不足以完成此段付费赠送次数');
+    requireGiftWindowCapacity(segment, quote.paidGiftTimes, quote.dailyGiftTimes);
     if (!openToClaim && !directed.length)
       throw new BadRequestException('请选择开放抢单或填写至少一名指定团员');
     if (new Set(directed.map(item => item.userId)).size !== directed.length)

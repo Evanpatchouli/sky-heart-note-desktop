@@ -9,4 +9,5 @@ export * from './utils';
 // export * from './components';
 export * from './club-pricing';
 export * from './club-gift-dispatch';
+export * from './club-gift-supervision';
 export * from './club-gift-delivery';

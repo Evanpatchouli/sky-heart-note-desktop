@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, Select, Spin, Tag, Typography } from "antd";
 import { RequestError } from "@webapp-template/common/web-auth";
 import {
@@ -12,6 +12,7 @@ import { employeeRequest } from "#/service/request";
 import NewDirectDraft from "./new-direct-draft";
 import CustomerActivation from "./customer-activation";
 import GiftDispatchPricing from "./gift-dispatch-pricing";
+import { GiftExceptionQueue, GiftSupervisionCard } from "./gift-supervision";
 import PendingAssignment from "./pending-assignment";
 import MemberInvitation from "./member-invitation";
 import type { DeliveryPeriodPreference } from "@webapp-template/common";
@@ -95,7 +96,24 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
-  const order = page?.items.find(value => value.id === selectedId) ?? page?.items[0];
+  const [through, setThrough] = useState<string>();
+  const [fulfillmentRevision, setFulfillmentRevision] = useState(0);
+  const [exceptionOrder, setExceptionOrder] = useState<Order>();
+  const fulfillmentPanel = useRef<HTMLDivElement>(null);
+  const order = page?.items.find(value => value.id === selectedId) ?? exceptionOrder ?? page?.items[0];
+
+  function refreshFulfillment() {
+    setFulfillmentRevision(value => value + 1);
+  }
+
+  function openException(selected: Order) {
+    setSelectedId(selected.id);
+    setExceptionOrder(selected);
+    requestAnimationFrame(() => {
+      fulfillmentPanel.current?.focus({ preventScroll: true });
+      fulfillmentPanel.current?.scrollIntoView({ block: "start" });
+    });
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -112,6 +130,7 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
 
   function goTo(cursor?: string) {
     setPage(undefined);
+    setExceptionOrder(undefined);
     setAfter(cursor);
   }
 
@@ -121,9 +140,12 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
       setAfter(undefined);
       setAttempt(value => value + 1);
     }} /> : null}
+    <GiftExceptionQueue<Order> route={route} through={through} revision={fulfillmentRevision} onOpen={openException}
+      onCheck={date => { setThrough(date); refreshFulfillment(); }} />
     <Card size="small" title="我负责派发的订单" extra={<Button onClick={() => setCreating(true)}>新建直接派单草稿</Button>}>
       {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
-        : page ? page.items.length ? <Select aria-label="我负责派发的订单" style={{ width: "100%" }} value={order?.id} onChange={setSelectedId}
+        : page ? page.items.length ? <Select aria-label="我负责派发的订单" style={{ width: "100%" }} value={page.items.some(item => item.id === order?.id) ? order?.id : undefined}
+          onChange={id => { setExceptionOrder(undefined); setSelectedId(id); }}
           options={page.items.map(value => ({
             value: value.id,
             label: `${sources[value.source]} · ${value.recipientGameAccount} · ${value.requestedGiftTimes === undefined ? `${value.requestedHearts} 颗` : `${value.requestedGiftTimes} 次`} · ${statuses[value.dispatchStatus]} · ${value.id}`,
@@ -140,7 +162,11 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
         {order.customerLinkStatus === "verified" ? `老板 · ${order.customerUserId}` : "老板归属待核"}
       </Typography.Text> : null}
       {order.customerActivationAvailable && <CustomerActivation key={order.id} route={`${route}/${order.id}`} />}
-      {order.requestedGiftTimes !== undefined ? <GiftDispatchPricing key={order.id} route={`${route}/${order.id}`} order={order}
+      {order.dispatchStatus === "published" && <div ref={fulfillmentPanel} tabIndex={-1}>
+        <GiftSupervisionCard key={order.id} route={`${route}/${order.id}`} through={through}
+          revision={fulfillmentRevision} onRefresh={refreshFulfillment} onShowCurrent={() => setThrough(undefined)} />
+      </div>}
+      {order.requestedGiftTimes !== undefined ? <GiftDispatchPricing onFulfillmentChanged={refreshFulfillment} key={order.id} route={`${route}/${order.id}`} order={order}
         onPublished={() => setPage(previous => previous && {
           ...previous, items: previous.items.map(item => item.id === order.id ? { ...item, dispatchStatus: "published" } : item),
         })} />
@@ -148,6 +174,7 @@ function ClubOrders({ clubId, canAssign }: { clubId: string; canAssign?: boolean
     </> : null}
     {creating ? <NewDirectDraft clubId={clubId} onClose={() => setCreating(false)} onCreated={id => {
       setCreating(false);
+      setExceptionOrder(undefined);
       setSelectedId(id);
       setAfter(undefined);
       setAttempt(value => value + 1);

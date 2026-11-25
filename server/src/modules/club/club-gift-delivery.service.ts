@@ -9,6 +9,7 @@ import { DailyReport, type DailyReportLine } from './club-delivery.schema';
 import { ClubDirectoryService } from './club-directory.service';
 import { giftDayFacts, giftProgress } from './club-gift-delivery';
 import { acceptsGiftExecution, publishedGiftOrder, writableGiftDispatch } from './club-gift-execution.service';
+import { activeGiftSegments } from './club-gift-allocation';
 import { ClubOrder } from './club-order.schema';
 
 type Submission =
@@ -65,6 +66,7 @@ export class ClubGiftDeliveryService {
         await this.store.flushPendingReport(order);
         continue;
       }
+      if (order.closedAt) throw new ConflictException('该单已确认结单，日报更正需另行核对');
       if (input.kind === 'daily' && !acceptsGiftExecution(order))
         throw new ConflictException('本单已停止当前送心，请通过补报登记过去实绩');
       const previous = correction ? await this.reports.findOne({
@@ -95,11 +97,12 @@ export class ClubGiftDeliveryService {
       }
       if (!linkedShares.has(shareId.toHexString()))
         throw new NotFoundException('该承接份额不存在');
+      const quotes = activeGiftSegments(order);
       const lines: DailyReportLine[] = input.lines.map(line => {
         const lineShareId = line.shareId?.toLowerCase() ?? shareId.toHexString();
         const segmentIndex = linkedShares.get(lineShareId);
         if (segmentIndex === undefined) throw new NotFoundException('日报明细含该送心号未关联的本人份额');
-        const quote = order.dispatchPricing!.giftSegments?.[segmentIndex];
+        const quote = quotes[segmentIndex];
         if (!quote || line.quoteSegment !== undefined && line.quoteSegment !== segmentIndex + 1)
           throw new BadRequestException('日报明细的份额和计价段不匹配');
         return {
@@ -126,7 +129,7 @@ export class ClubGiftDeliveryService {
       };
       if (!await this.store.stage(order, {
         ...(input.kind === 'daily' ? writableGiftDispatch : publishedGiftOrder),
-        clubId, 'giftDispatch.segments.shares.userId': userId,
+        closedAt: null, clubId, 'giftDispatch.segments.shares.userId': userId,
       }, report)) {
         await wait(5 + Math.random() * 20);
         continue;

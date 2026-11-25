@@ -8,7 +8,7 @@ import { ClubDirectoryService } from './club-directory.service';
 import { ClubDailyReportStore } from './club-daily-report.store';
 import { giftDayFacts } from './club-gift-delivery';
 import {
-  awardGiftShare, buildGiftSegments, directedGiftDays, emptyGiftDispatch, giftClaimFields, giftDispatchFingerprint, giftOfferView,
+  activeGiftSegments, awardGiftShare, buildGiftSegments, directedGiftDays, emptyGiftDispatch, giftClaimFields, giftDispatchFingerprint, giftOfferView,
   giftMemberAllocations, giftSegmentView, giftShareView, publicGiftDays, transferGiftDays, type GiftDispatchState, type StoredGiftClaim,
 } from './club-gift-allocation';
 import type { ClaimGiftDispatchDto, ConfigureGiftDispatchDto, ReassignGiftDispatchDto } from './club-gift-dispatch.dto';
@@ -25,7 +25,7 @@ function eligibleOrder(order: ClubOrder) {
   if (order.dispatchPricing?.priceUnit !== 'gift_times' || order.receipt?.quote.priceUnit !== 'gift_times' ||
       order.receipt.receivedAmountCents !== order.receipt.quote.totalAmountCents)
     throw new ConflictException('仅已核款并正式派发的按次订单可以分工');
-  return order.dispatchPricing.giftSegments ?? [];
+  return activeGiftSegments(order);
 }
 
 function matchReplay(saved: { fingerprint: string }, fingerprint: string) {
@@ -75,7 +75,7 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
     segment.shares.some(share => share.userId === userId) ||
     acceptingClaims && (segment.openToClaim || segment.offers.some(offer => offer.userId === userId)),
   );
-  const quotes = order.dispatchPricing!.giftSegments ?? [];
+  const quotes = activeGiftSegments(order);
   const requested = publicRequestBySegment(order.giftDispatch?.claims ?? [], userId);
   const segments = authorizedSegments.map(segment => {
     const view = giftSegmentView(segment, quotes[segment.segmentIndex], userId, acceptingClaims);
@@ -86,7 +86,8 @@ function readOrder(order: ClubOrder, userId: string): GiftClaimOrder {
     };
   });
   const hasOwnShare = segments.some(segment => segment.shares.length);
-  const { requestedGiftTimes, estimatedReceivedHearts } = order.heartDelivery;
+  const { estimatedReceivedHearts } = order.heartDelivery;
+  const requestedGiftTimes = quotes.reduce((sum, quote) => sum + quote.paidGiftTimes, 0);
   return {
     id: order._id.toHexString(), source: order.source, dispatcherUserId: order.dispatcherUserId!,
     requestedGiftTimes: requestedGiftTimes!, ...(estimatedReceivedHearts === undefined ? {} : { estimatedReceivedHearts }),
@@ -160,11 +161,13 @@ export class ClubGiftDispatchService {
     const segmentsByIndex = new Map(segments.map(segment => [segment.segmentIndex, segment]));
     const segmentTotals = quotes.map(({ paidGiftTimes }, segmentIndex) => {
       const segment = segmentsByIndex.get(segmentIndex);
+      const window = order.continuationQuotes?.find(quote => quote.receipt && quote.segmentIndex === segmentIndex)?.window;
       const claimedGiftTimes = segment?.shares.reduce((sum, share) => sum + share.netGiftTimes, 0) ?? 0;
       const directedPendingGiftTimes = segment?.offers.reduce((sum, offer) => sum + (offer.accepted ? 0 : offer.giftTimes), 0) ?? 0;
       const publicRemainingGiftTimes = segment?.publicRemainingGiftTimes ?? 0;
       return {
         segmentIndex, configured: !!segment, paidGiftTimes, claimedGiftTimes, directedPendingGiftTimes, publicRemainingGiftTimes,
+        ...(window ? { window } : {}),
         unconfiguredGiftTimes: segment ? 0 : paidGiftTimes,
         unallocatedGiftTimes: segment ? paidGiftTimes - claimedGiftTimes - directedPendingGiftTimes - publicRemainingGiftTimes : 0,
       };
@@ -191,6 +194,11 @@ export class ClubGiftDispatchService {
       }
       if (input.segments.some(next => state.segments.some(segment => next.segmentIndex === segment.segmentIndex)))
         throw new ConflictException('该报价段已完成派发，请在现有份额上改派');
+      for (const segment of input.segments) {
+        const window = order.continuationQuotes?.find(quote => quote.segmentIndex === segment.segmentIndex)?.window;
+        if (window && (window.startDate !== segment.startDate || window.endDate !== segment.endDate))
+          throw new BadRequestException('续段分工窗口须和已确认报价一致');
+      }
       const segments = buildGiftSegments(input.segments, quotes);
       await this.requireCandidates(clubId, input.segments);
       state.segments.push(...segments);

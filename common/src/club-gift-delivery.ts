@@ -55,6 +55,7 @@ export interface GiftDeliveryProgress extends Omit<GiftShareProgress, 'shareId' 
   estimatedReceivedHearts: number | null;
   estimatedDeliveredHearts: number | string;
   canSubmitDaily: boolean;
+  canCorrectReports: boolean;
   shares: GiftShareProgress[];
   pendingCompensation: {
     giftTimes: number;

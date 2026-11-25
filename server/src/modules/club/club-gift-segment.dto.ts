@@ -4,15 +4,15 @@ import {
 } from 'class-validator';
 import { USER_ID_PATTERN } from '@webapp-template/common';
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+export const giftBusinessDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 class GiftWindowDto {
   @IsString()
-  @Matches(datePattern)
+  @Matches(giftBusinessDatePattern)
   startDate: string;
 
   @IsString()
-  @Matches(datePattern)
+  @Matches(giftBusinessDatePattern)
   endDate: string;
 }
 

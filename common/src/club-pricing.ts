@@ -1,3 +1,5 @@
+import type { GiftWindow } from './club-gift-dispatch';
+
 export const COMMISSION_BASES = ['received_hearts', 'gift_times'] as const;
 export type CommissionBasis = (typeof COMMISSION_BASES)[number];
 
@@ -38,6 +40,19 @@ export interface ContinuationQuote {
   requestId: string;
   segment: GiftPriceSegment;
   amountCents: number;
+  customerRequestId?: string;
+  window?: GiftWindow;
+  acceptance?: { requestId: string; acceptedAt: string };
+  receipt?: { receivedAmountCents: number; receivedAt: string };
+  segmentIndex?: number;
+}
+
+export interface ContinuationRequest extends GiftWindow {
+  requestId: string;
+  period: PricingPeriod;
+  paidGiftTimes: number;
+  dailyGiftTimes: number;
+  requestedAt: string;
 }
 
 export function calculateGiftQuote(segments: readonly GiftPriceSegment[]) {

@@ -193,10 +193,11 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
       {saveError ? <Alert type="error" showIcon title={saveError} /> : null}
       {feedback ? <Alert type="success" showIcon role="status" title={feedback} /> : null}
       {pending ? <Alert type="warning" showIcon title="本次提交待确认" action={<Button loading={saving} onClick={() => void submit(pending)}>重试本次提交</Button>} /> : null}
-      {!draft && !pending && canReport ? accounts.length ? <Flex gap="small" wrap>
+      {!draft && !pending && canReport && history && history.giftProgress.canCorrectReports !== false ? accounts.length ? <Flex gap="small" wrap>
         {history?.giftProgress.canSubmitDaily && <Button type="primary" onClick={() => setDraft({ kind: "daily" })}>填日报</Button>}
         <Button onClick={() => setDraft({ kind: "supplement" })}>补报漏填日期</Button>
       </Flex> : <Alert type="info" showIcon title="请先在本人份额中关联送心号" /> : null}
+      {history?.giftProgress.canCorrectReports === false && <Alert type="info" showIcon title="订单已结单，日报可供查阅" />}
       {draft && <ReportForm draft={draft} accounts={accounts} shares={shares} saving={saving} onSave={save} onCancel={() => setDraft(undefined)} />}
       {loading ? <Spin aria-label="加载日报" /> : history?.items.length ? history.items.map(report =>
         <Card key={report.id} size="small" title={`${report.businessDate} · ${kindLabels[report.kind]} · 版本 ${report.version}`}
@@ -212,7 +213,7 @@ export default function GiftDeliveryDiary({ order, orderRoute, onClose }: {
               <Typography.Text>{report.previous ? "更正后 · " : ""}{report.giftTimes} 次 · 实际到账 {actual(report.receivedHearts)}</Typography.Text>
               <ReportLines lines={report.lines} />
             </div>
-            {!draft && !pending && canReport && report.version === report.latestVersion ?
+            {!draft && !pending && canReport && history.giftProgress.canCorrectReports !== false && report.version === report.latestVersion ?
               <Button onClick={() => setDraft({ kind: "correction", report })}>更正这份日报</Button> : null}
           </Flex>
         </Card>,

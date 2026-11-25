@@ -1,13 +1,16 @@
 import type { DailyReport } from './club-delivery.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { DELIVERY_PERIOD_PREFERENCES, USER_ID_PATTERN } from '@webapp-template/common';
-import type { ContinuationQuote, DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
+import type { DeliveryPeriodPreference, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { SchemaTypes, Types } from 'mongoose';
 import type { GiftDispatchState } from './club-gift-allocation';
 import {
   CommissionReviewSchema,
   DispatchPricingSchema,
   ContinuationQuoteSchema,
+  ContinuationRequestSchema,
+  StoredContinuationQuote,
+  StoredContinuationRequest,
   OrderPricingSchema,
   OrderReceiptSchema,
   type CommissionReview,
@@ -41,6 +44,9 @@ class HeartDelivery {
 
   @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
   doubleGiftTimes?: number;
+
+  @Prop({ type: String })
+  agreedDeadline?: string;
 }
 
 @Schema()
@@ -201,7 +207,16 @@ export class ClubOrder {
   pendingDailyReport?: DailyReport;
 
   @Prop({ type: [ContinuationQuoteSchema], default: undefined })
-  continuationQuotes?: ContinuationQuote[];
+  continuationQuotes?: StoredContinuationQuote[];
+
+  @Prop({ type: [ContinuationRequestSchema], default: undefined })
+  continuationRequests?: StoredContinuationRequest[];
+
+  @Prop({ type: Number, min: 0, validate: Number.isSafeInteger })
+  continuationRevision?: number;
+
+  @Prop({ type: Date })
+  closedAt?: Date;
 
   @Prop({ type: SchemaFactory.createForClass(HeartDelivery), required: true })
   heartDelivery: HeartDelivery;

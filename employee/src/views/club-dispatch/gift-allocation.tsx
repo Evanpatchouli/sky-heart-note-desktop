@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
-import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare } from "@webapp-template/common";
+import type { GiftAllocationTotals, GiftDayAllocation, GiftDispatchPreparation, GiftPriceSegment, GiftSegmentDispatchInput, GiftShare, GiftWindow } from "@webapp-template/common";
 import { employeeRequest } from "#/service/request";
 import { GiftUnlockReviewCard } from "./gift-execution-accounts";
 
@@ -59,13 +59,14 @@ function AllocationTotals({ totals }: { totals: GiftAllocationTotals }) {
     {totals.unallocatedGiftTimes > 0 ? ` · 当前不可领 ${totals.unallocatedGiftTimes} 次` : ""}</p>;
 }
 
-export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy, onSubmit }: {
+export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy, onSubmit, windows }: {
   quotes: GiftPriceSegment[];
   indices: number[];
   clubRoute: string;
   submitLabel: string;
   busy: boolean;
   onSubmit: (segments: GiftSegmentDispatchInput[]) => void;
+  windows?: ReadonlyMap<number, GiftWindow>;
 }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateError, setCandidateError] = useState("");
@@ -81,7 +82,9 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
     return () => controller.abort();
   }, [clubRoute, attempt]);
 
-  return <Form<InitialFields> layout="vertical" initialValues={{ segments: indices.map(index => defaults(quotes[index], index)) }}
+  return <Form<InitialFields> layout="vertical" initialValues={{ segments: indices.map(index => ({
+    ...defaults(quotes[index], index), ...windows?.get(index),
+  })) }}
     onFinish={({ segments }) => onSubmit(segments.map((part, position) => ({
       ...part, segmentIndex: indices[position], directed: (part.directed ?? []).map(item => ({
         userId: item.userId, dailyGiftTimes: item.dailyGiftTimes,
@@ -94,10 +97,10 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
       title={`第 ${index + 1} 段 · ${quotes[index].paidGiftTimes} 次 · ${quotes[index].dailyGiftTimes} 次/日`}>
       <Flex wrap gap="small">
         <Form.Item name={["segments", position, "startDate"]} label="段起始日期" rules={[{ required: true }]}>
-          <Input type="date" />
+          <Input type="date" readOnly={windows?.has(index)} />
         </Form.Item>
         <Form.Item name={["segments", position, "endDate"]} label="段截止日期" rules={[{ required: true }]}>
-          <Input type="date" />
+          <Input type="date" readOnly={windows?.has(index)} />
         </Form.Item>
       </Flex>
       <Form.Item name={["segments", position, "openToClaim"]} valuePropName="checked">
@@ -124,7 +127,7 @@ export function GiftDispatchForm({ quotes, indices, clubRoute, submitLabel, busy
   </Form>;
 }
 
-export function PublishedGiftAllocation({ route }: { route: string }) {
+export function PublishedGiftAllocation({ route, revision, onChanged }: { route: string; revision: number; onChanged?: () => void }) {
   const path = route + "/gift-dispatch";
   const { id, token } = useAuthSession();
   const transferKey = `sky-heart.employee.pending-gift-transfer:${id}:${route}`;
@@ -144,7 +147,7 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
       if (!controller.signal.aborted) setError(getError(error));
     });
     return () => controller.abort();
-  }, [path, attempt]);
+  }, [path, attempt, revision]);
 
   async function save(suffix: string, fields: object) {
     if (inFlight.current || getAppToken("employee") !== token) return;
@@ -158,6 +161,7 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
       pending.current = null;
       setTransfer(undefined);
       setAttempt(value => value + 1);
+      onChanged?.();
     } catch (err) {
       setError(getError(err));
     } finally {
@@ -179,6 +183,7 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
       setSavedTransfer(undefined);
       setTransfer(undefined);
       setAttempt(value => value + 1);
+      onChanged?.();
     } catch (err) {
       if (err instanceof RequestError && [400, 403, 404, 409].includes(err.status)) {
         persistTransfer(transferKey);
@@ -241,6 +246,7 @@ export function PublishedGiftAllocation({ route }: { route: string }) {
       })}
     </>}
     {!!remaining?.length && data?.acceptingClaims && <GiftDispatchForm key={remaining.join(",")} quotes={data.quotes} indices={remaining}
+      windows={new Map(data.segmentTotals.flatMap(segment => segment.window ? [[segment.segmentIndex, segment.window] as const] : []))}
       clubRoute={route.split("/orders/")[0]} busy={busy} submitLabel="派发以上计价段"
       onSubmit={segments => void save("", { segments })} />}
     <Modal open={!!transfer} destroyOnHidden title="改派未送次数" footer={null} onCancel={() => !busy && setTransfer(undefined)}>

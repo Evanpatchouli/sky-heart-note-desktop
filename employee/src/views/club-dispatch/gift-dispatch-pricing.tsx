@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Flex, Form, Input, InputNumber, Modal, Select, Spin, Typography } from "antd";
 import {
   calculateGiftQuote, deliveryPeriodPreferenceLabel, formatCentsAsYuan, parseYuanAsCents,
-  type CommissionRule, type ContinuationQuote, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type GiftPriceSegment, type GiftSegmentDispatchInput, type OrderPricing,
+  type CommissionRule, type ContinuationQuote, type ContinuationRequest, type CustomerQuote, type DeliveryPeriodPreference, type DispatchPricing, type GiftPriceSegment, type GiftSegmentDispatchInput, type OrderPricing,
 } from "@webapp-template/common";
 import { getAppToken, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 import { employeeRequest } from "#/service/request";
 import { GiftDispatchForm, PublishedGiftAllocation } from "./gift-allocation";
+import { GiftContinuationManagement } from "./gift-continuations";
 
 type GiftOrder = {
   requestedGiftTimes: number;
@@ -22,6 +23,8 @@ type Preparation = {
   pricing: OrderPricing | null;
   rule: CommissionRule | null;
   continuationQuotes: ContinuationQuote[];
+  continuationRequests?: ContinuationRequest[];
+  canManageContinuation?: boolean;
   quote: CustomerQuote | null;
   receipt: Receipt | null;
   paymentStatus?: string;
@@ -107,10 +110,11 @@ function ReceiptDetails({ receipt }: { receipt: Receipt }) {
   </Typography.Paragraph>;
 }
 
-export default function GiftDispatchPricing({ route, order, onPublished }: {
+export default function GiftDispatchPricing({ route, order, onPublished, onFulfillmentChanged }: {
   route: string;
   order: GiftOrder;
   onPublished?: () => void;
+  onFulfillmentChanged?: () => void;
 }) {
   const { id: userId, token } = useAuthSession();
   const { requestedGiftTimes, deliveryPeriodPreference, doubleGiftTimes } = order;
@@ -255,19 +259,21 @@ export default function GiftDispatchPricing({ route, order, onPublished }: {
         {(frozen.giftSegments ?? []).map((segment, index) => <SegmentPrice key={index} segment={segment} />)}
         {quote ? <QuoteSummary quote={quote} /> : null}
         {receipt ? <ReceiptDetails receipt={receipt} /> : null}
-        <PublishedGiftAllocation route={route} />
-        <Typography.Title level={5}>追加计价段报价</Typography.Title>
-        {preparation.continuationQuotes.map(item => <div key={item.requestId}>
-          <SegmentPrice segment={item.segment} />
-          <Typography.Paragraph>报价 {money(item.amountCents)} · 待核款</Typography.Paragraph>
-        </div>)}
+        <GiftContinuationManagement route={route} requests={preparation.continuationRequests ?? []} quotes={preparation.continuationQuotes}
+          enabled={!!preparation.canManageContinuation} onChange={() => {
+            setAttempt(value => value + 1);
+            onFulfillmentChanged?.();
+          }} />
+        {preparation.canManageContinuation && <details>
+        <summary>直接新增续段报价</summary>
         {pendingContinuation ? <>
           <SegmentPrice segment={pendingContinuation.segment} />
           <Button loading={busy} onClick={() => submitContinuation(pendingContinuation)}>重试续段报价</Button>
         </> : <Form form={continuation} layout="vertical" initialValues={{ period: "normal" }} onFinish={addQuote}>
           <Flex gap="small" wrap>{segmentFields(undefined)}</Flex>
           <Button type="primary" htmlType="submit" loading={busy}>保存续段报价</Button>
-        </Form>}
+        </Form>}</details>}
+        <PublishedGiftAllocation route={route} revision={attempt} onChanged={onFulfillmentChanged} />
       </> : !ruleReady ? <Alert type="warning" showIcon title="请由获授权的管理员配置每次团抽" />
       : <>
         <Typography.Paragraph>当前规则 V{rule.version} · 团抽 {money(rule.clubFeeCents)}/次</Typography.Paragraph>

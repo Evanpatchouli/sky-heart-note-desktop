@@ -141,7 +141,7 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 报价请求可带 `unlock`，其中 `quantity` 为预估解锁数，`unitPriceCents` 为每次解锁费。首次未填时默认为零，编辑时省略沿用当前值。报价返回 `heartsAmountCents`、`unlockAmountCents` 和 `totalAmountCents`。解锁款为预估解锁数乘每次解锁费，总额为爱心款加解锁款。金额超出安全整数分范围时返回 HTTP 400。
 
-首次正式派发时冻结每次派抽、每次团抽和规则版本。派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/continuation-quotes` 追加独立报价。请求包含 UUID v4 `requestId` 和一个与报价段同结构的 `segment`。响应含续段爱心款和从首段快照读取的 `commission`。续段保存为待核款报价，重试同一标识及内容取回原报价。客户仅可查看本人订单及其报价；抽成仅在获授权的业务入口返回。
+首次正式派发时冻结每次派抽、每次团抽和规则版本。追加独立报价沿用该快照。核款及分工见未结单时追加计价段。[未结单时追加计价段](#未结单时追加计价段)
 
 历史订单保留 `requestedHearts`、原报价和已派发快照。历史报价没有按次标记时，报价按原颗数和每颗单价展示。历史抽成按快照的 `basis` 和版本展示，即使同一笔旧单使用按次抽成，也继续按颗展示原报价。
 
@@ -196,3 +196,31 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 按次 `giftProgress` 的 `deliveredGiftTimes`、`remainingGiftTimes`、`observedGiftTimes`、`excessGiftTimes` 及 `shares` 按本人净份额汇总。本人实际到账见 `actualReceivedHearts`，有未知明细时该值为 `null`，已知小计和未知明细数分别见 `knownReceivedHearts`、`unknownReceivedLines`。本人已履约次数按原段预计的颗数见 `estimatedDeliveredHearts`，本人待结依据见 `pendingCompensation`。全单已送和剩余分列为 `orderDeliveredGiftTimes` 和 `orderRemainingGiftTimes`，建单预计到账见 `estimatedReceivedHearts`。派单人从本单按次分工查看各份额已送次数并改派剩余。
 
 同一订单、承接人、执行号与业务日只接受一份首报或补报。原请求可按相同标识和内容重试。另用新标识重复同日、重用标识修改内容或基于过期版本更正时，返回 HTTP 409。待写记录通过订单履约版本与改派互斥，单节点 MongoDB 支持写入及恢复。
+
+## 派单监督与客户交付进度
+
+团员端进入「派单准备 → 履约监督」。在「履约异常队列」选择一个已结束的业务日，系统以该日期及之前的有效日报核对。每段分别展示单价、约定次数、日量、执行窗口、已领、未领及已送。派单人可展开团员，再展开具体份额。按改派后的净日计划区分漏报、零送已报、部分不足、正常及尚未到核对日。份额过期后仍未送的次数单列，完整改派的份额保留原窗口及记录。团员自己的日历排期独立保存。补报和未结单日报更正以最新有效版本实时计入。
+
+| 请求 | 用途 |
+| --- | --- |
+| `GET /api/employee/clubs/:clubId/orders/fulfillment-exceptions?through=YYYY-MM-DD` | 当单派单人查本人异常队列。可用 `after`、`limit` 和 `source`。 |
+| `GET /api/employee/clubs/:clubId/orders/:orderId/fulfillment` | 当单派单人查看订单、段、团员及具体份额。传 `through` 时以该业务日为截止，包含当日。未选择核对日时展示当前累计和已填日报。 |
+| `GET /api/client/orders` 与 `GET /api/client/clubs/:clubId/orders/:orderId` | 老板查看归属本人的直接派单和客户端订单。老板视图仅返回客户侧金额及履约汇总。 |
+
+按次的 `deliveryProgress.priceUnit` 为 `gift_times`。老板在「我的订单」和订单详情核对整单及各段的约定、已送和剩余次数。建单预计实收与接单时登记的实际实收、日报实际到账分别展示。接单实收使用匿名、去重的观察值及未知数。日报累计取各有效日报实际到账，所有明细都已知时给出合计，存在未知时另给已知小计及未知明细数。明确零到账显示 0。履约送完和派单人确认结单各有状态，`closedAt` 取已记录的结单事实。结单后保留日报历史，关闭普通补报与更正写入。
+
+### 未结单时追加计价段
+
+已正式派发的按次订单在可继续履约且尚未结单时，老板可在订单详情点「在原单追加计价段」，包括已完成原约定次数的订单。老板填写新段的期别、总次数、每日日量和起止日。当单派单人在「派单准备 → 报价与派发规则 → 续段处理」为该申请填写每次单价。老板确认报价后，派单人登记实际收到的全额款和收款时间。核款后，新段的次数进入全单约定和派单分工。派单人在同页「按次派发与分工」使用报价执行窗口配置公开领取或定向承接。各段独立计价，整单沿用首段每次派抽和团抽。原单的报价、原实收、历次续段报价和实收分别保留。老板可核对初次订购、当前约定次数、原报价和原收款。累计已登记收款合计原收款与已核款续段。
+
+下表路径相对于对应端的 `/api/{client|employee}/clubs/:clubId/orders/:orderId`。写入所用的 `requestId` 为 UUID v4。
+
+| 端 | 请求 | 载荷 |
+| --- | --- | --- |
+| 客户端 | `POST /continuation-requests` | `{ requestId, period, paidGiftTimes, dailyGiftTimes, startDate, endDate }` |
+| 团员端 | `POST /continuation-quotes` | `{ requestId, customerRequestId?, segment: { period, paidGiftTimes, dailyGiftTimes, unitPriceCents }, window? }`。有老板申请时沿用申请的期别、次数、日量及窗口。 |
+| 团员端 | `PATCH /continuation-quotes/:quoteId/window` | 对已有的无窗口报价登记 `{ startDate, endDate }`，可按原日期重试。 |
+| 客户端 | `POST /continuation-quotes/:quoteId/acceptance` | 本单老板提交 `{ requestId }`，确认明确的续段报价。 |
+| 团员端 | `POST /continuation-quotes/:quoteId/receipt` | `{ requestId, receivedAmountCents, receivedAt }`。实收必须与该笔续段报价相符，时间须带时区。返回激活的、从 0 开始的 `segmentIndex`。 |
+
+续段报价、确认与实收可按相同提交标识及内容重试。确认报价和核款使用同一订单的续段版本，避免重复激活。已核款的新段采用既有的按次派发与领取接口。[结单与续单](heart-delivery.md#结单与续单)

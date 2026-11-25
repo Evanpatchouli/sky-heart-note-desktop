@@ -1,3 +1,5 @@
+import { IsISO8601, Matches, ValidateIf } from 'class-validator';
+import { giftBusinessDatePattern } from './club-gift-segment.dto';
 import {
   Body,
   Controller,
@@ -27,12 +29,24 @@ import { LinkGameAccountDto, RecordAccountRelationshipDto } from './club-executi
 import { ClubGiftExecutionService } from './club-gift-execution.service';
 import { ClubOrderService } from './club-order.service';
 import {
-  AddContinuationQuoteDto,
   PublishOrderDto,
   RecordOrderReceiptDto,
   ReviewDispatchCommissionDto,
   UpdateOrderPricingDto,
 } from './club-pricing.dto';
+
+class FulfillmentQuery {
+  @ValidateIf((_, value) => value !== undefined)
+  @Matches(giftBusinessDatePattern)
+  @IsISO8601({ strict: true })
+  through?: string;
+}
+
+class FulfillmentExceptionsQuery extends ClubOrderQuery {
+  @Matches(giftBusinessDatePattern)
+  @IsISO8601({ strict: true })
+  through: string;
+}
 
 const orderValidation = new ValidationPipe({
   transform: true,
@@ -137,6 +151,21 @@ export class EmployeeClubOrderController {
     );
   }
 
+  @Get('fulfillment-exceptions')
+  async fulfillmentExceptions(
+    @AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Query() query: FulfillmentExceptionsQuery,
+  ) {
+    return Resp.success(await this.orders.listFulfillmentExceptions(clubId, user.id, query));
+  }
+
+  @Get(':orderId/fulfillment')
+  async fulfillment(
+    @AuthUser() user: SessionUser, @Param('clubId') clubId: string, @Param('orderId') orderId: string,
+    @Query() query: FulfillmentQuery,
+  ) {
+    return Resp.success(await this.orders.getDispatchFulfillment(clubId, user.id, orderId, query.through));
+  }
+
   @Get(':orderId')
   async detail(
     @AuthUser() user: SessionUser,
@@ -205,18 +234,6 @@ export class EmployeeClubOrderController {
     @Body() input: PublishOrderDto,
   ) {
     return Resp.success(await this.orders.commitDispatchAfterPayment(clubId, user.id, orderId, input));
-  }
-
-  @Post(':orderId/continuation-quotes')
-  async addContinuationQuote(
-    @AuthUser() user: SessionUser,
-    @Param('clubId') clubId: string,
-    @Param('orderId') orderId: string,
-    @Body() input: AddContinuationQuoteDto,
-  ) {
-    return Resp.success(
-      await this.orders.addContinuationQuote(clubId, user.id, orderId, input),
-    );
   }
 
   @Patch(':orderId/pricing')
