@@ -15,6 +15,7 @@ import { OPTModule } from './modules/opt-module';
 import { EmailModule } from './modules/email-module';
 import { LoginLogModule } from './modules/login-log-module';
 import { EmployeeModule } from './modules/employee';
+import { ClubModule } from './modules/club';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EmployeeModule } from './modules/employee';
     EmailModule,
     LoginLogModule,
     EmployeeModule,
+    ClubModule,
   ],
   controllers: [AppController],
   providers: [AuthProvider, AppService, GlobalExcenptionCatchProvider],

@@ -1,124 +1,19 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
-import { once } from 'node:events';
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
+import { captchaCode, startSystem } from './start-system.mjs';
 
-const serverRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const apps = ['admin', 'employee', 'client'];
-const origins = Object.fromEntries(apps.map(app => [app, `https://${app}.sky.test`]));
-const secret = () => randomBytes(24).toString('hex');
+const origins = Object.fromEntries([...apps, 'site'].map(app => [app, `https://${app}.sky.test`]));
 const otpEmail = 'short.id@example.test';
 const otpCode = '123456';
-
-async function freePort() {
-  const server = createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const port = server.address().port;
-  await new Promise(resolve => server.close(resolve));
-  return port;
-}
-
-async function startChild(executable, args, options) {
-  const child = spawn(executable, args, { ...options, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  let output = '';
-  const capture = chunk => { output = (output + chunk.toString()).slice(-6000); };
-  child.stdout.on('data', capture);
-  child.stderr.on('data', capture);
-  await once(child, 'spawn');
-  return {
-    check() {
-      if (child.exitCode !== null || child.signalCode) throw new Error(`子进程已退出\n${output}`);
-    },
-    async stop() {
-      if (child.exitCode !== null || child.signalCode) return;
-      const closed = once(child, 'close');
-      child.kill();
-      await closed;
-    },
-  };
-}
-
-async function startSystem(directory, cleanup) {
-  const mongoDir = join(directory, 'mongo');
-  await mkdir(mongoDir);
-  const mongoPort = await freePort();
-  const mongo = await startChild(process.env.MONGOD_BINARY || 'mongod', [
-    '--dbpath', mongoDir, '--port', String(mongoPort), '--bind_ip', '127.0.0.1', '--logpath', join(directory, 'mongo.log'),
-  ]);
-  cleanup.push(() => mongo.stop());
-  const uri = `mongodb://127.0.0.1:${mongoPort}/webapps_e2e`;
-  const client = new mongoose.mongo.MongoClient(uri, { serverSelectionTimeoutMS: 15000 });
-  cleanup.push(() => client.close());
-  await client.connect();
-  const db = client.db();
-  const password = secret();
-  await db.command({ createUser: 'test_server', pwd: password, roles: [{ role: 'readWrite', db: db.databaseName }] });
-
-  const appDir = join(directory, 'server');
-  await mkdir(appDir);
-  await Promise.all([
-    cp(join(serverRoot, 'dist'), join(appDir, 'dist'), { recursive: true }),
-    copyFile(join(serverRoot, 'package.json'), join(appDir, 'package.json')),
-    symlink(join(serverRoot, 'node_modules'), join(appDir, 'node_modules'), 'junction'),
-    // Control the image challenge and sampled account IDs in the isolated process.
-    // Repeated samples exercise the real database's unique primary key.
-    writeFile(join(appDir, 'fixtures.cjs'), `
-      require('svg-captcha').create = () => ({ text: 'C7k9', data: '<svg>C7k9</svg>' });
-      const crypto = require('node:crypto');
-      const randomInt = crypto.randomInt;
-      const userIds = ['00A0', '00A0', 'COM1', 'COM1', '0002', '0002', '00A3'];
-      crypto.randomInt = (...args) => args.length === 1 && args[0] === 36 ** 4 && userIds.length
-        ? parseInt(userIds.shift(), 36)
-        : randomInt(...args);
-    `),
-    writeFile(join(appDir, 'cache.json'), JSON.stringify({
-      items: {
-        ['opt::login::email::' + otpEmail]: {
-          value: otpCode, createAt: Date.now(), expireAt: Date.now() + 120000,
-        },
-      },
-    })),
-  ]);
-  const { scripts } = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
-  const [command, ...entry] = scripts['start:prod'].split(/\s+/);
-  assert.equal(command, 'node');
-  const port = await freePort();
-  const base = `http://127.0.0.1:${port}/api`;
-  const adminPassword = secret();
-  const server = await startChild(process.execPath, ['--require', './fixtures.cjs', ...entry], {
-    cwd: appDir,
-    env: {
-      ...process.env, NODE_ENV: 'production', APP_ENV: 'production', APP_HOST: '127.0.0.1', APP_PORT: String(port),
-      MONGODB_URI: uri, DB_MONGO_CONNECTION: uri, DB_MONGO_USERNAME: 'test_server', DB_MONGO_PASSWORD: password,
-      APP_SECRET: secret(), JWT_SECRET: secret(), SESSION_SECRET: secret(), MIGRATE_ON_START: 'true',
-      EMPLOYEE_DATA_DIR: join(directory, 'employee'), ADMIN_ORIGIN: origins.admin, EMPLOYEE_ORIGIN: origins.employee,
-      CLIENT_ORIGIN: origins.client, SITE_ORIGIN: 'https://site.sky.test', LOG_LEVEL: 'error',
-      BOOTSTRAP_ADMIN_USERNAME: 'test_admin', BOOTSTRAP_ADMIN_PASSWORD: adminPassword,
-    },
-  });
-  cleanup.push(() => server.stop());
-  for (let i = 0; i < 180; i++) {
-    server.check();
-    const response = await fetch(base + '/captcha/login?app=client', { headers: { origin: origins.client } }).catch(() => null);
-    if (response?.ok) return { db, base, password: adminPassword };
-    await sleep(250);
-  }
-  throw new Error('等待服务启动超时');
-}
 
 // Each instance represents one browser's API-host cookies.
 function browser(base) {
   const cookies = new Map();
-  async function request(app, path, { method = 'GET', body, token, status, origin = origins[app] } = {}) {
+  async function request(app, path, { method = 'GET', body, token, status, cacheControl, origin = origins[app] } = {}) {
     const headers = { origin };
     if (body) headers['content-type'] = 'application/json';
     if (token) headers.authorization = 'Bearer ' + token;
@@ -128,6 +23,7 @@ function browser(base) {
     const res = await fetch(base + path, { method, headers, body: body && JSON.stringify(body) });
     assert.equal(res.headers.get('access-control-allow-origin'), origin);
     assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+    if (cacheControl) assert.equal(res.headers.get('cache-control'), cacheControl);
     for (const cookie of res.headers.getSetCookie()) {
       assert.match(cookie, /; HttpOnly/i);
       assert.match(cookie, /; Secure/i);
@@ -151,7 +47,7 @@ function browser(base) {
     async login(app, username, password, status) {
       await request(app, '/captcha/login?app=' + app);
       return request(app, '/user/login?type=account', {
-        method: 'POST', body: { app, username, password, captcha: 'C7k9' }, status,
+        method: 'POST', body: { app, username, password, captcha: captchaCode }, status,
       });
     },
     candidates: app => request(app, '/user/login/candidates?app=' + app),
@@ -162,13 +58,27 @@ function browser(base) {
 }
 
 test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'sky-heart-e2e-'));
-  const cleanup = [];
-  t.after(async () => {
-    for (const stop of cleanup.reverse()) await stop();
-    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  const { db, base, password } = await startSystem(t, {
+    database: 'webapps_e2e',
+    origins,
+    adminUsername: 'test_admin',
+    // Repeated samples exercise the real database's unique primary key.
+    extraFixtures: `
+      const crypto = require('node:crypto');
+      const randomInt = crypto.randomInt;
+      const userIds = ['00A0', '00A0', 'COM1', 'COM1', '0002', '0002', '00A3'];
+      crypto.randomInt = (...args) => args.length === 1 && args[0] === 36 ** 4 && userIds.length
+        ? parseInt(userIds.shift(), 36)
+        : randomInt(...args);
+    `,
+    initialCache: {
+      items: {
+        ['opt::login::email::' + otpEmail]: {
+          value: otpCode, createAt: Date.now(), expireAt: Date.now() + 120000,
+        },
+      },
+    },
   });
-  const { db, base, password } = await startSystem(directory, cleanup);
   const roles = await db.collection('roles').find({ role_code: { $in: ['admin', 'employee', 'common'] } }).toArray();
   assert.equal(roles.length, 3, '启动迁移应提供三个内置角色');
   assert.equal(roles.find(role => role.role_code === 'employee')?.role_name, '团员');
@@ -179,7 +89,7 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
     const member = browser(base);
     await member.request('client', '/captcha/register?app=client');
     const user = await member.request('client', '/user/register?type=account', {
-      method: 'POST', body: { app: 'client', username: 'test_' + roleCode, password, captcha: 'C7k9' },
+      method: 'POST', body: { app: 'client', username: 'test_' + roleCode, password, captcha: captchaCode },
     });
     userIds[roleCode] = user.id;
     if (roleCode === 'employee') {
@@ -275,7 +185,7 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
       }
     }
     await browser(base).request('client', '/user/login?type=account', {
-      method: 'POST', body: { app: 'site', username: 'test_admin', password, captcha: 'C7k9' }, status: 400,
+      method: 'POST', body: { app: 'site', username: 'test_admin', password, captcha: captchaCode }, status: 400,
     });
   });
 
@@ -326,8 +236,8 @@ test('生产入口、Mongo 角色与三端授权', { timeout: 120000 }, async t 
     await b.request('admin', bookings, { token: admin.token, status: 403 });
     const id = await a.request('employee', bookings, { method: 'POST', token: worker.token, body: { title: '订单' } });
     assert.equal(await a.request('employee', bookings + '/' + id, { method: 'PATCH', token: worker.token, body: { remark: '备注' } }), true);
-    assert.equal((await a.request('employee', bookings, { token: worker.token }))[0].remark, '备注');
-    assert.deepEqual(await b.request('employee', bookings, { token: other.token }), []);
+    assert.equal((await a.request('employee', bookings, { token: worker.token, cacheControl: 'no-store' }))[0].remark, '备注');
+    assert.deepEqual(await b.request('employee', bookings, { token: other.token, cacheControl: 'no-store' }), []);
     assert.equal(await b.request('employee', bookings + '/' + id, { method: 'DELETE', token: other.token }), false);
     assert.equal(await a.request('employee', bookings + '/' + id, { method: 'DELETE', token: worker.token }), true);
     const commonRole = roles.find(role => role.role_code === 'common');

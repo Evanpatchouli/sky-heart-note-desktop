@@ -25,6 +25,8 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+俱乐部初始化与共享送心订单读写见[俱乐部共享订单 API](../docs/club-orders.md)。
+
 ## Project setup
 
 ```bash

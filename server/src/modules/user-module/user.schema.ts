@@ -64,6 +64,9 @@ export class User {
   })
   nickname: string;
 
+  @Prop({ type: Types.ObjectId, immutable: true, select: false })
+  dispatchCustomerOrderId?: Types.ObjectId;
+
   @Prop({
     type: Number,
     enum: [0, 1],
@@ -169,6 +172,11 @@ for (const field of ['username', 'phone', 'email']) {
   });
 }
 UserSchema.index({ status: 1 });
+UserSchema.index({ dispatchCustomerOrderId: 1 }, {
+  unique: true,
+  name: 'unique_dispatch_customer_order',
+  partialFilterExpression: { dispatchCustomerOrderId: { $type: 'objectId' } },
+});
 UserSchema.index({ deleted_at: 1 });
 UserSchema.index({ created_at: -1 });
 UserSchema.index({ updated_at: -1 });

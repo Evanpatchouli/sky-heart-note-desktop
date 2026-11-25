@@ -22,6 +22,7 @@ import { checkOrigin, type WebApp } from './app-access';
 import { getAuthorization } from '../utils/request.util';
 import { logger } from '@/common/logger';
 import { Request } from 'express';
+import type { Response } from 'express';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -83,6 +84,8 @@ export class AuthGuard implements CanActivate {
 
     // 4. 若无认证 & 无角色，默认公开
     if (!needAuth) return true;
+
+    ctx.switchToHttp().getResponse<Response>().setHeader('Cache-Control', 'no-store');
 
     // 5. 执行认证
     const token = getAuthorization(req);

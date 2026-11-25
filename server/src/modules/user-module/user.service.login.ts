@@ -39,12 +39,6 @@ export class UserLoginService {
     return user.id;
   }
 
-  private async commonRole() {
-    const common = await this.roles.findByRoleCode('common');
-    if (!common) throw new Error('缺少 common 角色，请执行数据库迁移');
-    return common._id;
-  }
-
   async register(username: string, password: string) {
     if (!username.trim() || password.length > 256)
       throw new BadRequestException('用户名或密码无效');
@@ -52,7 +46,7 @@ export class UserLoginService {
     if (record) throw new ConflictException('用户名已被注册');
     const [hashedPassword, role] = await Promise.all([
       hashPassword(password),
-      this.commonRole(),
+      this.roles.requireCommonRoleId(),
     ]);
     try {
       const user = await withNewUserId((_id) =>
@@ -78,7 +72,7 @@ export class UserLoginService {
     const users = this.users.getModel();
     const existing = await users.findOne(filter);
     if (existing) return existing.id;
-    const role = await this.commonRole();
+    const role = await this.roles.requireCommonRoleId();
     try {
       const result = await withNewUserId((_id) =>
         users.findOneAndUpdate(

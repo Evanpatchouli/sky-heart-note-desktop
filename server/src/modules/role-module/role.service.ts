@@ -76,6 +76,12 @@ export class RoleService {
     return await this.model.findOne({ role_code }).exec();
   }
 
+  async requireCommonRoleId() {
+    const common = await this.findByRoleCode('common');
+    if (!common) throw new Error('缺少 common 角色，请执行数据库迁移');
+    return common._id;
+  }
+
   async setPermissions(id: string, permission_ids: Types.ObjectId[]) {
     return this.model.updateOne({ id }, { permission_ids });
   }
