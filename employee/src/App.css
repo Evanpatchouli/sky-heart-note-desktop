@@ -53,6 +53,15 @@
   gap: clamp(10px, 1.15vw, 20px);
   min-width: 0;
 }
+.member-appbar__dispatch-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: #245979;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.member-appbar__dispatch-link:hover { color: #173950; text-decoration: underline; }
 .member-clock {
   display: grid;
   flex: none;
@@ -116,6 +125,7 @@
 }
 @media (max-width: 360px) {
   .member-appbar__row { padding-inline: 8px; }
+  .member-appbar__dispatch-link + .member-clock { display: none; }
   .member-appbar__views .ant-segmented-group { gap: 1px; }
   .member-appbar__views .ant-segmented-item-label { gap: 2px; }
 }

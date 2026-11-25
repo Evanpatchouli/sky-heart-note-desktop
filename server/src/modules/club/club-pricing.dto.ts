@@ -1,0 +1,156 @@
+import { Transform, Type } from 'class-transformer';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsISO8601,
+  IsObject,
+  IsUUID,
+  Matches,
+  Max,
+  Min,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
+import { PRICING_PERIODS } from '@webapp-template/common';
+import type { PricingPeriod } from '@webapp-template/common';
+
+export class UpdateCommissionRuleDto {
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER - 1)
+  expectedVersion: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['gift_times'])
+  basis?: 'gift_times';
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  clubFeeCents: number;
+}
+
+export class GiftPriceSegmentDto {
+  @IsIn(PRICING_PERIODS)
+  period: PricingPeriod;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  paidGiftTimes: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  dailyGiftTimes: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  unitPriceCents: number;
+}
+
+export class AddContinuationQuoteDto {
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID('4')
+  requestId: string;
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => GiftPriceSegmentDto)
+  segment: GiftPriceSegmentDto;
+}
+
+export class UpdateOrderPricingDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  ruleVersion: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER - 1)
+  expectedRevision: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['gift_times'])
+  basis?: 'gift_times';
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  dispatchFeeCents: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => GiftPriceSegmentDto)
+  giftSegments: GiftPriceSegmentDto[];
+}
+
+export class RecordOrderReceiptDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
+  @IsUUID('4')
+  requestId: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  pricingRevision: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  receivedAmountCents: number;
+
+  @IsISO8601({ strict: true, strictSeparator: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/)
+  receivedAt: string;
+}
+
+export class ReviewDispatchCommissionDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  pricingRevision: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER - 1)
+  expectedReviewRevision: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  ruleVersion: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  dispatchFeeCents: number;
+}
+
+export class PublishOrderDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.toLowerCase() : value)
+  @IsUUID('4')
+  requestId: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  pricingRevision: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  ruleVersion: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  commissionReviewRevision: number;
+}

@@ -1,12 +1,19 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import Header from "#/components/Header";
 import Root from "./root";
 import ErrorPage from "./error";
-import ClubDispatch from "./club-dispatch";
+
+const ClubDispatch = lazy(() => import("./club-dispatch"));
+const errorElement = <><Header /><ErrorPage /></>;
 
 export default createBrowserRouter([
-  { path: "/", element: <Root />, errorElement: <><Header /><ErrorPage /></> },
-  { path: "/club/dispatch", element: <ClubDispatch /> },
+  { path: "/", element: <Root />, errorElement },
+  {
+    path: "/club/dispatch",
+    element: <Suspense fallback={<><Header /><p className="member-pending" role="status">加载派单准备…</p></>}><ClubDispatch /></Suspense>,
+    errorElement,
+  },
 ], {
   basename: import.meta.env.BASE_URL,
 });

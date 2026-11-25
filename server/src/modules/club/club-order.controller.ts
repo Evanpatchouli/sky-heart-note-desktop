@@ -4,6 +4,7 @@ import {
   Get,
   Header,
   Param,
+  Patch,
   Post,
   Query,
   UsePipes,
@@ -17,9 +18,17 @@ import {
   CreateClientOrderDto,
   CreateDirectOrderDto,
   OrderCustomerQuery,
+  EmployeeClubOrderQuery,
 } from './club-order.dto';
 import { ClubDirectoryService } from './club-directory.service';
 import { ClubOrderService } from './club-order.service';
+import {
+  AddContinuationQuoteDto,
+  PublishOrderDto,
+  RecordOrderReceiptDto,
+  ReviewDispatchCommissionDto,
+  UpdateOrderPricingDto,
+} from './club-pricing.dto';
 
 const orderValidation = new ValidationPipe({
   transform: true,
@@ -31,7 +40,10 @@ const orderValidation = new ValidationPipe({
 @UsePipes(orderValidation)
 @Controller('employee/clubs')
 export class EmployeeClubController {
-  constructor(private readonly directory: ClubDirectoryService, private readonly orders: ClubOrderService) {}
+  constructor(
+    private readonly directory: ClubDirectoryService,
+    private readonly orders: ClubOrderService,
+  ) {}
 
   @Get()
   async list(@AuthUser() user: SessionUser) {
@@ -44,7 +56,9 @@ export class EmployeeClubController {
     @Param('clubId') clubId: string,
     @Query() query: OrderCustomerQuery,
   ) {
-    return Resp.success(await this.orders.searchDirectOrderCustomers(clubId, user.id, query.q));
+    return Resp.success(
+      await this.orders.searchDirectOrderCustomers(clubId, user.id, query.q),
+    );
   }
 }
 
@@ -79,7 +93,7 @@ export class EmployeeClubOrderController {
   async list(
     @AuthUser() user: SessionUser,
     @Param('clubId') clubId: string,
-    @Query() query: ClubOrderQuery,
+    @Query() query: EmployeeClubOrderQuery,
   ) {
     return Resp.success(
       await this.orders.listEmployeeOrders(clubId, user.id, query),
@@ -94,6 +108,71 @@ export class EmployeeClubOrderController {
   ) {
     return Resp.success(
       await this.orders.getEmployeeOrder(clubId, user.id, orderId),
+    );
+  }
+
+  @Get(':orderId/pricing')
+  async getPricing(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+  ) {
+    return Resp.success(
+      await this.orders.getDispatchPreparation(clubId, user.id, orderId),
+    );
+  }
+
+  @Post(':orderId/receipts')
+  async recordOrderReceipt(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: RecordOrderReceiptDto,
+  ) {
+    return Resp.success(await this.orders.recordOrderReceipt(clubId, user.id, orderId, input));
+  }
+
+  @Patch(':orderId/dispatch-commission')
+  async reviewDispatchCommission(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: ReviewDispatchCommissionDto,
+  ) {
+    return Resp.success(await this.orders.reviewDispatchCommission(clubId, user.id, orderId, input));
+  }
+
+  @Post(':orderId/publish')
+  async commitDispatchAfterPayment(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: PublishOrderDto,
+  ) {
+    return Resp.success(await this.orders.commitDispatchAfterPayment(clubId, user.id, orderId, input));
+  }
+
+  @Post(':orderId/continuation-quotes')
+  async addContinuationQuote(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: AddContinuationQuoteDto,
+  ) {
+    return Resp.success(
+      await this.orders.addContinuationQuote(clubId, user.id, orderId, input),
+    );
+  }
+
+  @Patch(':orderId/pricing')
+  async updatePricing(
+    @AuthUser() user: SessionUser,
+    @Param('clubId') clubId: string,
+    @Param('orderId') orderId: string,
+    @Body() input: UpdateOrderPricingDto,
+  ) {
+    return Resp.success(
+      await this.orders.updateDispatchPricing(clubId, user.id, orderId, input),
     );
   }
 }

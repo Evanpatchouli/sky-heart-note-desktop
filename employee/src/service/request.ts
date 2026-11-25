@@ -10,7 +10,7 @@ export async function employeeRequest<T>(path: string, method = "GET", body?: un
       method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal,
     });
   } catch (err) {
-    if (err instanceof RequestError && [401, 403].includes(err.status) && token === getAppToken("employee")) {
+    if (err instanceof RequestError && err.status === 401 && token === getAppToken("employee")) {
       invalidateSession("employee");
     }
     throw err;

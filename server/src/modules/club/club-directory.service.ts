@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -20,6 +21,7 @@ import {
   isClubPermission,
   type ClubPermission,
 } from './club-permissions';
+import type { UpdateCommissionRuleDto } from './club-pricing.dto';
 import { Club, ClubMember, CLUB_ID_PATTERN } from './club.schema';
 
 @Injectable()
@@ -49,12 +51,6 @@ export class ClubDirectoryService implements OnModuleInit {
     }
   }
 
-  async listEmployeeClubs(userId: string) {
-    const clubIds = await this.members.distinct('clubId', { userId, active: true });
-    const clubs = await this.clubs.find({ _id: { $in: clubIds } }).select({ name: 1 }).sort({ _id: 1 }).lean();
-    return clubs.map(({ _id, name }) => ({ id: _id, name }));
-  }
-
   async requireAdminPermission(
     clubId: string,
     actor: SessionUser,
@@ -62,15 +58,71 @@ export class ClubDirectoryService implements OnModuleInit {
   ) {
     this.requireAdminSession(actor);
     await this.requireClub(clubId);
-    const permitted = await this.members.exists({
-      clubId,
-      userId: actor.id,
-      active: true,
-      permissions: permission,
-    });
-    if (!permitted) {
+    const member = await this.members
+      .findOne({
+        clubId,
+        userId: actor.id,
+        active: true,
+        permissions: permission,
+      })
+      .select({ permissions: 1 })
+      .lean();
+    if (!member) {
       throw new ForbiddenException('需要本俱乐部有效成员身份及相应业务授权');
     }
+    return member.permissions;
+  }
+
+  async listEmployeeClubs(userId: string) {
+    const clubIds = await this.members.distinct('clubId', {
+      userId,
+      active: true,
+    });
+    const clubs = await this.clubs
+      .find({ _id: { $in: clubIds } })
+      .select({ name: 1 })
+      .sort({ _id: 1 })
+      .lean();
+    return clubs.map(({ _id, name }) => ({ id: _id, name }));
+  }
+
+  async readCommissionRule(clubId: string) {
+    const club = await this.clubs
+      .findById(clubId)
+      .select({ commissionRule: 1 })
+      .lean();
+    if (!club) throw new NotFoundException('俱乐部不存在');
+    return club.commissionRule ?? null;
+  }
+
+  async getAdminCommissionRule(clubId: string, actor: SessionUser) {
+    await this.requireAdminPermission(clubId, actor, 'CLUB_COMMISSION_MANAGE');
+    return this.readCommissionRule(clubId);
+  }
+
+  async updateCommissionRule(
+    clubId: string,
+    actor: SessionUser,
+    input: UpdateCommissionRuleDto,
+  ) {
+    await this.requireAdminPermission(clubId, actor, 'CLUB_COMMISSION_MANAGE');
+    const { expectedVersion, clubFeeCents } = input;
+    const commissionRule = {
+      version: expectedVersion + 1,
+      basis: 'gift_times' as const,
+      clubFeeCents,
+    };
+    const { matchedCount } = await this.clubs.updateOne(
+      {
+        _id: clubId,
+        'commissionRule.version': expectedVersion || { $exists: false },
+      },
+      { $set: { commissionRule } },
+      { runValidators: true },
+    );
+    if (!matchedCount)
+      throw new ConflictException('抽成规则已更新，请重新加载后编辑');
+    return commissionRule;
   }
 
   async listAdminClubs(actor: SessionUser) {

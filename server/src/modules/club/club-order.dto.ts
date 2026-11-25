@@ -26,10 +26,23 @@ class CreateOrderDto {
   @Length(1, 120)
   recipientGameAccount: string;
 
+  @ValidateIf((order, value) => value !== undefined || order.requestedHearts === undefined)
   @IsInt()
   @Min(1)
   @Max(Number.MAX_SAFE_INTEGER)
-  requestedHearts: number;
+  requestedGiftTimes?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  requestedHearts?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  estimatedReceivedHearts?: number;
 }
 
 export class CreateDirectOrderDto extends CreateOrderDto {
@@ -78,4 +91,10 @@ export class ClubOrderQuery {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+export class EmployeeClubOrderQuery extends ClubOrderQuery {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsIn(['dispatcher'])
+  responsibility?: 'dispatcher';
 }

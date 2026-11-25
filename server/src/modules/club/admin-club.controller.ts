@@ -15,6 +15,7 @@ import Resp from '../../common/models/Resp';
 import { ClubDirectoryService } from './club-directory.service';
 import { ClubOrderQuery } from './club-order.dto';
 import { ClubOrderService } from './club-order.service';
+import { UpdateCommissionRuleDto } from './club-pricing.dto';
 
 class UpdateDispatcherDto {
   @IsBoolean()
@@ -39,6 +40,38 @@ export class AdminClubController {
   @Get()
   async list(@AuthUser() actor: SessionUser) {
     return Resp.success(await this.directory.listAdminClubs(actor));
+  }
+
+  @Get(':clubId/commission-rule')
+  async getCommissionRule(
+    @AuthUser() actor: SessionUser,
+    @Param('clubId') clubId: string,
+  ) {
+    return Resp.success(
+      await this.directory.getAdminCommissionRule(clubId, actor),
+    );
+  }
+
+  @Patch(':clubId/commission-rule')
+  async updateCommissionRule(
+    @AuthUser() actor: SessionUser,
+    @Param('clubId') clubId: string,
+    @Body() input: UpdateCommissionRuleDto,
+  ) {
+    return Resp.success(
+      await this.directory.updateCommissionRule(clubId, actor, input),
+    );
+  }
+
+  @Get(':clubId/dispatch-pricing')
+  async listDispatchPricing(
+    @AuthUser() actor: SessionUser,
+    @Param('clubId') clubId: string,
+    @Query() query: ClubOrderQuery,
+  ) {
+    return Resp.success(
+      await this.orders.listAdminDispatchPricing(clubId, actor, query),
+    );
   }
 
   @Get(':clubId/orders')

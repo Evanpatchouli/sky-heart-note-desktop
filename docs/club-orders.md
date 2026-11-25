@@ -2,7 +2,7 @@
 
 共享送心订单与俱乐部成员关系保存在服务端使用的 MongoDB 中。团员端的个人预约和送心号仍使用各团员自己的 SQLite 库。业务场景见[俱乐部业务说明](club-business.md)和[送心细则](heart-delivery.md)。
 
-当前建单 API 的 `requestedHearts` 仍表示旧协议的订购颗数。正式业务按段记录总次数、日量与每次单价，抽成统一按元/次，原单续段沿用首段派抽和团抽，后台团抽调整仅作用于全新订单。履约余量按赠送次数计，段内记录各送心员每日负责次数和预期执行时段。建单预计实收与接单实际实收分别保存爱心颗数，现金收款另记金额。接口及表单按 P1-05～P1-07 适配，原字段按原语义追溯。[正式业务口径](heart-delivery.md#订单分段)
+新单按赠送次数订购，报价记录段次数、日量和每次单价。建单预计实收单列爱心颗数。首次派发冻结每次抽成，续段沿用首段派抽和团抽。[正式业务口径](heart-delivery.md#订单分段)
 
 正式报价折扣由本单派单人承担。P1-12 验收按原单价和抽成核算送心报酬及团抽，分列派抽原额、折扣支出和派单人净收益，分配合计与折后实付核平。现阶段协议只记录下单和查询等已交付行为。[折扣算例](heart-delivery.md#100-次优惠-5-元如何对账)
 
@@ -34,7 +34,7 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 | --- | --- |
 | `CLUB_ORDERS_READ` | 查看指定俱乐部的订单监管视图 |
 | `CLUB_MEMBERS_MANAGE` | 查看指定俱乐部的成员名单，编辑有效成员的派单标记 |
-| `CLUB_COMMISSION_MANAGE` | 修改指定俱乐部团抽规则，由 P1-05 的规则接口接入 |
+| `CLUB_COMMISSION_MANAGE` | 修改指定俱乐部每次团抽规则 |
 | `CLUB_FINANCE_READ` | 读取指定俱乐部的资金明细，由财务接口接入 |
 
 现有会话在下次请求时按当前数据检查权限。成员授权和启停继续由运维命令处理。管理端通过 `GET /api/admin/clubs` 读取本账号已获业务授权的俱乐部及各俱乐部的权限码。运营订单视图只返回订单和份额信息。团抽与财务服务的接入点是 `ClubDirectoryService.requireAdminPermission`，传入管理端会话、目标俱乐部标识和对应权限码。服务在准入、当前成员状态或单项权限不满足时返回 403。测试用已登录账号和同一测试数据库验证授权及撤销。实际团抽修改与资金查询随对应任务接入。[开发任务](todo.md)
@@ -57,15 +57,16 @@ pnpm --dir server exec node dist/src/commands/club.js revoke sky-hearts 00C3 CLU
 | `GET` | `/api/admin/clubs/:clubId/members` | 查询指定俱乐部成员的昵称、四位 ID、成员状态和派单标记。 |
 | `PATCH` | `/api/admin/clubs/:clubId/members/:userId/dispatcher` | 用 `{"dispatcher": true}` 或 `{"dispatcher": false}` 更新有效成员的派单标记。 |
 
-下单需要相应端的访问令牌和 JSON 请求体。两个下单入口共用 `requestId`、`recipientGameAccount`、`requestedHearts`。每次新建生成一个 UUID v4，请求重试时沿用相同的 `requestId` 与内容。同一俱乐部、来源和创建人的重复提交返回已保存的订单，相同提交标识配不同内容返回 HTTP 409。现有旧接口在随机候选为空时也返回 HTTP 409，订单未创建。显式指定当前候选范围之外的账号返回 HTTP 400。
+下单需要相应端的访问令牌和 JSON 请求体。两个下单入口共用 `requestId`、`recipientGameAccount`、`requestedGiftTimes`，可另填 `estimatedReceivedHearts`。历史 `requestedHearts` 允许同一俱乐部、来源、创建人和标识原样重试已保存的请求。新单一律使用赠送次数。每次新建生成一个 UUID v4，请求重试时沿用相同的 `requestId` 与内容。相同提交标识配不同内容返回 HTTP 409。随机候选为空时返回 HTTP 409，订单未创建。显式指定当前候选范围之外的账号返回 HTTP 400。
 
-以下请求体可用于客户端普通送心单。直接派单也使用 `requestId`、`recipientGameAccount`、`requestedHearts` 三个共用字段。
+以下请求体可用于客户端普通送心单。直接派单也使用三个共用必填字段。
 
 ```json
 {
   "requestId": "a9fc2895-ff11-494a-9be7-5b3e5847b2ca",
   "recipientGameAccount": "接收爱心的游戏账号",
-  "requestedHearts": 100
+  "requestedGiftTimes": 100,
+  "estimatedReceivedHearts": 100
 }
 ```
 
@@ -83,4 +84,18 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 派单人能查单内已建立的份额和客户平台归属状态。承接人可见履约用的接收游戏账号、本人份额及该份额的执行游戏账号。同单兼任派单和承接时，可同时查看派单信息和本人份额的执行账号。执行账号具有独立标识，名称是订单内显示快照。客户可查看订单来源、业务类型、接收游戏账号、数量和派发状态。直接派单须核实平台客户归属后才进入客户查单范围。
 
-本阶段提供草稿、客户提交和订单查询。实际发布、承接及绑定个人送心号随对应业务流程接入，待分配、手动分配与分配前取消按 P1-24 接入并验收。[正式归属规则](club-business.md#订单来源)
+## 固定金额抽成与派单准备
+
+管理端通过 `GET /api/admin/clubs/:clubId/commission-rule` 查当前规则，通过相同路径的 `PATCH` 更新。派单人通过 `GET /api/employee/clubs/:clubId/orders/:orderId/pricing` 查报价和规则，通过相同路径的 `PATCH` 保存报价。
+
+管理端只填写每次团抽，派单人只填写每次服务单价与每次派抽。金额使用整数分。规则更新请求包含 `expectedVersion` 和 `clubFeeCents`，首次配置使用版本 `0`。报价更新请求包含 `ruleVersion`、`expectedRevision`（首次为 `0`）、`dispatchFeeCents` 和 `giftSegments`。两类请求可省略 `basis`，显式填写时仅接受 `gift_times`。已有按颗团抽须由具备本俱乐部权限的管理员填写新的每次金额后启用。规则或报价版本已变化时，服务返回 HTTP 409。
+
+按次报价的 `priceUnit` 为 `gift_times`。每段含 `period`（`normal` 或 `double`）、`paidGiftTimes`（付费赠送次数）、`dailyGiftTimes`（日量）和 `unitPriceCents`（每次服务单价）。各段付费次数合计等于原订购次数。按付费次数乘每次单价计算报价。建单预计实收颗数单列，普通期和双倍期的同量同价订单具有相同爱心款。
+
+首次正式派发时冻结每次派抽、每次团抽和规则版本。派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/continuation-quotes` 追加独立报价。请求包含 UUID v4 `requestId` 和一个与报价段同结构的 `segment`。响应含续段爱心款和从首段快照读取的 `commission`。续段保存为待核款报价，重试同一标识及内容取回原报价。客户仅可查看本人订单及其报价；抽成仅在获授权的业务入口返回。
+
+历史订单保留 `requestedHearts`、原报价和已派发快照。历史报价没有按次标记时，报价按原颗数和每颗单价展示。历史抽成按快照的 `basis` 和版本展示，即使同一笔旧单使用按次抽成，也继续按颗展示原报价。
+
+派单人在「派单准备」保存报价后可登记本人实收。使用 `POST /api/employee/clubs/:clubId/orders/:orderId/receipts`，提交 `pricingRevision`、正整数分 `receivedAmountCents`、带时区的 `receivedAt` 和 UUID v4 `requestId`，原报价随实收登记固定。当前记录爱心款；完整解锁报价及收款字段由 P1-06 验收。后台规则更新后，可通过 `PATCH /api/employee/clubs/:clubId/orders/:orderId/dispatch-commission` 提交 `pricingRevision`、`expectedReviewRevision`（首次为 `0`）、`ruleVersion` 和 `dispatchFeeCents`，复核每次派抽。
+
+实收等于原报价合计且规则仍有效时，派单人可用 `POST /api/employee/clubs/:clubId/orders/:orderId/publish` 正式派发。请求含 UUID v4 `requestId`、`pricingRevision`、`ruleVersion` 和 `commissionReviewRevision`（未复核填 `0`）。相同标识及内容可重试。服务原子写入正式派发时间与首段快照。承接及绑定个人送心号随对应任务接入，待分配、手动分配与分配前取消按 P1-24 验收。[正式归属规则](club-business.md#订单来源)

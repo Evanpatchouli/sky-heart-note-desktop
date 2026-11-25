@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { USER_ID_PATTERN } from '@webapp-template/common';
+import type { CommissionRule } from '@webapp-template/common';
 import { CLUB_PERMISSIONS, type ClubPermission } from './club-permissions';
+import { CommissionRuleSchema } from './club-pricing.schema';
 
 export const CLUB_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
@@ -11,6 +13,9 @@ export class Club {
 
   @Prop({ type: String, required: true, trim: true, maxlength: 80 })
   name: string;
+
+  @Prop({ type: CommissionRuleSchema })
+  commissionRule?: CommissionRule;
 }
 
 export const ClubSchema = SchemaFactory.createForClass(Club);

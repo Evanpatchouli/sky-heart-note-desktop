@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { Alert, Avatar, Button, Dropdown, Segmented } from "antd";
 import {
   AppstoreOutlined, BarsOutlined, CalendarOutlined, DownOutlined,
@@ -20,6 +20,7 @@ const views = [
 export default function Header() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const user = useAuthSession();
   const { logout, loggingOut, logoutError } = useSessionActions();
@@ -32,7 +33,8 @@ export default function Header() {
       <div className="member-appbar__row">
         <MemberBrand compact />
         <nav className="member-appbar__views" aria-label="订单视图">
-          <Segmented
+          {pathname === "/club/dispatch" || pathname === "/club/dispatch/"
+            ? <Link className="member-appbar__dispatch-link" to="/">个人工作台</Link> : <Segmented
             aria-label="订单视图"
             options={views}
             value={currentView}
@@ -46,9 +48,10 @@ export default function Header() {
               next.set("vtype", value);
               navigate({ pathname: "/", search: next.toString() });
             }}
-          />
+          />}
         </nav>
         <div className="member-appbar__account">
+          {pathname === "/" ? <Link className="member-appbar__dispatch-link" to="/club/dispatch">派单准备</Link> : null}
           <Timenow />
           <Dropdown
             trigger={["click"]}

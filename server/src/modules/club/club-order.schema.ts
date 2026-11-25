@@ -1,6 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { USER_ID_PATTERN } from '@webapp-template/common';
+import type { ContinuationQuote, DispatchPricing, OrderPricing } from '@webapp-template/common';
 import { Types } from 'mongoose';
+import {
+  CommissionReviewSchema,
+  DispatchPricingSchema,
+  ContinuationQuoteSchema,
+  OrderPricingSchema,
+  OrderReceiptSchema,
+  type CommissionReview,
+  type StoredOrderReceipt,
+} from './club-pricing.schema';
 import { CLUB_ID_PATTERN } from './club.schema';
 
 export const ORDER_SOURCES = ['direct_dispatch', 'client_order'] as const;
@@ -10,11 +20,16 @@ export type OrderSource = (typeof ORDER_SOURCES)[number];
 class HeartDelivery {
   @Prop({
     type: Number,
-    required: true,
     min: 1,
     validate: Number.isSafeInteger,
   })
-  requestedHearts: number;
+  requestedHearts?: number;
+
+  @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
+  requestedGiftTimes?: number;
+
+  @Prop({ type: Number, min: 1, validate: Number.isSafeInteger })
+  estimatedReceivedHearts?: number;
 }
 
 @Schema()
@@ -124,6 +139,24 @@ export class ClubOrder {
   @Prop({ type: Date })
   publishedAt?: Date;
 
+  @Prop({ type: OrderPricingSchema })
+  pricing?: OrderPricing;
+
+  @Prop({ type: DispatchPricingSchema })
+  dispatchPricing?: DispatchPricing;
+
+  @Prop({ type: OrderReceiptSchema })
+  receipt?: StoredOrderReceipt;
+
+  @Prop({ type: CommissionReviewSchema })
+  commissionReview?: CommissionReview;
+
+  @Prop({ type: String })
+  giftPublicationRequestId?: string;
+
+  @Prop({ type: [ContinuationQuoteSchema], default: undefined })
+  continuationQuotes?: ContinuationQuote[];
+
   @Prop({ type: SchemaFactory.createForClass(HeartDelivery), required: true })
   heartDelivery: HeartDelivery;
 
@@ -138,6 +171,12 @@ ClubOrderSchema.index(
   { unique: true },
 );
 ClubOrderSchema.index({ clubId: 1, _id: -1 });
+ClubOrderSchema.index(
+  { clubId: 1, dispatchStatus: 1, _id: -1 },
+  {
+    partialFilterExpression: { 'dispatchPricing.version': { $exists: true } },
+  },
+);
 ClubOrderSchema.index({
   clubId: 1,
   customerUserId: 1,

@@ -7,7 +7,8 @@ import { employeeRequest } from "#/service/request";
 type CustomerCandidate = { userId: string; nickname: string | null };
 type DraftFields = {
   recipientGameAccount: string;
-  requestedHearts: number;
+  requestedGiftTimes: number;
+  estimatedReceivedHearts?: number;
   customerMode: "existing" | "new";
   customer?: { value: string; label: string };
   newCustomerNickname?: string;
@@ -15,7 +16,9 @@ type DraftFields = {
 type DraftRequest = {
   requestId: string;
   recipientGameAccount: string;
-  requestedHearts: number;
+  requestedGiftTimes?: number;
+  requestedHearts?: number;
+  estimatedReceivedHearts?: number;
 } & ({ existingCustomerUserId: string; newCustomerNickname?: never } | { newCustomerNickname: string; existingCustomerUserId?: never });
 type SavedOrder = { id: string; clubId: string; source: string; customerUserId: string; customerLinkStatus: string };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -28,7 +31,8 @@ function readPending(key: string) {
     const input = JSON.parse(sessionStorage.getItem(key) ?? "null") as DraftRequest | null;
     if (input && requestIdPattern.test(input.requestId) &&
         typeof input.recipientGameAccount === "string" && input.recipientGameAccount.trim() && input.recipientGameAccount.length <= 120 &&
-        Number.isSafeInteger(input.requestedHearts) && input.requestedHearts > 0 &&
+        Number.isSafeInteger(input.requestedGiftTimes ?? input.requestedHearts) &&
+        (input.requestedGiftTimes ?? input.requestedHearts ?? 0) > 0 &&
         (input.existingCustomerUserId === undefined
           ? typeof input.newCustomerNickname === "string" && input.newCustomerNickname.trim() && input.newCustomerNickname.length <= 100
           : USER_ID_PATTERN.test(input.existingCustomerUserId) && input.newCustomerNickname === undefined)) return input;
@@ -89,7 +93,8 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
     const fields = {
       requestId: crypto.randomUUID(),
       recipientGameAccount: values.recipientGameAccount.trim(),
-      requestedHearts: values.requestedHearts,
+      requestedGiftTimes: values.requestedGiftTimes,
+      estimatedReceivedHearts: values.estimatedReceivedHearts ?? undefined,
     };
     if (values.customerMode === "new" && values.newCustomerNickname?.trim()) {
       void submit({ ...fields, newCustomerNickname: values.newCustomerNickname.trim() });
@@ -141,7 +146,8 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
       customer: pending?.existingCustomerUserId ? { value: pending.existingCustomerUserId, label: pending.existingCustomerUserId } : undefined,
       newCustomerNickname: pending?.newCustomerNickname,
       recipientGameAccount: pending?.recipientGameAccount,
-      requestedHearts: pending?.requestedHearts,
+      requestedGiftTimes: pending?.requestedGiftTimes,
+      estimatedReceivedHearts: pending?.estimatedReceivedHearts,
     }} disabled={Boolean(pending) || submitting} onFinish={save}>
       <Form.Item label="老板" name="customerMode">
         <Radio.Group options={[{ label: "已有用户", value: "existing" }, { label: "新老板", value: "new" }]} />
@@ -158,7 +164,10 @@ export default function NewDirectDraft({ clubId, onClose, onCreated }: { clubId:
             options={query ? activeLookup?.candidates.map(({ userId, nickname }) => ({ value: userId, label: `${nickname || "未设置昵称"} · ${userId}` })) : []} />
         </Form.Item>}
       <Form.Item label="接收爱心的游戏账号" name="recipientGameAccount" rules={[{ required: true, whitespace: true }]}><Input maxLength={120} /></Form.Item>
-      <Form.Item label="订购颗数" name="requestedHearts" rules={[{ required: true, type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}><InputNumber min={1} /></Form.Item>
+      {pending?.requestedHearts !== undefined ? <p>上次提交的订购颗数 · {pending.requestedHearts} 颗</p> : <>
+        <Form.Item label="订购赠送次数" name="requestedGiftTimes" rules={[{ required: true, type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}><InputNumber min={1} /></Form.Item>
+        <Form.Item label="预计实收爱心颗数（选填）" name="estimatedReceivedHearts" rules={[{ type: "integer", min: 1, max: Number.MAX_SAFE_INTEGER }]}><InputNumber min={1} /></Form.Item>
+      </>}
     </Form>
     {error ? <Alert type="error" showIcon title={error} />
       : pending && !submitting ? <Alert type="warning" showIcon title={unknownResult} /> : null}

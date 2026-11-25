@@ -35,6 +35,6 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientOwnOrdersController,
   ],
   providers: [ClubDirectoryService, ClubCustomerService, ClubOrderService],
-  exports: [ClubDirectoryService],
+  exports: [ClubDirectoryService, ClubOrderService],
 })
 export class ClubModule {}

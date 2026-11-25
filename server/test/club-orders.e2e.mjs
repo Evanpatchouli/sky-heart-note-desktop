@@ -27,7 +27,11 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     }
     const response = await fetch(base + path, { method, headers, body: JSON.stringify(body) });
     const payload = await response.json();
-    assert.equal(response.status, status, `${method} ${path}: ${JSON.stringify(payload)}`);
+    if (Array.isArray(status)) {
+      assert.ok(status.includes(response.status), `${method} ${path}: ${response.status} ${JSON.stringify(payload)}`);
+    } else {
+      assert.equal(response.status, status, `${method} ${path}: ${JSON.stringify(payload)}`);
+    }
     if (path.startsWith('/captcha/')) {
       const challenge = response.headers.getSetCookie().find((cookie) => cookie.startsWith('sky_captcha_'));
       assert.ok(challenge);
@@ -84,7 +88,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
   const mongoId = (id) => new mongoose.Types.ObjectId(id);
   const get = (app, route, actor, status) => api(app, route, { token: actor.token, status });
   const post = (app, route, actor, body, status = 201) => api(app, route, { method: 'POST', token: actor.token, body, status });
-  const orderInput = (requestedHearts = 100) => ({ requestId: randomUUID(), recipientGameAccount: '接收游戏号', requestedHearts });
+  const orderInput = (requestedGiftTimes = 100) => ({ requestId: randomUUID(), recipientGameAccount: '接收游戏号', requestedGiftTimes });
   let direct;
   let selected;
   let random;
@@ -139,7 +143,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal(random.dispatcherAssignment, 'random');
     assert.equal(await orders.countDocuments({ source: 'client_order' }), 1);
     assert.equal((await post('client', clientOrders, owner, { ...input, requestId: input.requestId.toUpperCase() })).id, random.id);
-    await post('client', clientOrders, owner, { ...input, requestedHearts: 99 }, 409);
+    await post('client', clientOrders, owner, { ...input, requestedGiftTimes: 99 }, 409);
 
     await member('main', executor, 'active', 'dispatcher');
     const explicit = { ...orderInput(), dispatcherUserId: executor.id };
@@ -152,7 +156,7 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     assert.equal(saved.customerUserId, owner.id);
     assert.equal(saved.createdByUserId, owner.id);
     assert.equal(saved.customerLinkStatus, 'verified');
-    assert.equal(saved.heartDelivery.requestedHearts, 100);
+    assert.equal(saved.heartDelivery.requestedGiftTimes, 100);
     assert.equal(saved.publishedAt, undefined);
     assert.equal((await get('employee', `${employeeOrders}/${selected.id}`, executor)).id, selected.id);
     await get('employee', `${employeeOrders}/${selected.id}`, dispatcher, 404);
@@ -414,5 +418,212 @@ test('共享订单生产入口按平台账号、俱乐部和当单职责读写',
     await grant('main', administrator, 'CLUB_MEMBERS_MANAGE');
     await adminGet(membersRoute);
     await adminGet(mainOrders, administrator, 403);
+  });
+
+  await t.test('按次抽成和首段快照通过真实 Mongo 保存，续段继承原规则', async () => {
+    const ruleRoute = '/admin/clubs/main/commission-rule';
+    const historyRoute = '/admin/clubs/main/dispatch-pricing';
+    const patch = (app, route, actor, body, status) => api(app, route, { method: 'PATCH', token: actor.token, body, status });
+    const adminGet = (route, status) => get('admin', route, administrator, status);
+    const grant = (permission) => configure('grant', 'main', administrator.id, permission);
+    const revoke = (permission) => configure('revoke', 'main', administrator.id, permission);
+    const makeDirect = () => post('employee', employeeOrders, dispatcher, { ...orderInput(), existingCustomerUserId: owner.id });
+    const draft = await makeDirect();
+    const client = await post('client', clientOrders, owner, { ...orderInput(), estimatedReceivedHearts: 200, dispatcherUserId: dispatcher.id });
+    const unreviewed = await makeDirect();
+    const route = (order) => `${employeeOrders}/${order.id}`;
+    const pricingRoute = (order) => route(order) + '/pricing';
+    const giftSegments = [{ period: 'normal', paidGiftTimes: 100, dailyGiftTimes: 10, unitPriceCents: 50 }];
+    const doubleSegments = [{ ...giftSegments[0], period: 'double' }];
+    const draftInput = { ruleVersion: 1, expectedRevision: 0, dispatchFeeCents: 5, giftSegments };
+    const ruleInput = { expectedVersion: 0, clubFeeCents: 5 };
+    const savePrice = (order, input = draftInput, status = 200) => patch('employee', pricingRoute(order), dispatcher, input, status);
+    const saveRule = (input = ruleInput, status = 200) => patch('admin', ruleRoute, administrator, input, status);
+
+    await adminGet(ruleRoute, 403);
+    await saveRule(ruleInput, 403);
+    await grant('CLUB_ORDERS_READ');
+    await adminGet(historyRoute, 403);
+    await revoke('CLUB_ORDERS_READ');
+    await grant('CLUB_COMMISSION_MANAGE');
+    assert.equal(await adminGet(ruleRoute), null);
+    await adminGet('/admin/clubs/side/commission-rule', 403);
+    await adminGet(historyRoute, 403);
+    assert.equal((await get('employee', pricingRoute(draft), dispatcher)).pricing, null);
+    await savePrice(draft, draftInput, 409);
+    await patch('admin', ruleRoute, dispatcher, ruleInput, 403);
+    await patch('admin', ruleRoute, adminEmployee, ruleInput, 403);
+    for (const invalid of [{ basis: 'received_hearts' }, { dispatchFeeCents: 5 }, { clubId: 'side' }, { clubFeeCents: -1 }, { clubFeeCents: 0.5 }]) {
+      await saveRule({ ...ruleInput, ...invalid }, 400);
+    }
+    const raced = await Promise.all([saveRule(ruleInput, [200, 409]), saveRule(ruleInput, [200, 409])]);
+    const versionOne = { basis: 'gift_times', clubFeeCents: 5, version: 1 };
+    assert.deepEqual(raced.filter(Boolean), [versionOne]);
+    assert.deepEqual(await adminGet(ruleRoute), versionOne);
+
+    await patch('employee', pricingRoute(draft), executor, draftInput, 404);
+    await patch('employee', pricingRoute(draft), outsider, draftInput, 403);
+    await patch('employee', pricingRoute(client), owner, draftInput, 403);
+    for (const invalid of [
+      { clubFeeCents: 99 }, { basis: 'received_hearts' }, { dispatchFeeCents: -1 }, { giftSegments: [null] },
+      { segments: [{ period: 'normal', hearts: 100, unitPriceCents: 50 }] },
+      { giftSegments: [{ ...giftSegments[0], dailyGiftTimes: 101 }] },
+      { giftSegments: [{ ...giftSegments[0], paidGiftTimes: 99 }] },
+      { giftSegments: [{ ...giftSegments[0], unitPriceCents: 35.1 }] },
+      { giftSegments: [{ ...giftSegments[0], unitPriceCents: Number.MAX_SAFE_INTEGER }] },
+    ]) await savePrice(draft, { ...draftInput, ...invalid }, 400);
+    const prepared = await savePrice(draft);
+    assert.equal(prepared.dispatchPricing, null);
+    assert.equal(prepared.pricing.priceUnit, 'gift_times');
+    assert.deepEqual(prepared.pricing.giftSegments, giftSegments);
+    assert.deepEqual(await get('employee', pricingRoute(draft), dispatcher), prepared);
+    assert.equal((await orders.findOne({ _id: mongoId(draft.id) })).dispatchPricing, undefined);
+    await savePrice(draft, draftInput, 409);
+    const clientPrepared = await savePrice(client, { ...draftInput, basis: 'gift_times', giftSegments: doubleSegments });
+    assert.equal(clientPrepared.dispatchStatus, 'pending');
+    await savePrice(unreviewed);
+    const continuation = { requestId: randomUUID(), segment: { period: 'double', paidGiftTimes: 20, dailyGiftTimes: 5, unitPriceCents: 60 } };
+    const extend = (order, input = continuation, status = 201, actor = dispatcher) =>
+      post('employee', route(order) + '/continuation-quotes', actor, input, status);
+    await extend(draft, continuation, 409);
+    assert.equal(prepared.quote.totalAmountCents, 5000);
+    assert.equal(clientPrepared.quote.totalAmountCents, 5000);
+    const receipt = (order, amount, requestId = randomUUID(), status = 201, actor = dispatcher) =>
+      post('employee', route(order) + '/receipts', actor, {
+        requestId, pricingRevision: 1, receivedAmountCents: amount, receivedAt: '2026-11-24T11:40:00Z',
+      }, status);
+    const attemptPublish = (order, requestId, pricingRevision, ruleVersion, status = 201, extra = {}, actor = dispatcher) =>
+      post('employee', route(order) + '/publish', actor, {
+        requestId, pricingRevision, ruleVersion, commissionReviewRevision: 0, ...extra,
+      }, status);
+
+    const initialRequest = randomUUID();
+    await attemptPublish(draft, initialRequest, 1, 1, 409);
+    await receipt(draft, 5000, initialRequest, 404, executor);
+    const [payment, paymentReplay] = await Promise.all([receipt(draft, 5000, initialRequest), receipt(draft, 5000, initialRequest)]);
+    assert.deepEqual(payment, paymentReplay);
+    assert.equal(payment.paymentStatus, 'paid_in_full');
+    assert.equal(payment.receipt.receivedAt, '2026-11-24T11:40:00.000Z');
+    assert.equal(payment.receipt.quote.totalAmountCents, 5000);
+    assert.equal(payment.receipt.quote.heartsAmountCents, 5000);
+    assert.equal(payment.receipt.quote.unlockAmountCents, 0);
+    assert.deepEqual(payment.receipt.quote.unlock, { quantity: 0, unitPriceCents: 0 });
+    assert.deepEqual(payment.receipt.quote.segments, []);
+    assert.deepEqual(payment.receipt.quote.giftSegments, giftSegments);
+    await receipt(draft, 5001, initialRequest, 409);
+    await savePrice(draft, { ...draftInput, expectedRevision: 1 }, 409);
+    await attemptPublish(draft, initialRequest, 1, 1, 400, { publicHearts: 100, directed: [] });
+    await attemptPublish(draft, initialRequest, 1, 1, 404, {}, executor);
+    assert.equal((await receipt(client, 4999)).paymentStatus, 'underpaid');
+    await attemptPublish(client, randomUUID(), 1, 1, 409);
+    await receipt(unreviewed, 5000);
+
+    const publishIds = new Map([[draft.id, initialRequest]]);
+    const publish = async (order, revision, version, count = 1) => {
+      const status = order.id === unreviewed.id ? 409 : 201;
+      const requestId = publishIds.get(order.id) ?? randomUUID();
+      publishIds.set(order.id, requestId);
+      const results = await Promise.all(Array.from({ length: count }, () => attemptPublish(order, requestId, revision, version, status)));
+      return results.map(result => status === 409 ? { status: 409 } : result);
+    };
+    const [first, concurrent] = await publish(draft, 1, 1, 2);
+    assert.deepEqual(first, concurrent);
+    assert.equal(first.dispatchStatus, 'published');
+    const { dispatchPricing: firstPricing } = first;
+    assert.deepEqual({ version: firstPricing.version, clubFeeCents: firstPricing.clubFeeCents,
+      dispatchFeeCents: firstPricing.dispatchFeeCents, basis: firstPricing.basis }, { ...versionOne, dispatchFeeCents: 5 });
+    const saved = await orders.findOne({ _id: mongoId(draft.id) });
+    assert.equal(saved.publishedAt.toISOString(), first.publishedAt);
+    assert.deepEqual(saved.dispatchPricing, firstPricing);
+    assert.equal(saved.pricing, undefined);
+    assert.equal(saved.allocation, undefined);
+    await savePrice(draft, { ...draftInput, expectedRevision: 1 }, 409);
+
+    const versionTwo = await saveRule({ expectedVersion: 1, clubFeeCents: 7 });
+    assert.deepEqual(versionTwo, { ...versionOne, version: 2, clubFeeCents: 7 });
+    await extend(draft, continuation, 404, executor);
+    await extend(draft, { ...continuation, clubFeeCents: 70 }, 400);
+    const [renewal, replay] = await Promise.all([extend(draft), extend(draft)]);
+    assert.deepEqual(renewal, replay);
+    assert.deepEqual(renewal.commission, { ...versionOne, dispatchFeeCents: 5 });
+    assert.equal(renewal.amountCents, 1200);
+    await extend(draft, { ...continuation, segment: { ...continuation.segment, unitPriceCents: 65 } }, 409);
+    assert.deepEqual((await orders.findOne({ _id: mongoId(draft.id) })).dispatchPricing, firstPricing);
+    assert.equal((await orders.findOne({ _id: mongoId(draft.id) })).continuationQuotes.length, 1);
+    assert.deepEqual((await publish(draft, 1, 1))[0], first);
+    assert.equal((await publish(unreviewed, 1, 1))[0].status, 409);
+    assert.equal((await publish(unreviewed, 1, 2))[0].status, 409);
+    await attemptPublish(draft, initialRequest, 1, 2, 409);
+    await attemptPublish(draft, randomUUID(), 1, 1, 409);
+    const reviewRoute = route(unreviewed) + '/dispatch-commission';
+    const review = { pricingRevision: 1, expectedReviewRevision: 0, ruleVersion: 2, dispatchFeeCents: 6 };
+    await patch('employee', reviewRoute, executor, review, 404);
+    await patch('employee', reviewRoute, dispatcher, { ...review, ruleVersion: 1 }, 409);
+    assert.equal((await patch('employee', reviewRoute, dispatcher, review)).commissionReview.revision, 1);
+    const reviewed = await attemptPublish(unreviewed, randomUUID(), 1, 2, 201, { commissionReviewRevision: 1 });
+    assert.equal(reviewed.dispatchPricing.dispatchFeeCents, 6);
+    assert.equal(reviewed.dispatchPricing.clubFeeCents, 7);
+
+    const next = await makeDirect();
+    await savePrice(next, { ...draftInput, ruleVersion: 2, dispatchFeeCents: 3 });
+    await receipt(next, 5000);
+
+    const [second] = await publish(next, 1, 2);
+    assert.equal(second.dispatchPricing.version, 2);
+    assert.equal(second.dispatchPricing.clubFeeCents, 7);
+    assert.equal(second.dispatchPricing.dispatchFeeCents, 3);
+
+    const clientView = await get('client', `${clientOrders}/${draft.id}`, owner);
+    assert.equal(clientView.dispatchStatus, 'published');
+    assert.equal(clientView.dispatchPricing, undefined);
+    assert.equal(clientView.pricing, undefined);
+    assert.equal(clientView.receipt.requestId, undefined);
+    assert.equal(clientView.receipt.receivedAmountCents, 5000);
+    assert.equal(clientView.continuationQuotes[0].commission, undefined);
+    assert.equal(clientView.continuationQuotes[0].amountCents, 1200);
+    await get('client', `${clientOrders}/${draft.id}`, stranger, 404);
+    assert.equal((await get('client', `${clientOrders}/${client.id}`, owner)).estimatedReceivedHearts, 200);
+
+    const legacyInput = { recipientGameAccount: '历史颗数', requestId: randomUUID(), requestedHearts: 175, dispatcherUserId: dispatcher.id };
+    await post('client', clientOrders, owner, legacyInput, 400);
+    const historical = [];
+    for (const [index, basis] of ['received_hearts', 'gift_times'].entries()) {
+      const historicalInput = { ...legacyInput, requestId: randomUUID() };
+      const price = { basis, version: index + 2, revision: 1, dispatchFeeCents: 2, clubFeeCents: 4,
+        segments: [{ period: 'double', hearts: 175, unitPriceCents: 21 }] };
+      const now = new Date();
+      const inserted = await orders.insertOne({
+        requestId: historicalInput.requestId, source: 'client_order', clubId: 'main', businessType: 'heart_delivery',
+        recipientGameAccount: historicalInput.recipientGameAccount, customerUserId: owner.id, customerLinkStatus: 'verified',
+        createdByUserId: owner.id, dispatcherUserId: dispatcher.id, dispatcherAssignment: 'customer_selected',
+        dispatchStatus: 'published', publishedAt: now, createdAt: now, shares: [],
+        heartDelivery: { requestedHearts: 175 }, dispatchPricing: price,
+      });
+      const legacy = { id: String(inserted.insertedId) };
+      historical.push({ ...legacy, price });
+      const retained = await post('client', clientOrders, owner, historicalInput);
+      assert.equal(retained.id, legacy.id);
+      assert.equal(retained.requestedHearts, 175);
+      assert.equal(retained.requestedGiftTimes, undefined);
+      await post('client', clientOrders, owner, { ...historicalInput, requestedHearts: 170 }, 409);
+      assert.deepEqual((await get('employee', pricingRoute(legacy), dispatcher)).dispatchPricing, price);
+      await extend(legacy, continuation, 409);
+    }
+
+    await grant('CLUB_ORDERS_READ');
+    const basic = (await adminGet(historyRoute)).items;
+    assert.ok(basic.every(row => row.segments === undefined && row.giftSegments === undefined && row.dispatchFeeCents === undefined));
+    await grant('CLUB_FINANCE_READ');
+    const history = (await adminGet(historyRoute)).items;
+    assert.deepEqual(history.find(row => row.id === draft.id).giftSegments, giftSegments);
+    for (const { id, price } of historical) {
+      const retained = history.find(row => row.id === id);
+      assert.equal(retained.basis, price.basis);
+      assert.equal(retained.priceUnit, undefined);
+      assert.deepEqual(retained.segments, price.segments);
+    }
+    await revoke('CLUB_COMMISSION_MANAGE');
+    await adminGet(ruleRoute, 403);
+    await adminGet(historyRoute, 403);
   });
 });

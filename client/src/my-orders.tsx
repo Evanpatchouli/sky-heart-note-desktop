@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatCentsAsYuan, type ContinuationQuote, type GiftPriceSegment, type PriceSegment } from "@webapp-template/common";
 import { authRequest, invalidateSession, RequestError, useAuthSession } from "@webapp-template/common/web-auth";
 
 const sources = { direct_dispatch: "直接派单", client_order: "客户端下单" };
@@ -10,7 +11,14 @@ type Order = {
   dispatchStatus: keyof typeof statuses;
   dispatcherUserId: string;
   recipientGameAccount: string;
-  requestedHearts: number;
+  requestedHearts?: number;
+  requestedGiftTimes?: number;
+  estimatedReceivedHearts?: number;
+  segments?: PriceSegment[];
+  giftSegments?: GiftPriceSegment[];
+  quote?: { totalAmountCents: number };
+  receipt?: { receivedAmountCents: number; receivedAt: string };
+  continuationQuotes?: ContinuationQuote[];
 };
 type Page = { items: Order[]; nextCursor: string | null };
 
@@ -61,7 +69,15 @@ export default function MyOrders() {
         <details>
           <summary>{order.recipientGameAccount} · {sources[order.source]} · {statuses[order.dispatchStatus]}</summary>
           <p>订单号 {order.id}</p>
-          <p>俱乐部 {order.clubId} · 派单人 {order.dispatcherUserId} · 订购 {order.requestedHearts} 颗</p>
+          <p>俱乐部 {order.clubId} · 派单人 {order.dispatcherUserId} · 订购 {order.requestedGiftTimes !== undefined ? `${order.requestedGiftTimes} 次` : `${order.requestedHearts} 颗`}</p>
+          {order.estimatedReceivedHearts === undefined ? null : <p>预计实收 {order.estimatedReceivedHearts} 颗</p>}
+          {order.segments?.map((segment, index) => <p key={index}>{segment.hearts} 颗 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/颗</p>)}
+          {order.giftSegments?.map((segment, index) => <p key={index}>{segment.paidGiftTimes} 次 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次</p>)}
+          {order.quote ? <p>报价合计 ¥{formatCentsAsYuan(order.quote.totalAmountCents)}</p> : null}
+          {order.receipt ? <p>已登记实收 ¥{formatCentsAsYuan(order.receipt.receivedAmountCents)} · {new Date(order.receipt.receivedAt).toLocaleString("zh-CN")}</p> : null}
+          {order.continuationQuotes?.map(({ requestId, segment, amountCents }) => <p key={requestId}>
+            续段 {segment.paidGiftTimes} 次 · ¥{formatCentsAsYuan(segment.unitPriceCents)}/次 · 合计 ¥{formatCentsAsYuan(amountCents)} · 待核款
+          </p>)}
         </details>
       </li>)}
     </ul> : <p>暂无订单</p> : <p role="status">加载中…</p>}

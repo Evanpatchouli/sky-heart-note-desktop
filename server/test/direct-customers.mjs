@@ -20,7 +20,7 @@ export async function checkDirectCustomers(t, { db, base, api, configure, regist
   const direct = (body, status) => post('employee', employeeRoute, dispatcher, body, status);
   const search = (q, actor = dispatcher, status) => get('employee',
     `/employee/clubs/${clubId}/order-customers?${new URLSearchParams({ q })}`, actor, status);
-  const input = () => ({ requestId: randomUUID(), recipientGameAccount: '爱心接收游戏号', requestedHearts: 13 });
+  const input = () => ({ requestId: randomUUID(), recipientGameAccount: '爱心接收游戏号', requestedGiftTimes: 13 });
   const ids = items => items.map(({ id }) => id);
   await users.updateMany({ _id: { $in: [owner.id, stranger.id] } }, { $set: { nickname } });
 
@@ -155,7 +155,7 @@ export async function checkDirectCustomers(t, { db, base, api, configure, regist
     assert.ok(replies.every(({ id, customerUserId }) => id === first.id && customerUserId === first.customerUserId));
     assert.match(first.customerUserId, /^[A-Z0-9]{4}$/);
     assert.deepEqual(await direct(body), first);
-    await direct({ ...body, requestedHearts: 14 }, 409);
+    await direct({ ...body, requestedGiftTimes: 14 }, 409);
     const second = await direct({ ...input(), newCustomerNickname: nickname });
     assert.equal(new Set([owner.id, stranger.id, first.customerUserId, second.customerUserId]).size, 4);
     assert.equal(await users.countDocuments({ nickname, dispatchCustomerOrderId: { $exists: true } }), 2);
