@@ -20,7 +20,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "node --test test/web-apps.e2e.mjs test/club-orders.e2e.mjs test/club-single-operations.e2e.mjs test/club-gift-dispatch.e2e.mjs test/club-personal-schedule.e2e.mjs test/club-dispatch-notice.e2e.mjs test/club-execution.e2e.mjs test/club-delivery.e2e.mjs test/club-gift-supervision.e2e.mjs test/club-promotions.e2e.mjs test/club-settlement.e2e.mjs"
+    "test:e2e": "node --test test/web-apps.e2e.mjs test/club-orders.e2e.mjs test/club-single-operations.e2e.mjs test/club-gift-dispatch.e2e.mjs test/club-personal-schedule.e2e.mjs test/club-dispatch-notice.e2e.mjs test/club-dispatch-push.e2e.mjs test/club-execution.e2e.mjs test/club-delivery.e2e.mjs test/club-gift-supervision.e2e.mjs test/club-promotions.e2e.mjs test/club-settlement.e2e.mjs"
   },
   "_moduleAliases": {
     "@": "dist/src",
@@ -44,6 +44,7 @@
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "es-toolkit": "^1.44.0",
+    "ipaddr.js": "^2.5.0",
     "log4js": "^6.9.1",
     "minimatch": "^10.1.1",
     "mitt": "^3.0.1",
@@ -54,7 +55,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "svg-captcha": "^1.4.0",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -68,6 +70,7 @@
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.9",
     "@types/supertest": "^6.0.2",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",

@@ -9,6 +9,8 @@ import cache from './cache';
 import { TraceIdInterceptor } from '@/common/trace/trace.interceptor';
 import { appOrigins } from './auth/app-access';
 import { ClubDispatchNoticeService } from './modules/club/club-dispatch-notice.service';
+import { ClubDispatchPushService } from './modules/club/club-dispatch-push.service';
+import { AppNotificationService } from './modules/club/app-notification.service';
 
 class ApplicationStarter {
   private readonly name = 'nest-server-starter';
@@ -72,6 +74,8 @@ class ApplicationStarter {
     const host = AppConfig.Server.HOST;
     await app.listen(port, host);
     app.get(ClubDispatchNoticeService).startDelivery();
+    app.get(ClubDispatchPushService).startDelivery();
+    app.get(AppNotificationService).startDelivery();
 
     const bootstrapTime = (performance.now() - bootstrapStart) / 1000;
     logger.info(`✅ NestJS 应用启动完成，耗时 ${bootstrapTime.toFixed(2)} 秒`);

@@ -26,6 +26,8 @@
     },
     "./web-auth": "./web-auth/index.tsx",
     "./mobile-navigation": "./mobile-navigation/index.tsx",
+    "./pwa": "./pwa/register.ts",
+    "./notifications": "./pwa/notifications.tsx",
     "./components": {
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components.js"
@@ -34,7 +36,8 @@
   "files": [
     "dist",
     "mobile-navigation",
-    "web-auth"
+    "web-auth",
+    "pwa"
   ],
   "scripts": {
     "build": "rollup -c",

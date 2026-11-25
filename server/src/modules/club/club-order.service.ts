@@ -40,6 +40,7 @@ import type {
 import type { StoredOrderReceipt } from './club-pricing.schema';
 import { ClubOrder, type PendingAssignmentDecision } from './club-order.schema';
 import { ClubPromotionService } from './club-promotion.service';
+import { ClubDispatchPushService } from './club-dispatch-push.service';
 
 const clientOrderScope = {
   source: 'client_order',
@@ -235,6 +236,7 @@ export class ClubOrderService implements OnModuleInit {
     private readonly giftDispatch: ClubGiftDispatchService,
     private readonly giftSupervision: ClubGiftSupervision,
     private readonly promotions: ClubPromotionService,
+    private readonly dispatchPush: ClubDispatchPushService,
   ) {}
 
   async onModuleInit() {
@@ -359,7 +361,9 @@ export class ClubOrderService implements OnModuleInit {
         $set: {
           pendingAssignmentDecision: decision,
           dispatchStatus: kind === 'assigned' ? 'pending' : 'cancelled',
-          ...(kind === 'assigned' ? { dispatcherUserId, dispatcherAssignment: 'manual' } : {}),
+          ...(kind === 'assigned' ? {
+            dispatcherUserId, dispatcherAssignment: 'manual', intakeNoticePendingAt: decision.decidedAt,
+          } : {}),
         },
       },
       { returnDocument: 'after', runValidators: true },
@@ -820,6 +824,7 @@ export class ClubOrderService implements OnModuleInit {
       recipientUserIds,
       pending: true,
       nextAttemptAt: publishedAt,
+      ...this.dispatchPush.publicationSchedule(publishedAt),
     };
     const committed = await this.orders.findOneAndUpdate(
       {
@@ -1050,6 +1055,7 @@ export class ClubOrderService implements OnModuleInit {
             ...(dispatcherUserId ? {
               dispatcherAssignment: submission.input.dispatcherUserId ? 'customer_selected' : 'random',
               dispatchStatus: 'pending',
+              intakeNoticePendingAt: new Date(),
             } : { dispatchStatus: 'pending_assignment' }),
             customerUserId: userId,
             customerLinkStatus: 'verified',

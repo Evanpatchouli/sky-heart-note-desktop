@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node ../common/pwa/build.mjs employee",
     "preview": "vite preview"
   },
   "dependencies": {

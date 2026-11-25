@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import type { Request, Response, CookieOptions } from 'express';
 import { AppSession } from './app-session.schema';
 import { apps, canAccess, type SessionUser, type WebApp } from './app-access';
@@ -15,6 +15,12 @@ import { createOpaqueToken, digestToken as digest, opaqueTokenPattern } from './
 
 const lifetime = 7 * 24 * 60 * 60 * 1000;
 
+export interface AppSessionBinding {
+  sessionId: Types.ObjectId;
+  accessHash: string;
+  userId: string;
+  targetApp?: WebApp;
+}
 const cookieName = (app: WebApp) => 'sky_grant_' + app;
 const cookieOptions = (): CookieOptions => ({
   httpOnly: true,
@@ -84,6 +90,29 @@ export class AppSessionService {
     if (!user || !canAccess(session.app, user.roles))
       throw new UnauthorizedException('账号已失去应用访问权限');
     return user;
+  }
+
+  async appBinding(token: string, userId: string, app: WebApp) {
+    const accessHash = digest(token);
+    const session = await this.sessions
+      .findOne({ accessHash, userId, app, expiresAt: { $gt: new Date() } })
+      .select({ expiresAt: 1 })
+      .lean();
+    if (!session) throw new UnauthorizedException('登录已失效');
+    return { sessionId: session._id, accessHash, userId, expiresAt: session.expiresAt };
+  }
+
+  async isCurrentAppBinding(
+    { sessionId, accessHash, userId, targetApp: app = 'employee' }: AppSessionBinding,
+    checkAccess = false,
+  ) {
+    if (checkAccess) {
+      const user = await this.profile(userId, app);
+      if (!user || !canAccess(app, user.roles)) return false;
+    }
+    return Boolean(await this.sessions.exists({
+      _id: sessionId, accessHash, userId, app, expiresAt: { $gt: new Date() },
+    }));
   }
 
   private async sourceUser(req: Request, source: WebApp, target: WebApp) {

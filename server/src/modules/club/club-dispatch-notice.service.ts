@@ -89,7 +89,7 @@ export class ClubDispatchNoticeService
         id: notice._id.toHexString(),
         clubId: notice.clubId,
         clubName,
-        orderId: notice.orderId.toHexString(),
+        orderId: notice.orderId!.toHexString(),
         publishedAt: notice.publishedAt,
         type: 'important' as const,
         targetApp: 'employee' as const,
@@ -117,7 +117,7 @@ export class ClubDispatchNoticeService
       .findOne({ ...scope, _id: noticeId })
       .select({ clubId: 1, orderId: 1, publicationId: 1, readAt: 1 })
       .lean();
-    if (!notice) return { status: 'missing' as const };
+    if (!notice?.clubId || !notice.orderId) return { status: 'missing' as const };
     const { clubId, orderId, publicationId } = notice;
     const order = await this.orders.findOne({
       _id: orderId,
@@ -161,7 +161,10 @@ export class ClubDispatchNoticeService
     const club = await this.directory.getEmployeeClub(userId);
     return {
       clubName: club?.name,
-      scope: { recipientUserId: userId, clubId: club ? CLUB_ID : { $in: [] } },
+      scope: {
+        recipientUserId: userId, clubId: club ? CLUB_ID : { $in: [] },
+        targetApp: 'employee', type: 'important', eventKey: { $exists: false },
+      },
     };
   }
 

@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from "react-router";
 import { useEffect, useState } from "react";
-import { AuditOutlined } from "@ant-design/icons";
+import { AuditOutlined, BellOutlined } from "@ant-design/icons";
+import { NotificationBell } from "@webapp-template/common/notifications";
 import type { MenuProps } from "antd";
 import { getAdminClub, type AdminClub } from "@/api/club.api";
 import { useLoginStore } from "@/auth/store";
@@ -23,6 +24,7 @@ export default function Home() {
 }
 
 function AuthorizedHome() {
+  const token = useLoginStore(s => s.token);
   const [club, setClub] = useState<AdminClub | null>();
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -39,14 +41,19 @@ function AuthorizedHome() {
 
   const mayConfigureRule = club?.permissions.includes("CLUB_COMMISSION_MANAGE");
   const mayReadFinance = club?.permissions.includes("CLUB_FINANCE_READ");
-  const clubItems: MenuProps["items"] = [{
-    key: "/club", label: "俱乐部管理", icon: <AuditOutlined />,
-    children: [
-      ...(mayConfigureRule ? [{ key: "/club/rules", label: "抽成规则" }] : []),
-      ...(mayReadFinance ? [{ key: "/club/settlements", label: "结算核对" }] : []),
-    ],
-  }];
-  return <AdminShell menu={<AuthMenu additionalItems={mayConfigureRule || mayReadFinance ? clubItems : undefined} />} account={<UserAvatar />}>
+  const clubChildren: MenuProps["items"] = [
+    ...(mayConfigureRule ? [{ key: "/club/rules", label: "抽成规则" }] : []),
+    ...(mayReadFinance ? [{ key: "/club/settlements", label: "结算核对" }] : []),
+  ];
+  const clubItems: MenuProps["items"] = clubChildren.length ? [{
+    key: "/club", label: "俱乐部管理", icon: <AuditOutlined />, children: clubChildren,
+  }] : [];
+  return <AdminShell menu={<AuthMenu additionalItems={clubItems} />} account={
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {token ? <NotificationBell app="admin" token={token} icon={<BellOutlined />} /> : null}
+      <UserAvatar />
+    </div>
+  }>
     <Outlet context={{ club, loadFailed, reload: () => setAttempt(value => value + 1) } satisfies AdminClubContext} />
   </AdminShell>;
 }

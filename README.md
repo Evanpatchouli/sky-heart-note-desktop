@@ -51,6 +51,29 @@ Docker 部署使用 `docker compose exec server node dist/src/commands/club.js i
 
 团长登录团员端，从右上角「账户菜单 → 俱乐部运营」修改本团名称、加入已有团员账号并授予或收回运营权限。有效团员可在「派单准备」生成入团邀请。客户打开客户端「下单」即可提交本团订单。[俱乐部运营 API](docs/club-orders.md#俱乐部运营权限)
 
+## 安装管理端、团员端和客户端
+
+使用各端自己的 HTTPS 地址，先联网打开一次。Android 在 Chrome 菜单选择「安装应用」或「添加到主屏幕」。iPhone 或 iPad 在 Safari 的共享菜单选择「添加到主屏幕」。如果出现「作为 Web App 打开」选项，请保持开启。三个入口的纸飞机分别使用深蓝、靛蓝和绿色，可从主屏幕分别启动。
+
+在电脑上调试安装和更新，可在 `pnpm build` 后按需用 `pnpm --dir admin preview`、`pnpm --dir employee preview` 或 `pnpm --dir client preview` 运行构建产物，并使用对应的 localhost 地址。真机请用配置好三端 Origin 和 API 的 HTTPS 测试环境。
+
+在 Android 手机及 iPhone/iPad 上分别执行以下步骤。
+
+1. 安装三端并点击各自图标。确认进入对应的独立应用窗口，再用有权限的测试账号登录。
+2. 保留未提交的表单，向同一测试地址部署第二版。切回应用等待更新提示，确认输入仍在。处理完表单后关闭此端所有窗口和标签页，再从图标打开，确认进入新版。其他两端可以继续使用。
+3. 保持页面打开并断网，确认页面提示网络中断，业务提交没有成功提示。完全关闭后，从图标再次打开应显示「当前无法连接」。恢复网络后点「重试」，核对服务端记录，再按需重试未确认的操作。
+4. 用测试账号 A 在团员端创建一笔可识别的预约，退出后用账号 B 登录。核对 B 的列表，从应用图标重开后再次核对。管理端和客户端也分别用两名有权限的账号退出、登录并核对身份。
+
+Service Worker 按版本缓存公开构建资源。业务数据和提交请求由 API 实时处理。断网期间保持页面打开时，先前已加载的数据可能仍在屏幕上，恢复网络后请刷新相应列表核对最新状态。
+
+### 三端设备提醒
+
+从 HTTPS 管理端、团员端或客户端打开「通知」，点「开启系统提醒」并允许通知。团员端的开关也适用于接单提醒。iPhone 或 iPad 须先将该端添加到主屏幕，再从图标打开。每个端和每台设备分别开启，退出或切换登录后需为当前会话重新开启。断网时关闭提醒会尝试取消浏览器订阅，并在该端恢复在线后补送解绑请求。普通及重要站内通知可直接在铃铛中查看。
+
+部署人员可在可信环境运行 `pnpm --dir server exec web-push generate-vapid-keys --json` 创建一次 VAPID 密钥，为所有 API 实例配置相同的 `WEB_PUSH_VAPID_PUBLIC_KEY`、`WEB_PUSH_VAPID_PRIVATE_KEY` 和 `WEB_PUSH_VAPID_SUBJECT`。联系地址使用实际的 `mailto:` 或 HTTPS URL。直接运行 API 时配置 `server/.env`，根 Compose 使用根 `.env` 后重新部署 API。独立 Compose 使用其挂载的 `server/.env.production`。私钥仅存于 API 的环境配置。三项留空或配置不匹配时仍可发布派单并收到站内通知。更换密钥后，原设备需要重新开启。
+
+API 只连接受信的 HTTPS 推送网关。默认接受 Chrome、Firefox 和 Safari 当前常用的网关 Origin。自管网关可通过 `WEB_PUSH_ALLOWED_ORIGINS` 添加逗号分隔的精确 HTTPS Origin，连接时使用公开 DNS 地址和有效的 TLS 证书。[订阅 API 与消息协议](docs/club-orders.md#三端通知与设备提醒)
+
 ## Docker 部署与重新部署
 
 在 Linux 部署机上准备 Git、Bash 和 Docker Compose v2.20.2 或更高版本。根目录的 `docker-compose.yml` 编排四个 Nginx 前端、NestJS API 和可选的 MongoDB。容器重建后，团员的 SQLite 文件和 MongoDB 数据分别保存在命名卷中。

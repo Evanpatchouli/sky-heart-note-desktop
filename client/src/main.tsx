@@ -1,6 +1,8 @@
 import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
 import { AuthGate, useAuthSession, useSessionActions } from "@webapp-template/common/web-auth";
+import { registerPwa } from "@webapp-template/common/pwa";
+import { NotificationBell } from "@webapp-template/common/notifications";
 import { CustomerActivation } from "./customer-activation";
 import ClubInvitation from "./club-invitation";
 import { NavigationIcon, useMobileViewport } from "@webapp-template/common/mobile-navigation";
@@ -12,7 +14,7 @@ import "./order.css";
 const orderIdPattern = /^[a-f0-9]{24}$/i;
 
 function ClientApp() {
-  const { id: userId } = useAuthSession();
+  const { id: userId, token } = useAuthSession();
   const path = window.location.pathname.replace(/\/$/, "");
   const query = new URLSearchParams(window.location.search);
   const orderId = query.get("order");
@@ -62,6 +64,7 @@ function ClientApp() {
         <a href="/order" aria-current={isCreate ? "page" : undefined}>下单</a>
         <a href="/account" aria-current={isAccount ? "page" : undefined}>我的</a>
       </nav>
+      <NotificationBell app="client" token={token} />
     </header>
     {isCreate ? <NewOrder /> : isDetail ? orderId && orderIdPattern.test(orderId)
       ? <OrderDetail key={orderId} orderId={orderId} />
@@ -91,3 +94,4 @@ createRoot(document.getElementById("root")!).render(
     : /^\/join-club\/?$/.test(window.location.pathname) ? <ClubInvitation />
     : <AuthGate app="client"><ClientApp /></AuthGate>,
 );
+registerPwa("client");

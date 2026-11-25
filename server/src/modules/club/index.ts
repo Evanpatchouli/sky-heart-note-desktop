@@ -20,6 +20,13 @@ import { ClubDirectoryService } from './club-directory.service';
 import { ClubDispatchNoticeController } from './club-dispatch-notice.controller';
 import { ClubDispatchNotice, ClubDispatchNoticeSchema } from './club-dispatch-notice.schema';
 import { ClubDispatchNoticeService } from './club-dispatch-notice.service';
+import { AppSessionModule } from '../../auth/app-session.module';
+import { ClubDispatchPushController } from './club-dispatch-push.controller';
+import { ClubDispatchPushDelivery, ClubDispatchPushDeliverySchema, ClubDispatchPushSubscription, ClubDispatchPushSubscriptionSchema } from './club-dispatch-push.schema';
+import { ClubDispatchPushService } from './club-dispatch-push.service';
+import { AdminAppNotificationController, ClientAppNotificationController, EmployeeAppNotificationController } from './app-notification.controller';
+import { AppNotificationEvent, AppNotificationEventSchema } from './app-notification.schema';
+import { AppNotificationService } from './app-notification.service';
 import { EmployeeClubOperationsController } from './employee-club-operations.controller';
 import { ClubGiftDispatchController } from './club-gift-dispatch.controller';
 import { ClubGiftDispatchService } from './club-gift-dispatch.service';
@@ -44,6 +51,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
 @Module({
   imports: [
     RoleModule,
+    AppSessionModule,
     EmployeeModule,
     UserDispatchActivationModule,
     MongooseModule.forFeature([
@@ -52,6 +60,9 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
       { name: ClubMember.name, schema: ClubMemberSchema },
       { name: ClubOrder.name, schema: ClubOrderSchema },
       { name: ClubDispatchNotice.name, schema: ClubDispatchNoticeSchema },
+      { name: AppNotificationEvent.name, schema: AppNotificationEventSchema },
+      { name: ClubDispatchPushSubscription.name, schema: ClubDispatchPushSubscriptionSchema },
+      { name: ClubDispatchPushDelivery.name, schema: ClubDispatchPushDeliverySchema },
       { name: ClubPromotionCoupon.name, schema: ClubPromotionCouponSchema },
       { name: DailyReport.name, schema: DailyReportSchema },
       { name: ClubSettlementCalculation.name, schema: ClubSettlementCalculationSchema },
@@ -69,6 +80,10 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClubGiftDispatchController,
     ClubDeliveryController,
     ClubDispatchNoticeController,
+    ClubDispatchPushController,
+    AdminAppNotificationController,
+    EmployeeAppNotificationController,
+    ClientAppNotificationController,
     ClientClubInvitationController,
     EmployeeClubInvitationController,
     EmployeeClubController,
@@ -77,7 +92,7 @@ import { Club, ClubMember, ClubMemberSchema, ClubSchema } from './club.schema';
     ClientClubController,
     ClientClubOrderController,
   ],
-  providers: [ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService, ClubDispatchNoticeService, ClubGiftSettlementService, ClubSettlementEvidenceService],
-  exports: [ClubDirectoryService, ClubOrderService],
+  providers: [ClubPromotionService, ClubContinuationService, ClubGiftPriceAdjustmentService, ClubGiftSupervision, ClubDirectoryService, ClubCustomerService, ClubOrderService, ClubGiftDispatchService, ClubMemberInvitationService, ClubGiftExecutionService, ClubDailyReportStore, ClubGiftDeliveryService, ClubDispatchNoticeService, ClubDispatchPushService, AppNotificationService, ClubGiftSettlementService, ClubSettlementEvidenceService],
+  exports: [ClubDirectoryService, ClubOrderService, AppNotificationService],
 })
 export class ClubModule {}

@@ -8,7 +8,7 @@ import { DailyReport } from './club-delivery.schema';
 import { ClubDirectoryService } from './club-directory.service';
 import { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
 import { giftDayFacts } from './club-gift-delivery';
-import { hasConfirmedAdjustment, personalPenalty } from './club-gift-settlement-adjustments';
+import { hasConfirmedMemberPenalty, personalPenalty } from './club-gift-settlement-adjustments';
 import { calculateGiftSettlement, GIFT_SETTLEMENT_CALCULATION_VERSION } from './club-gift-settlement';
 import { customerGiftTermination } from './club-gift-termination';
 import type { ClubOrderQuery } from './club-order.dto';
@@ -77,7 +77,7 @@ export class ClubGiftSettlementService {
     const own = calculation.members.find(member => member.userId === userId);
     const member = own ? this.memberView(own) : null;
     const penalties = !own ? calculation.adjustments?.filter(record =>
-      record.kind === 'member_penalty' && record.memberUserId === userId && !record.refunds.length && hasConfirmedAdjustment(record),
+      record.memberUserId === userId && hasConfirmedMemberPenalty(record),
     ).map(personalPenalty) : undefined;
     return {
       priceUnit, status, stopped, finalCalculation, member,

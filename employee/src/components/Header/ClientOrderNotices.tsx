@@ -33,11 +33,11 @@ export function useClientOrderNotices(open: boolean) {
   return { items, error };
 }
 
-export function ClientOrderNoticeList({ items, error, onSelect }: ReturnType<typeof useClientOrderNotices> & { onSelect: () => void }) {
+export function ClientOrderNoticeList({ items, error }: ReturnType<typeof useClientOrderNotices>) {
   if (error) return <Alert type="error" title="客户端下单通知读取失败" />;
   if (!items.length) return <p>暂无待接待的客户端订单。</p>;
   return <ul>{items.map(item => <li key={item.orderId}>
-    <Link to={{ pathname: "/club/dispatch", search: new URLSearchParams({ orderId: item.orderId }).toString() }}
-      onClick={onSelect}>{item.clubName} · {item.recipientGameAccount} · 核对报价</Link>
+    <Link to={{ pathname: "/club/dispatch", search: new URLSearchParams({ orderId: item.orderId }).toString() }}>
+      {item.clubName} · {item.recipientGameAccount} · 核对报价</Link>
   </li>)}</ul>;
 }

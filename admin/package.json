@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node ../common/pwa/build.mjs admin",
     "lint": "eslint .",
     "preview": "vite preview",
     "build:prototype": "tsc -p prototype/tsconfig.json && vite build --config vite.prototype.config.ts",

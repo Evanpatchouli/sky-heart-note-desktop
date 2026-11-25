@@ -1,0 +1,11 @@
+.pwa-status {
+  margin: 0;
+}
+
+.pwa-status:not(:empty) {
+  padding: .55rem 1rem;
+  border-bottom: 1px solid #dbe2eb;
+  background: #f4f6f9;
+  color: #1d2a41;
+  font: .875rem/1.5 system-ui, sans-serif;
+}

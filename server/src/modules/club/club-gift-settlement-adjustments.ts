@@ -1,9 +1,32 @@
-import type { GiftSettlementAdjustment, GiftSettlementIssue, PersonalGiftPenalty } from '@webapp-template/common';
+import { USER_ID_PATTERN, type GiftSettlementAdjustment, type GiftSettlementIssue, type PersonalGiftPenalty } from '@webapp-template/common';
 import type { ClubFinancialAdjustment } from './club-financial-adjustment.schema';
 
-export function hasConfirmedAdjustment(record: GiftSettlementAdjustment) {
+type AdjustmentDecision = Pick<GiftSettlementAdjustment, 'status' | 'amountCents' | 'decidedByUserId'> & {
+  decidedAt?: Date | string;
+};
+type PenaltyDecision = AdjustmentDecision & Pick<GiftSettlementAdjustment, 'kind' | 'memberUserId' | 'requestedByUserId'> & {
+  refunds?: readonly unknown[];
+};
+
+function hasConfirmedAdjustment(record: AdjustmentDecision) {
   return record.status === 'approved' && !!record.decidedByUserId && !!record.decidedAt &&
     Number.isSafeInteger(record.amountCents) && record.amountCents > 0;
+}
+
+function isUserId(value: unknown): value is string {
+  return typeof value === 'string' && USER_ID_PATTERN.test(value);
+}
+
+export function hasConfirmedMemberPenalty<T extends PenaltyDecision>(
+  record: T,
+): record is T & { memberUserId: string; decidedAt: NonNullable<T['decidedAt']> } {
+  const { decidedAt, refunds } = record;
+  const decidedTime = decidedAt instanceof Date ? decidedAt.getTime()
+    : typeof decidedAt === 'string' ? Date.parse(decidedAt) : NaN;
+  return record.kind === 'member_penalty' && hasConfirmedAdjustment(record) &&
+    isUserId(record.decidedByUserId) && Number.isFinite(decidedTime) &&
+    isUserId(record.memberUserId) && isUserId(record.requestedByUserId) &&
+    (refunds == null || Array.isArray(refunds) && refunds.length === 0);
 }
 
 export function personalPenalty({ id, amountCents, reason, decidedAt }: GiftSettlementAdjustment): PersonalGiftPenalty {
@@ -28,28 +51,24 @@ export function giftSettlementAdjustments(
     const row: GiftSettlementAdjustment = {
       id: _id.toHexString(), kind, status, revision, amountCents, reason, requestedByUserId, createdAt: createdAt.toISOString(),
       ...(decidedByUserId ? { decidedByUserId } : {}),
-      ...(decidedAt ? { decidedAt: decidedAt.toISOString() } : {}),
+      ...(decidedAt instanceof Date && Number.isFinite(decidedAt.getTime()) ? { decidedAt: decidedAt.toISOString() } : {}),
       ...(memberUserId ? { memberUserId } : {}),
-      refunds: (refunds ?? []).map(payment => ({
+      refunds: (Array.isArray(refunds) ? refunds : []).map(payment => ({
         ...payment, occurredAt: payment.occurredAt.toISOString(), recordedAt: payment.recordedAt.toISOString(),
       })),
     };
     adjustments.push(row);
     if (row.status !== 'approved') continue;
-    if (!hasConfirmedAdjustment(row)) {
+    if (!(kind === 'member_penalty' ? hasConfirmedMemberPenalty(record) && !!row.decidedAt : hasConfirmedAdjustment(row))) {
       issues.add('adjustment_invalid');
       continue;
     }
     const amount = BigInt(row.amountCents);
-    if (row.kind === 'member_penalty') {
-      if (!row.memberUserId || row.refunds.length) {
-        issues.add('adjustment_invalid');
-        continue;
-      }
-      const found = penalties.get(row.memberUserId) ?? { sum: 0n, items: [] };
+    if (kind === 'member_penalty' && memberUserId) {
+      const found = penalties.get(memberUserId) ?? { sum: 0n, items: [] };
       found.sum += amount;
       found.items.push(personalPenalty(row));
-      penalties.set(row.memberUserId, found);
+      penalties.set(memberUserId, found);
       penaltyCents += amount;
       continue;
     }

@@ -59,6 +59,9 @@ export class ClubFinancialAdjustment {
   @Prop({ type: Date })
   decidedAt?: Date;
 
+  @Prop({ type: Date })
+  notificationPublishedAt?: Date;
+
   @Prop({ type: String })
   memberUserId?: string;
 
@@ -68,3 +71,6 @@ export class ClubFinancialAdjustment {
 
 export const ClubFinancialAdjustmentSchema = SchemaFactory.createForClass(ClubFinancialAdjustment);
 ClubFinancialAdjustmentSchema.index({ clubId: 1, orderId: 1, _id: 1 });
+ClubFinancialAdjustmentSchema.index({ clubId: 1, notificationPublishedAt: 1, _id: 1 }, {
+  partialFilterExpression: { kind: 'member_penalty', status: 'approved' },
+});

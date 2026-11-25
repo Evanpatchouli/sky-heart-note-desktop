@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { lazy, Suspense } from "react";
 import { AuthGate } from "@webapp-template/common/web-auth";
+import { registerPwa } from "@webapp-template/common/pwa";
 import "./index.css";
 
 const App = lazy(() => import("./App"));
@@ -13,3 +14,4 @@ createRoot(document.getElementById("root")!).render(
     </AuthGate>
   </Suspense>
 );
+registerPwa("employee");

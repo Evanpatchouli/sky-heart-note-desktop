@@ -204,6 +204,9 @@ export class ClubOrder {
   @Prop({ type: DispatchPublicationSchema })
   publication?: DispatchPublication;
 
+  @Prop({ type: Date })
+  intakeNoticePendingAt?: Date;
+
   @Prop({ type: OrderPricingSchema })
   pricing?: OrderPricing;
 
@@ -283,6 +286,8 @@ ClubOrderSchema.index(
 );
 ClubOrderSchema.index({ clubId: 1, _id: -1 });
 ClubOrderSchema.index({ 'publication.id': 1 }, { unique: true, sparse: true });
+ClubOrderSchema.index({ intakeNoticePendingAt: 1 }, { sparse: true });
+ClubOrderSchema.index({ 'publication.pushNextAttemptAt': 1 }, { sparse: true });
 ClubOrderSchema.index(
   { 'publication.nextAttemptAt': 1, _id: 1 },
   { partialFilterExpression: { 'publication.pending': true } },

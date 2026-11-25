@@ -17,6 +17,8 @@ import GiftSettlementCard from "../club-assignments/gift-settlement";
 import { GiftExceptionQueue, GiftSupervisionCard } from "./gift-supervision";
 import PendingAssignment from "./pending-assignment";
 import MemberInvitation from "./member-invitation";
+import { ClientOrderNoticeList, useClientOrderNotices } from "#/components/Header/ClientOrderNotices";
+import { useDispatchNotificationTarget } from "./dispatch-notification-target";
 import type { DeliveryPeriodPreference } from "@webapp-template/common";
 
 import { useWorkspaceScroll } from "../workspace-scroll";
@@ -53,6 +55,8 @@ function requestError(err: unknown) {
 }
 
 export default function ClubDispatch() {
+  const notification = useDispatchNotificationTarget();
+  const clientOrders = useClientOrderNotices(true);
   const { id, token } = useAuthSession();
   const [params] = useSearchParams();
   const context = JSON.stringify([id, "dispatch", params.get("after"), params.get("orderId"), params.get("through")]);
@@ -78,6 +82,8 @@ export default function ClubDispatch() {
     <main className="club-claim-page" {...scroll}>
       <Flex vertical gap="middle" style={{ maxWidth: 820, marginInline: "auto" }}>
         <Typography.Title level={3} style={{ margin: 0 }}>派单准备</Typography.Title>
+        {notification.error ? <Alert type="error" showIcon title={notification.error}
+          action={<Button onClick={notification.retry}>重试</Button>} /> : null}
         {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setAttempt(value => value + 1)}>重试</Button>} />
           : club === undefined ? <Spin aria-label="加载俱乐部" />
           : club ? <>
@@ -86,7 +92,12 @@ export default function ClubDispatch() {
               <Typography.Link href={club.orderUrl} target="_blank" rel="noopener noreferrer">客户端下单链接</Typography.Link>
             </Typography.Text>
             <MemberInvitation />
-            <ClubOrders key={id} canAssign={club.canAssignPendingOrders} onReady={() => setReadyContext(context)} />
+            <details>
+              <summary>待接待的客户端订单</summary>
+              <ClientOrderNoticeList {...clientOrders} />
+            </details>
+            {notification.loading ? <Spin aria-label="定位客户端订单" />
+              : <ClubOrders key={id} canAssign={club.canAssignPendingOrders} onReady={() => setReadyContext(context)} />}
           </> : <Empty description="当前账号尚无有效团员身份" />}
       </Flex>
     </main>

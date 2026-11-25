@@ -115,6 +115,8 @@ export async function startSystem(t, { database, origins, adminUsername, extraFi
       EMPLOYEE_DATA_DIR: join(directory, 'employee'), ADMIN_ORIGIN: origins.admin, EMPLOYEE_ORIGIN: origins.employee,
       CLIENT_ORIGIN: origins.client, SITE_ORIGIN: origins.site, LOG_LEVEL: 'error',
       BOOTSTRAP_ADMIN_USERNAME: adminUsername, BOOTSTRAP_ADMIN_PASSWORD: password,
+      WEB_PUSH_VAPID_PUBLIC_KEY: '', WEB_PUSH_VAPID_PRIVATE_KEY: '', WEB_PUSH_VAPID_SUBJECT: '',
+      WEB_PUSH_ALLOWED_ORIGINS: '',
       ...extraEnv,
     },
     windowsHide: true,

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="%THEME_COLOR%">
+    <title>%APP_NAME%</title>
+    <style>
+      body { margin: 0; color: #1d2a41; background: #f4f6f9; font: 1rem/1.6 system-ui, sans-serif; }
+      main { max-width: 28rem; margin: 12vh auto; padding: 0 1.25rem; }
+      h1 { font-size: 1.5rem; }
+      button { min-height: 44px; padding: .45em 1em; border: 0; border-radius: 6px; color: #fff;
+        background: %THEME_COLOR%; font: inherit; cursor: pointer; }
+      button:focus-visible { outline: 2px solid %THEME_COLOR%; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>%APP_NAME%</p>
+      <h1>当前无法连接</h1>
+      <p>请在网络恢复后重试。访问账号和业务数据需要连接服务。</p>
+      <button type="button" onclick="location.reload()">重试</button>
+    </main>
+  </body>
+</html>

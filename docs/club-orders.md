@@ -184,6 +184,31 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 
 派单人从「派单准备」查看整单及各段汇总。 `GET /api/employee/club/orders/:orderId/gift-dispatch` 返回 `totals` 和按报价段排列的 `segmentTotals`，包括付费总次数、净已领、公开待领、定向待确认、未配置和当前不可领。改派前的原份额、日程和实绩仍可查，已移出的份额转入待确认，接手人确认后计入其净承接。接单人只可查本人回执和份额。
 
+## 三端通知与设备提醒
+
+以下接口使用当前端的 Bearer 令牌和 Origin。路径中的 `app` 只能是 `admin`、`employee` 或 `client`。每个登录会话最多关联一个设备订阅，同一端点也只能绑定到一个会话。其他端和其他设备需分别开启。
+
+| 方法 | 路由 | 请求与响应 |
+| --- | --- | --- |
+| `GET` | `/api/{app}/notifications` | 以 `limit`（默认 25，最多 100）及 `after` 分页，返回 `items`、`hasUnread`、`nextCursor`。团员端历史派发和新通知使用同一收件箱。 |
+| `GET` | `/api/{app}/notifications/:id` | 查询本端、本人仍可见的通知。客户端订单接待额外校验当前派单人。 |
+| `PATCH` | `/api/{app}/notifications/:id/read` | 标为已读，重试返回同一已读时间。普通通知标读后移出收件箱。 |
+| `GET` | `/api/{app}/notification-push` | 返回 `{ publicKey, fingerprint }`。未配置服务或当前会话无订阅时，对应字段为 `null`。 |
+| `PUT` | `/api/{app}/notification-push` | 传入 `{ endpoint, keys: { p256dh, auth }, applicationServerKey }`。其中 `applicationServerKey` 为 GET 返回的 VAPID 公钥。重复提交同一当前订阅返回现有指纹。 |
+| `DELETE` | `/api/{app}/notification-push` | 解除当前会话的设备绑定，可以重复调用。状态核对时可传入 `{ fingerprint }`，只在该指纹仍匹配时解除。 |
+
+设备指纹为 `JSON.stringify([endpoint, p256dh, auth])` 的 UTF-8 SHA-256 无填充 Base64URL 编码，`endpoint` 使用浏览器 URL 序列化结果。订阅端点和设备密钥由服务端保存，VAPID 私钥只来自 API 环境变量。已有团员端 `/api/employee/dispatch-push` 接口和该端订阅继续有效。
+
+在可信服务端用 `AppNotificationService.publish({ eventKey, targetApp, type, recipientUserIds, title, body? })` 持久化目标端及收件人快照。相同端和事件键重复调用时返回原事件，要求收件人和内容一致。普通 `normal` 仅写收件箱，重要 `important` 写收件箱并调度设备投递，系统 `system` 仅使用 PWA 展示，服务端保留投递核对记录。也可在使用相同 MongoDB 配置的可信部署环境调用：
+
+```sh
+pnpm --dir server club:configure notify employee important sample.event.001 00A1 "标题" "内容"
+```
+
+后台按事件 ID 和设备订阅 ID 生成投递记录，发送前核对当前账号、本端权限、登录和设备绑定代次，以及涉及俱乐部业务时的有效成员身份。事件发生前已开启的设备可在 15 分钟有效期内接收。暂时故障按退避间隔和 `Retry-After` 重试，`404/410` 解除相应代次的绑定。网关收到相同 `Topic` 时可合并待送通知，应用以事件和收件记录的固定标签合并展示。网关受理状态可通过事件 ID 核对 `club_dispatch_push_deliveries`，实际设备展示与点击另行验证。
+
+三端 Service Worker 校验负载版本、会话绑定和有效期，只打开本站约定目标。全团派发沿用 `club-dispatch`、`publicationId` 和 `noticeId`，进入 `/claim-board?noticeId=…`。其他类型加密负载采用 `app-notification`，含 `targetApp`、`noticeType`、`notificationId`、`noticeId`、`target`、`title`、`message`、`deviceBinding` 和 `expiresAt`。客户端下单被分配后，重要通知进入团员端 `/club/dispatch?notificationId=…`，校验归属后填入派单准备。其他重要通知打开本端铃铛的对应条目，系统通知打开本端入口。三端点击都先使用本端登录，随后重新校验通知或业务对象的访问权。
+
 ## 按次承接关联送心号
 
 团员在「按次接单」找到订单，在「我的承接」的份额下点「关联送心号」，逐个选择本人已有的送心号，也可先新建个人送心号。候选按名称和个人编号区分。关联后即可使用该号写日报、补报或更正。同一团员在本单有追加份额、跨段份额时，可为这些份额选择同一个号。
@@ -305,6 +330,8 @@ P1-02 首次激活走查覆盖派单人从原单复制链接、老板刷新后�
 额外客户补偿和责任扣款由结算查询读取同团同单的 `club_financial_adjustments`。一笔责任扣款用一条 `member_penalty` 记录，`status` 同时描述申请和生效状态。额外团费补偿使用 `customer_compensation`。财务可查申请与决议依据。只有 `approved` 记录计入分配，批准的补偿转为应退，按实际退款记录进入实退。待确认或驳回的记录不改变分配、待结状态或最终计算单。全团罚款按无 `orderId` 的独立记录处理。关联订单的责任扣款归入团费，目标团员有本人送心报酬时另列扣款及净额。对本单无派发或承接权限的责任团员，订单依然不可见。
 
 写入方使用 `clubId` 和关联订单的 MongoDB `orderId`，保存整分金额、原因、申请或发布人、决定人和发生时间。额外补偿的每笔实退保存独立请求标识、整分金额、实际发生与登记时间、登记人。`revision` 从 1 起，每次状态或退款变更原子递增。当前提供财务及个人计算查询，订单调整的申请、审批和登记入口由 P1-15 接续，确认结单和账户入账由 P1-17 接续。
+
+通知由已持久化的 `member_penalty` 生效记录驱动。费用业务可在成功写入后调用 `AppNotificationService.publishApprovedPenalty(penaltyId)`，后台也会定期补齐未处理记录。通知与结算都要求已批准、有效的决定人与时间、正整数分、有效的被罚款人与提交人，并且没有退款记录。决定之后的职务变化不影响原决定。事件键为 `club.penalty.approved:<罚款ID>`，只向团员端的被罚款人和提交人各投递一次重要通知。核对字段 `notificationPublishedAt` 记录通知事件入库时间，沿用原罚款 `revision` 与结算依据。
 
 ## 本人承接与排期
 

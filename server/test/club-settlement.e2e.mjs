@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import mongoose from 'mongoose';
 import { startClubSystem } from './club-test-system.mjs';
 
@@ -174,9 +175,10 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
     requestId: randomUUID(), expectedVersion: 3, reason: '非本人日报', lines: [line(5)],
   }, 'POST', 404);
 
-  // These fixtures stand in for the durable P1-15 records. Only the
-  // settlement reader, roles and cash calculations are exercised here.
+  // These fixtures stand in for durable P1-15 records. Hold back the
+  // notification checkpoint until the initial adjusted calculation is saved.
   const adjustments = db.collection('club_financial_adjustments');
+  await db.command({ collMod: adjustments.collectionName, validator: { notificationPublishedAt: { $exists: false } } });
   const linkedOrderId = new mongoose.Types.ObjectId(order.id);
   const createdAt = new Date('2026-11-11T04:00:00Z');
   const decidedAt = new Date('2026-11-11T05:00:00Z');
@@ -218,6 +220,21 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   assert.deepEqual([adjusted.cash.netReceivedCents, adjusted.totals.allocatedCents, adjusted.totals.dispatchNetCents,
     adjusted.totals.clubNetCents, adjusted.totals.memberNetCents, adjusted.totals.customerCompensationCents,
     adjusted.totals.memberPenaltyCents], [4500, 4500, 500, 200, 3800, 500, 200]);
+  assert.equal((await adjustments.findOne({ _id: insertedIds[1] })).notificationPublishedAt, undefined);
+  await db.command({ collMod: adjustments.collectionName, validator: {} });
+  let checkedPenalty;
+  for (let i = 0; i < 100; i++) {
+    checkedPenalty = await adjustments.findOne({ _id: insertedIds[1] });
+    if (checkedPenalty.notificationPublishedAt) break;
+    await sleep(100);
+  }
+  assert.ok(checkedPenalty.notificationPublishedAt instanceof Date);
+  assert.equal(checkedPenalty.revision, 2);
+  const afterNotice = await admin(settlement(order.id));
+  assert.equal(afterNotice.finalCalculation.id, adjusted.finalCalculation.id);
+  assert.deepEqual(afterNotice.cash, adjusted.cash);
+  assert.deepEqual(afterNotice.totals, adjusted.totals);
+  assert.deepEqual(afterNotice.adjustments, adjusted.adjustments);
   const ownAdjusted = await employee(a, order.path + '/settlement');
   assert.equal(ownAdjusted.member.rewardCents, 2000);
   assert.equal(ownAdjusted.member.penaltyCents, 200);
@@ -246,6 +263,21 @@ test('按次结算隔离各端权限，以有效日报生成可复验的预计�
   assert.equal(ownDispatchPenalty.member, null);
   assert.deepEqual(ownDispatchPenalty.penalties.map(penalty => penalty.amountCents), [100]);
   await employee(nonWorker, order.path + '/settlement', undefined, 'GET', 404);
+
+  const malformedPenalty = {
+    ...terms, ...decision, orderId: linkedOrderId, kind: 'member_penalty', memberUserId: dispatcher.id, amountCents: 200,
+  };
+  await adjustments.insertMany([
+    { ...malformedPenalty, decidedByUserId: null },
+    { ...malformedPenalty, amountCents: 0 },
+    { ...malformedPenalty, decidedAt: 'not a date' },
+    { ...malformedPenalty, refunds: [refundProof(200)] },
+  ]);
+  const heldPenalties = await admin(settlement(order.id));
+  assert.equal(heldPenalties.status, 'review_required');
+  assert.ok(heldPenalties.issues.includes('adjustment_invalid'));
+  assert.deepEqual(heldPenalties.totals, nonWorkerPenalties.totals);
+  assert.deepEqual((await employee(dispatcher, order.path + '/settlement')).penalties, ownDispatchPenalty.penalties);
 
   const long = await paidOrder({ requestedGiftTimes: 1, dailyGiftTimes: 1, endDate: '2026-11-16', ruleVersion: 2 });
   const longRoute = await claim(a, long, 1);

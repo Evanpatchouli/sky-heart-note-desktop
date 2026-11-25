@@ -1,0 +1,67 @@
+.sky-notice-bell {
+  position: relative;
+  display: inline-grid;
+  min-inline-size: 40px;
+  min-block-size: 40px;
+  place-items: center;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sky-notice-bell:hover { background: rgb(100 116 139 / 12%); }
+.sky-notice-dot {
+  position: absolute;
+  top: 4px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid white;
+  border-radius: 50%;
+  background: #d73543;
+}
+.sky-notice-dialog {
+  box-sizing: border-box;
+  width: min(460px, calc(100vw - 24px));
+  max-height: min(75dvh, 660px);
+  padding: 20px;
+  border: 1px solid #d8dee4;
+  border-radius: 14px;
+  color: #202936;
+  background: #fff;
+  line-height: 1.5;
+  text-align: start;
+}
+.sky-notice-dialog::backdrop { background: rgb(17 24 39 / 43%); }
+.sky-notice-dialog-heading, .sky-notice-actions, .sky-notice-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sky-notice-dialog-heading { justify-content: space-between; }
+.sky-notice-dialog h2 { margin: 0; font-size: 1.2rem; }
+.sky-notice-dialog p { margin: 6px 0; overflow-wrap: anywhere; }
+.sky-notice-dialog time, .sky-notice-dialog code { display: block; font-size: .82rem; }
+.sky-notice-dialog button:not(.sky-notice-bell) {
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid #bbc7d5;
+  border-radius: 7px;
+  color: #233653;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.sky-notice-dialog button:disabled { opacity: .58; cursor: default; }
+.sky-notice-dialog a { color: #245090; text-decoration: underline; }
+.sky-notice-actions { margin-block-start: 8px; }
+.sky-device-notice { padding-block: 10px; border-block-end: 1px solid #e4e8ed; }
+.sky-notice-list { padding: 0; margin: 0; list-style: none; }
+.sky-notice-list > li, .sky-notice-selected { padding-block: 12px; border-block-end: 1px solid #e4e8ed; }
+.sky-notice-selected { padding-inline: 8px; background: #f0f5fc; }
+.sky-notice-summary span { color: #526273; font-size: .8rem; }
+.sky-notice-summary .sky-notice-priority { color: #854d0e; }

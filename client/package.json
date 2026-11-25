@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "dev": "vite", "build": "tsc --noEmit && vite build", "preview": "vite preview" },
+  "scripts": { "dev": "vite", "build": "tsc --noEmit && vite build && node ../common/pwa/build.mjs client", "preview": "vite preview" },
   "dependencies": {
     "@webapp-template/common": "workspace:*",
     "react": "^19.2.0",

@@ -108,10 +108,10 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
   await employee(inbox, downgraded, 'GET', undefined, [401, 403]);
   await employee(inbox, disabled, 'GET', undefined, [401, 403]);
   assert.equal(await orders.countDocuments({ publication: { $exists: true } }), 0);
-  assert.equal(await records.countDocuments(), 0);
+  assert.equal(await records.countDocuments({ eventKey: { $exists: false } }), 0);
 
   await prepare(direct);
-  assert.equal(await records.countDocuments(), 0);
+  assert.equal(await records.countDocuments({ eventKey: { $exists: false } }), 0);
   await publish(direct, publicationInput(false, [{ userId: inactive.id, dailyGiftTimes: 2, ...window }]), 400);
   assert.equal((await stored(direct)).publication, undefined);
   const peer = await startPeer();
@@ -176,7 +176,8 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
     const { publication } = await stored(client);
     return publication.pending && publication.nextAttemptAt > publication.publishedAt;
   });
-  assert.equal(await records.countDocuments({ orderId: clientOrderId }), 1);
+  const clientPublicationRecords = { publicationId: new Types.ObjectId(clientPublished.publicationId) };
+  assert.equal(await records.countDocuments(clientPublicationRecords), 1);
   assert.deepEqual((await stored(client)).publication.recipientUserIds, expected);
 
   const partialPage = await employee(inbox + '?limit=1', dispatcher);
@@ -202,7 +203,7 @@ test('按次正式派发的全团站内通知按发布名单去重、分页和�
   const restartedPeer = await startPeer();
   await db.command({ collMod: records.collectionName, validator: {} });
   await eventually('重启后的后台应补齐原有快照并完成事件', async () => !(await stored(client)).publication.pending);
-  const recovered = await records.find({ orderId: clientOrderId }).toArray();
+  const recovered = await records.find(clientPublicationRecords).toArray();
   assert.deepEqual(recovered.map(({ recipientUserId }) => recipientUserId).sort(), expected);
   assert.ok((await stored(client)).publication.deliveredAt instanceof Date);
   assert.deepEqual(await readNotice(marked.id, dispatcher), marked);
