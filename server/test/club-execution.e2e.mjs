@@ -108,6 +108,79 @@ test('按次承接关联本人 SQLite 送心号并独立填报实绩', { timeout
   }
   const executorShares = order => order.segments.flatMap(segment => segment.shares);
 
+  await t.test('P1-01 两笔按次订单互换派接职责并可自派自接', async () => {
+    const memberA = await invite('role_matrix_a');
+    const memberB = await invite('role_matrix_b');
+    const personalByUser = new Map();
+    for (const actor of [memberA, memberB]) {
+      await configure('member', 'execution', actor.id, 'active', 'dispatcher');
+      await add(actor, '互换职责验收号');
+      const [personal] = await listPersonal(actor);
+      personalByUser.set(actor.id, personal.id);
+    }
+    const clientOrders = '/client/clubs/execution/orders';
+    const input = recipientGameAccount => ({ requestId: randomUUID(), recipientGameAccount, requestedGiftTimes: 100 });
+    const direct = await call(memberA, club + '/orders', 'POST', { ...input('甲派乙接'), existingCustomerUserId: customer.id });
+    const online = await call(otherCustomer, clientOrders, 'POST', {
+      ...input('乙派甲接'), dispatcherUserId: memberB.id,
+    }, 201, 'client');
+    assert.deepEqual([direct.source, online.source], ['direct_dispatch', 'client_order']);
+
+    for (const [created, sender, worker, owner, otherOwner] of [
+      [direct, memberA, memberB, customer, otherCustomer], [online, memberB, memberA, otherCustomer, customer],
+    ]) {
+      const order = { ...created, route: club + '/orders/' + created.id };
+      const pricing = {
+        expectedRevision: 0, ruleVersion: 1, dispatchFeeCents: 5,
+        giftSegments: [{ period: 'normal', paidGiftTimes: 100, dailyGiftTimes: 10, unitPriceCents: 50 }],
+      };
+      await call(worker, order.route + '/pricing', 'PATCH', pricing, 404);
+      const { quote } = await call(sender, order.route + '/pricing', 'PATCH', pricing);
+      assert.equal(quote.totalAmountCents, 5000);
+      const receipt = {
+        requestId: randomUUID(), pricingRevision: quote.revision, receivedAmountCents: 5000, receivedAt: '2026-11-24T19:40:00+08:00',
+      };
+      await call(worker, order.route + '/receipts', 'POST', receipt, 404);
+      await call(sender, order.route + '/receipts', 'POST', receipt);
+      const published = await call(sender, order.route + '/publish', 'POST', {
+        requestId: randomUUID(), pricingRevision: quote.revision, ruleVersion: 1, commissionReviewRevision: 0,
+        giftDispatchSegments: [{ segmentIndex: 0, startDate, endDate, openToClaim: true, directed: [] }],
+      });
+      assert.equal(published.dispatchStatus, 'published');
+
+      const workerShare = await claim(order, worker, 0, 5);
+      const selfShare = await claim(order, sender, 0, 5);
+      assert.deepEqual([workerShare.giftTimes, selfShare.giftTimes], [50, 50]);
+      await link(order, workerShare, worker, personalByUser.get(sender.id), 404);
+      await link(order, workerShare, sender, personalByUser.get(sender.id), 404);
+      const workerAccount = await link(order, workerShare, worker, personalByUser.get(worker.id));
+      const selfAccount = await link(order, selfShare, sender, personalByUser.get(sender.id));
+      const workerReport = await report(order, workerShare, worker, workerAccount);
+      const selfReport = await report(order, selfShare, sender, selfAccount);
+      await call(sender, `${order.route}/daily-reports/${workerReport.originalId}/corrections`, 'POST', {
+        requestId: randomUUID(), expectedVersion: 1, reason: '检查本人日报权限', lines: [{ giftTimes: 5, receivedHearts: 5 }],
+      }, 404);
+
+      const ownShares = executorShares(await detail(worker, order));
+      assert.deepEqual(ownShares.map(share => share.id), [workerShare.shareId]);
+      assert.deepEqual(ownShares[0].executionGameAccounts.map(account => account.id), [workerAccount.id]);
+      for (const [actor, ownReport] of [[worker, workerReport], [sender, selfReport]]) {
+        const { items } = await call(actor, order.route + '/daily-reports');
+        assert.deepEqual(items.map(item => item.id), [ownReport.id]);
+      }
+      await call(worker, order.route + '/fulfillment', 'GET', undefined, 404);
+      const overview = await call(sender, order.route + '/fulfillment');
+      assert.deepEqual(overview.segments[0].members.map(member => member.userId).sort(), [sender.id, worker.id].sort());
+
+      const customerOrder = await call(owner, `${clientOrders}/${order.id}`, 'GET', undefined, 200, 'client');
+      assert.equal(customerOrder.receipt.receivedAmountCents, 5000);
+      assert.equal(customerOrder.deliveryProgress.deliveredGiftTimes, 10);
+      for (const key of ['promotionBasis', 'pendingCompensation', 'dispatchFeeCents', 'clubFeeCents', 'memberFeeCents', 'executionGameAccounts'])
+        assert.ok(!JSON.stringify(customerOrder).includes(`"${key}"`), `客户视图泄漏 ${key}`);
+      await call(otherOwner, `${clientOrders}/${order.id}`, 'GET', undefined, 404, 'client');
+    }
+  });
+
   await t.test('各领 50 次，可关联多个本人送心号并直接写日报', async () => {
     await Promise.all([first, second].map(async actor => {
       for (const name of ['同名', '同名', '账号三', '账号四', '账号五', '第六个号']) await add(actor, name);
