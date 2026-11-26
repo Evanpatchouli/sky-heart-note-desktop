@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "name": "relay-task",
+  "description": "发起或接续目标明确的跨会话任务接力。适用于用户要求在上下文接近容量时把工作交给同一项目的新会话，或希望生成可手动发送的首任提示词。",
+  "source": "C:\\Work\\evp-agents\\apps\\cli\\dist\\skills",
+  "digest": "6c5773bb5ae9dc07759f3761850bb71de88330a7a666586009749b4d3a2d872a"
+}
